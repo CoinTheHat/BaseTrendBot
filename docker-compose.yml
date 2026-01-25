@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  scandex:
+    build: .
+    container_name: scandex_bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    # RAM Limit is recommended for Puppeteer
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
