@@ -77,12 +77,12 @@ export class ScandexBot {
             try {
                 if (config.TELEGRAM_CHAT_ID) {
                     await this.bot?.sendMessage(config.TELEGRAM_CHAT_ID, "🚨 **TEST ALERT**\nBot bağlantısı başarılı! 🚀\nBu mesaj Railway üzerinden geldiyse sistem çalışıyor demektir.", { parse_mode: 'Markdown' });
-                    this.bot?.sendMessage(msg.chat.id, "✅ Test message sent to channel.");
+                    this.bot?.sendMessage(msg.chat.id, `✅ Test message sent to config ID: \`${config.TELEGRAM_CHAT_ID}\``, { parse_mode: 'Markdown' });
                 } else {
                     this.bot?.sendMessage(msg.chat.id, "❌ TELEGRAM_CHAT_ID not set.");
                 }
             } catch (err) {
-                this.bot?.sendMessage(msg.chat.id, `❌ Failed: ${err}`);
+                this.bot?.sendMessage(msg.chat.id, `❌ Failed to send to \`${config.TELEGRAM_CHAT_ID}\`:\n${err}`);
             }
         });
 
