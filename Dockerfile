@@ -12,10 +12,9 @@ RUN apt-get update \
       --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# Environment variables to skip chromium download during npm install (we use installed chrome)
-# OR let puppeteer download its own revision but ensure deps are there.
-# Simplest for stability: Let Puppeteer download its known working version, but we installed deps above.
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=false
+# Skip the download, we will use the installed package
+ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/google-chrome-stable
 
 WORKDIR /usr/src/app
 
