@@ -29,7 +29,12 @@ export class PumpFunService {
             console.log(`[PumpFun] Fetched ${tokens.length} new tokens.`);
             return tokens;
 
-        } catch (error) {
+        } catch (error: any) {
+            // Cloudflare 530 is common on Railway/Hosting IPs.
+            if (error.response?.status === 530 || error.response?.status === 403) {
+                console.warn('[PumpFun] Direct API access blocked by Cloudflare (Expected on VPS). Relying on DexScreener for PumpFun tokens.');
+                return [];
+            }
             console.error('[PumpFun] Error fetching new tokens:', error instanceof Error ? error.message : error);
             return [];
         }

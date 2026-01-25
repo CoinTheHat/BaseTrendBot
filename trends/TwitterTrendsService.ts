@@ -78,9 +78,21 @@ export class TwitterTrendsService {
 
         } catch (err) {
             logger.error(`[Trends] Scraping failed: ${err}`);
-            return [];
+            return this.getFallbackTrends();
         } finally {
             if (browser) await browser.close();
         }
+    }
+
+    private getFallbackTrends(): TrendItem[] {
+        // Emergency fallbacks if scraping fails (e.g. Layout change, Headless block)
+        logger.info('[Trends] Using FALLBACK trend list.');
+        return [
+            { id: 'fb_1', phrase: 'Solana', source: ['fallback'], metrics: { twitterTweets: 100000 }, trendScore: 90, lastUpdated: new Date() },
+            { id: 'fb_2', phrase: 'Bitcoin', source: ['fallback'], metrics: { twitterTweets: 500000 }, trendScore: 85, lastUpdated: new Date() },
+            { id: 'fb_3', phrase: 'AI', source: ['fallback'], metrics: { twitterTweets: 200000 }, trendScore: 80, lastUpdated: new Date() },
+            { id: 'fb_4', phrase: 'Meme', source: ['fallback'], metrics: { twitterTweets: 50000 }, trendScore: 70, lastUpdated: new Date() },
+            { id: 'fb_5', phrase: 'Crypto', source: ['fallback'], metrics: { twitterTweets: 150000 }, trendScore: 75, lastUpdated: new Date() }
+        ];
     }
 }
