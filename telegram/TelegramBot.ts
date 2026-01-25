@@ -76,13 +76,22 @@ export class ScandexBot {
             // Simulate a fake alert to the Main Channel
             try {
                 if (config.TELEGRAM_CHAT_ID) {
-                    await this.bot?.sendMessage(config.TELEGRAM_CHAT_ID, "🚨 **TEST ALERT**\nBot bağlantısı başarılı! 🚀\nBu mesaj Railway üzerinden geldiyse sistem çalışıyor demektir.", { parse_mode: 'Markdown' });
-                    this.bot?.sendMessage(msg.chat.id, `✅ Test message sent to config ID: \`${config.TELEGRAM_CHAT_ID}\``, { parse_mode: 'Markdown' });
+                    try {
+                        await this.bot?.sendMessage(config.TELEGRAM_CHAT_ID, "🚨 **TEST ALERT**\nBot bağlantısı başarılı! 🚀\nBu mesaj Railway üzerinden geldiyse sistem çalışıyor demektir.", { parse_mode: 'Markdown' });
+                        this.bot?.sendMessage(msg.chat.id, `✅ Test message sent to config ID: \`${config.TELEGRAM_CHAT_ID}\``, { parse_mode: 'Markdown' });
+                    } catch (e) {
+                        // Fallback to Admin
+                        if (config.TELEGRAM_ADMIN_ID) {
+                            await this.bot?.sendMessage(config.TELEGRAM_ADMIN_ID, "🚨 **TEST ALERT (FALLBACK)**\nKanal ID hatası var, bu mesaj Admin ID'ye (Sana) gönderildi.", { parse_mode: 'Markdown' });
+                            this.bot?.sendMessage(msg.chat.id, `⚠️ Failed to send to Channel, but sent to Admin ID. Check Bot permissions in Channel.`);
+                        }
+                        throw e;
+                    }
                 } else {
                     this.bot?.sendMessage(msg.chat.id, "❌ TELEGRAM_CHAT_ID not set.");
                 }
-            } catch (err) {
-                this.bot?.sendMessage(msg.chat.id, `❌ Failed to send to \`${config.TELEGRAM_CHAT_ID}\`:\n${err}`);
+            } catch (err: any) {
+                this.bot?.sendMessage(msg.chat.id, `❌ Failed to send to \`${config.TELEGRAM_CHAT_ID}\`:\n${err.message || err}`);
             }
         });
 
