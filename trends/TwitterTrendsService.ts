@@ -2,7 +2,10 @@ import { TwitterApi } from 'twitter-api-v2';
 import { config } from '../config/env';
 import { TrendItem } from '../models/types';
 import { logger } from '../utils/Logger';
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+
+puppeteer.use(StealthPlugin());
 
 export class TwitterTrendsService {
     private client: TwitterApi | null = null;
@@ -33,6 +36,7 @@ export class TwitterTrendsService {
         try {
             browser = await puppeteer.launch({
                 headless: true,
+                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined, // Use env if set (Railway)
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
@@ -44,13 +48,40 @@ export class TwitterTrendsService {
                 ]
             });
             const page = await browser.newPage();
-            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36');
+            // Stealth plugin already active via puppeteer-extra
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36');
 
             // Scrape US trends as proxy for Western Crypto Twitter discourse
-            await page.goto('https://trends24.in/united-states/', { waitUntil: 'domcontentloaded', timeout: 30000 });
+            // Increased timeout and wait condition
+            await page.goto('https://trends24.in/united-states/', { waitUntil: 'domcontentloaded', timeout: 60000 });
+
+            // Wait for the list to appear
+            try {
+                await page.waitForSelector('.trend-card__list', { timeout: 5000 });
+            } catch (e) {
+                logger.warn('[Trends] Selector timeout, page might have changed layout.');
+            }
 
             const trends = await page.evaluate(() => {
-                const listItems = document.querySelectorAll('.trend-card:first-child .trend-card__list li');
+                // Selector strategy: Try multiple potential selectors in case of changes
+                const selectors = [
+                    '.trend-card:nth-child(1) .trend-card__list li', // Recommended Specific
+                    '.trend-card:first-child .trend-card__list li', 
+                    '#trend-list .trend-card__list li',
+                    '.trend-card__list li'
+                ];
+
+                let listItems = null;
+                for (const sel of selectors) {
+                    const found = document.querySelectorAll(sel);
+                    if (found && found.length > 0) {
+                        listItems = found;
+                        break;
+                    }
+                }
+
+                if (!listItems) return [];
+
                 return Array.from(listItems).map(li => {
                     const link = li.querySelector('a');
                     const countSpan = li.querySelector('.trend-card__list--count');
@@ -66,6 +97,11 @@ export class TwitterTrendsService {
                     return { phrase, count };
                 });
             });
+
+            if (!trends || trends.length === 0) {
+                logger.warn('[Trends] Scraped 0 items. Using fallback.');
+                return this.getFallbackTrends();
+            }
 
             return trends.slice(0, 15).map((t: { phrase: string, count: number }, idx: number) => ({
                 id: `trend_${Date.now()}_${idx}`,

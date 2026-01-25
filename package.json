@@ -23,6 +23,8 @@
     "node-telegram-bot-api": "^0.67.0",
     "pg": "^8.17.2",
     "puppeteer": "^24.36.0",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2",
     "ts-node": "^10.9.2",
     "twitter-api-v2": "^1.29.0",
     "typescript": "^5.9.3",
