@@ -69,6 +69,23 @@ export class ScandexBot {
             this.bot?.sendMessage(msg.chat.id, `**System Status**\nScanning every ${config.SCAN_INTERVAL_SECONDS}s\nNetwork: ${config.NETWORK}`, { parse_mode: 'Markdown' });
         });
 
+        this.bot.onText(/\/test/, async (msg) => {
+            if (!this.isAdmin(msg.from?.id)) return;
+            this.bot?.sendMessage(msg.chat.id, "🧪 **Test Alert**\nTesting connection to channel...", { parse_mode: 'Markdown' });
+
+            // Simulate a fake alert to the Main Channel
+            try {
+                if (config.TELEGRAM_CHAT_ID) {
+                    await this.bot?.sendMessage(config.TELEGRAM_CHAT_ID, "🚨 **TEST ALERT**\nBot bağlantısı başarılı! 🚀\nBu mesaj Railway üzerinden geldiyse sistem çalışıyor demektir.", { parse_mode: 'Markdown' });
+                    this.bot?.sendMessage(msg.chat.id, "✅ Test message sent to channel.");
+                } else {
+                    this.bot?.sendMessage(msg.chat.id, "❌ TELEGRAM_CHAT_ID not set.");
+                }
+            } catch (err) {
+                this.bot?.sendMessage(msg.chat.id, `❌ Failed: ${err}`);
+            }
+        });
+
         this.bot.onText(/\/watchlist/, (msg) => {
             if (!this.isAdmin(msg.from?.id)) return;
             const items = this.watchlist.getWatchlist();
