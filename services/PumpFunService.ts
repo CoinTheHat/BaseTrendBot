@@ -3,25 +3,34 @@ import { TokenSnapshot } from '../models/types';
 import { config } from '../config/env';
 
 export class PumpFunService {
-    private baseUrl = 'https://frontend-api.pump.fun'; // Example base, often requires specific headers/auth
+    private baseUrl = 'https://frontend-api.pump.fun';
 
     /**
-     * Fetches the latest created tokens from Pump.fun
-     * DANGER: This often requires cloudflare bypass or specific internal API knowledge.
-     * For V1, we will try a common known endpoint or return empty to rely on DexScreener.
+     * Fetches the latest created tokens from Pump.fun using their public API.
      */
     async getNewTokens(): Promise<TokenSnapshot[]> {
         try {
-            // Placeholder: In a real "degen" bot, this might scrape or use a hidden API.
-            // For this public codebase, we'll return an empty array or try a safe request.
+            // Using the 'latest' or 'creation' endpoint. 
+            // Note: This endpoint is public but might be rate limited.
+            const response = await axios.get(`${this.baseUrl}/coins/latest?offset=0&limit=10&includeNsfw=false`, {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Origin': 'https://pump.fun',
+                    'Referer': 'https://pump.fun/'
+                },
+                timeout: 5000
+            });
 
-            // const response = await axios.get(`${this.baseUrl}/coins/latest`);
-            // Map response.data to TokenSnapshot...
+            if (!response.data || !Array.isArray(response.data)) {
+                return [];
+            }
 
-            console.log('[PumpFun] Fetching new tokens (Mock/Placeholder)...');
-            return [];
+            const tokens = response.data.map((t: any) => this.normalizeToken(t));
+            console.log(`[PumpFun] Fetched ${tokens.length} new tokens.`);
+            return tokens;
+
         } catch (error) {
-            console.error('[PumpFun] Error fetching new tokens:', error);
+            console.error('[PumpFun] Error fetching new tokens:', error instanceof Error ? error.message : error);
             return [];
         }
     }
@@ -35,8 +44,11 @@ export class PumpFunService {
             mint: raw.mint,
             name: raw.name,
             symbol: raw.symbol,
-            priceUsd: raw.price, // if available
-            marketCapUsd: raw.market_cap,
+            priceUsd: raw.usd_market_cap ? raw.usd_market_cap / 1000000000 : 0, // Very rough approx if not provided
+            marketCapUsd: raw.usd_market_cap || 0,
+            liquidityUsd: 0, // Pumpfun doesn't expose strict liq in this endpoint usually
+            volume5mUsd: 0,
+            volume30mUsd: 0,
             createdAt: new Date(raw.created_timestamp),
             updatedAt: new Date(),
             links: {
