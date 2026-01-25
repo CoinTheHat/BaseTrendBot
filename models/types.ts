@@ -67,7 +67,7 @@ export interface Narrative {
 export interface TrendItem {
     id: string;
     phrase: string;          // e.g. "sad penguin"
-    source: ("twitter" | "tiktok" | "instagram" | "manual")[];
+    source: ("twitter" | "tiktok" | "instagram" | "manual" | "fallback")[];
     metrics: {
         twitterTweets?: number;
         twitterEngagementScore?: number;
