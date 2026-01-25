@@ -10,7 +10,7 @@ import { CooldownManager } from '../core/CooldownManager';
 import { NarrativeEngine } from '../narrative/NarrativeEngine';
 import { ScandexBot } from '../telegram/TelegramBot';
 import { TwitterPublisher } from '../twitter/TwitterPublisher';
-import { JsonStorage } from '../storage/JsonStorage';
+import { PostgresStorage } from '../storage/PostgresStorage';
 import { TokenSnapshot } from '../models/types';
 import { QueryBuilder } from '../twitter/QueryBuilder';
 import { TwitterScraper } from '../twitter/TwitterScraper';
@@ -34,7 +34,7 @@ export class TokenScanJob {
         private narrative: NarrativeEngine,
         private bot: ScandexBot,
         private twitter: TwitterPublisher,
-        private storage: JsonStorage,
+        private storage: PostgresStorage, // Updated type
         private trendCollector: TrendCollector,
         private trendMatcher: TrendTokenMatcher
     ) { }
@@ -53,7 +53,7 @@ export class TokenScanJob {
     private async runCycle() {
         try {
             logger.info('[Job] Starting scan cycle...');
-            const state = this.storage.load();
+            // const state = this.storage.load(); // JSON Storage removed
 
             // 1. Fetch
             const [pumpTokens, dexTokens] = await Promise.all([
@@ -113,7 +113,7 @@ export class TokenScanJob {
                 // 6. Alert Check
                 if (scoreRes.totalScore >= config.ALERT_SCORE_THRESHOLD) {
                     // Check Cooldown
-                    const { allowed, reason } = this.cooldown.canAlert(enrichedToken.mint);
+                    const { allowed, reason } = await this.cooldown.canAlert(enrichedToken.mint);
 
                     if (allowed) {
                         // Generate Narrative
@@ -141,7 +141,7 @@ export class TokenScanJob {
                         await this.twitter.postTweet(narrative, enrichedToken);
 
                         // Update State (Cooldown manager handles saving)
-                        this.cooldown.recordAlert(enrichedToken.mint, scoreRes.totalScore, phase);
+                        await this.cooldown.recordAlert(enrichedToken.mint, scoreRes.totalScore, phase);
 
                         logger.info(`[Job] Alerted for ${token.symbol}. Cooldown active.`);
                     } else {

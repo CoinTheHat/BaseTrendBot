@@ -10,7 +10,7 @@ import { CooldownManager } from './core/CooldownManager';
 import { NarrativeEngine } from './narrative/NarrativeEngine';
 import { ScandexBot } from './telegram/TelegramBot';
 import { TwitterPublisher } from './twitter/TwitterPublisher';
-import { JsonStorage } from './storage/JsonStorage';
+import { PostgresStorage } from './storage/PostgresStorage'; // Updated
 import { MemeWatchlist } from './core/MemeWatchlist';
 import { TwitterTrendsService } from './trends/TwitterTrendsService';
 import { TrendCollector } from './trends/TrendCollector';
@@ -29,19 +29,24 @@ async function main() {
     logger.info('🛸 SCANDEX V1 Initializing...');
 
     // 1. Storage & State
-    const storage = new JsonStorage();
+    const storage = new PostgresStorage();
+    await storage.connect(); // Connect DB
+
     // MemeWatchlist now loads from storage internally
     const watchlist = new MemeWatchlist(storage);
+    await watchlist.init(); // Load cache
 
     // 2. Services
     const pumpFun = new PumpFunService();
     const dexScreener = new DexScreenerService();
     const birdeye = new BirdeyeService();
-    const twitterService = new TwitterTrendsService(); // New
+    const twitterService = new TwitterTrendsService();
 
     // 3. Core & Trends
-    const trendCollector = new TrendCollector(twitterService); // New
-    const trendMatcher = new TrendTokenMatcher(new ScoringEngine()); // New
+    const trendCollector = new TrendCollector(twitterService, storage); // Injected
+    await trendCollector.init(); // Load trends
+
+    const trendMatcher = new TrendTokenMatcher(new ScoringEngine());
     const matcher = new Matcher(watchlist);
     const scorer = new ScoringEngine();
     const phaseDetector = new PhaseDetector();
@@ -49,7 +54,7 @@ async function main() {
 
     // 4. Alerting
     const narrative = new NarrativeEngine();
-    const bot = new ScandexBot(watchlist, trendCollector, trendMatcher, dexScreener); // Injected
+    const bot = new ScandexBot(watchlist, trendCollector, trendMatcher, dexScreener);
     const twitter = new TwitterPublisher();
 
     // 5. Job

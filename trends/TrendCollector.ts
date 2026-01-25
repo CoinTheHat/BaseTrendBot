@@ -1,16 +1,21 @@
 import { TwitterTrendsService } from './TwitterTrendsService';
 import { TrendItem } from '../models/types';
 import { logger } from '../utils/Logger';
-import fs from 'fs';
-import path from 'path';
+import { PostgresStorage } from '../storage/PostgresStorage';
 
 export class TrendCollector {
     private trends: TrendItem[] = [];
-    private filePath: string;
 
-    constructor(private twitterService: TwitterTrendsService) {
-        this.filePath = path.resolve(__dirname, '../../storage/trends.json');
-        this.load();
+    constructor(
+        private twitterService: TwitterTrendsService,
+        private storage: PostgresStorage
+    ) { }
+
+    async init() {
+        this.trends = await this.storage.getTrends();
+        if (this.trends.length === 0) {
+            await this.refresh();
+        }
     }
 
     async refresh() {
@@ -20,13 +25,8 @@ export class TrendCollector {
         const twitterTrends = await this.twitterService.fetchTrends();
 
         // 2. Merge Strategies (Simple replacement or sophisticated merge)
-        // For V1.1, we'll replace or append distinct ones.
-
         // Deduplicate by phrase
         const trendMap = new Map<string, TrendItem>();
-
-        // Keep existing manual ones? Maybe.
-        // For now, let's refresh fully from valid sources.
 
         twitterTrends.forEach(t => trendMap.set(t.phrase.toLowerCase(), t));
 
@@ -37,7 +37,7 @@ export class TrendCollector {
 
         this.trends = Array.from(trendMap.values()).sort((a, b) => b.trendScore - a.trendScore);
 
-        this.save();
+        await this.storage.saveTrends(this.trends);
         logger.info(`[TrendCollector] Refreshed. Top trend: ${this.trends[0]?.phrase} (${this.trends[0]?.trendScore})`);
         return this.trends;
     }
@@ -62,23 +62,5 @@ export class TrendCollector {
 
         // Cap at 100
         item.trendScore = Math.min(100, score);
-    }
-
-    private load() {
-        try {
-            if (fs.existsSync(this.filePath)) {
-                this.trends = JSON.parse(fs.readFileSync(this.filePath, 'utf-8'));
-            }
-        } catch (e) {
-            logger.error('[TrendCollector] Load failed', e);
-        }
-    }
-
-    private save() {
-        try {
-            fs.writeFileSync(this.filePath, JSON.stringify(this.trends, null, 2));
-        } catch (e) {
-            logger.error('[TrendCollector] Save failed', e);
-        }
     }
 }

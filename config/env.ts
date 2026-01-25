@@ -19,6 +19,9 @@ export const config = {
     ENABLE_TWITTER_SCRAPING: process.env.ENABLE_TWITTER_SCRAPING === 'true',
     TWITTER_SCRAPE_MAX_TWEETS: Number(process.env.TWITTER_SCRAPE_MAX_TWEETS) || 5,
 
+    // Database
+    DATABASE_URL: process.env.DATABASE_URL || '',
+
     // Scanner Settings
     SCAN_INTERVAL_SECONDS: Number(process.env.SCAN_INTERVAL_SECONDS) || 30,
     ALERT_COOLDOWN_MINUTES: Number(process.env.ALERT_COOLDOWN_MINUTES) || 10,

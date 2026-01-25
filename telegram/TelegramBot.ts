@@ -81,7 +81,7 @@ export class ScandexBot {
         });
 
         // Add: /add <phrase> [tags]
-        this.bot.onText(/\/add (.+)/, (msg, match) => {
+        this.bot.onText(/\/add (.+)/, async (msg, match) => {
             if (!this.isAdmin(msg.from?.id)) return;
             const raw = match?.[1] || "";
             // Format: phrase | tag1, tag2
@@ -91,17 +91,17 @@ export class ScandexBot {
 
             const tags = tagsPart ? tagsPart.split(',').map(t => t.trim()) : [];
 
-            const newItem = this.watchlist.addPhrase(phrase, tags);
+            const newItem = await this.watchlist.addPhrase(phrase, tags);
             this.bot?.sendMessage(msg.chat.id, `✅ Added to watchlist: **"${newItem.phrase}"**`, { parse_mode: 'Markdown' });
         });
 
         // Remove: /remove <phrase>
-        this.bot.onText(/\/remove (.+)/, (msg, match) => {
+        this.bot.onText(/\/remove (.+)/, async (msg, match) => {
             if (!this.isAdmin(msg.from?.id)) return;
             const phrase = match?.[1]?.trim().toLowerCase();
             if (!phrase) return;
 
-            const removed = this.watchlist.removePhrase(phrase);
+            const removed = await this.watchlist.removePhrase(phrase);
             if (removed) {
                 this.bot?.sendMessage(msg.chat.id, `🗑 Removed from watchlist: **"${phrase}"**`, { parse_mode: 'Markdown' });
             } else {

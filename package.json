@@ -16,10 +16,12 @@
   "type": "commonjs",
   "dependencies": {
     "@types/node": "^25.0.10",
+    "@types/pg": "^8.16.0",
     "axios": "^1.13.3",
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
     "node-telegram-bot-api": "^0.67.0",
+    "pg": "^8.17.2",
     "puppeteer": "^24.36.0",
     "ts-node": "^10.9.2",
     "twitter-api-v2": "^1.29.0",

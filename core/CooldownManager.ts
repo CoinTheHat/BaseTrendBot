@@ -1,28 +1,27 @@
 import { config } from '../config/env';
-import { JsonStorage } from '../storage/JsonStorage';
-import { SeenTokenData } from '../storage/JsonStorage';
+import { PostgresStorage } from '../storage/PostgresStorage';
 
 export class CooldownManager {
-    private alertTimestamps: number[] = []; // for global rate limit (in-memory is fine for this V1.1)
+    private alertTimestamps: number[] = []; // for global rate limit
 
-    constructor(private storage: JsonStorage) { }
+    constructor(private storage: PostgresStorage) { }
 
     /**
      * Check if we can alert for this token
      */
-    canAlert(tokenMint: string): { allowed: boolean; reason?: string } {
+    async canAlert(tokenMint: string): Promise<{ allowed: boolean; reason?: string }> {
         const now = Date.now();
-        const state = this.storage.load();
-        const tokenData = state.seenTokens[tokenMint];
 
         // 1. Global Rate Limit
-        this.alertTimestamps = this.alertTimestamps.filter(t => now - t < 3600000);
+        this.alertTimestamps = this.alertTimestamps.filter(t => now - t < 3600000); // 1 hour
 
         if (this.alertTimestamps.length >= config.MAX_ALERTS_PER_HOUR) {
             return { allowed: false, reason: 'Global hourly limit reached' };
         }
 
-        // 2. Per-Token Cooldown
+        // 2. Per-Token Cooldown (From DB)
+        const tokenData = await this.storage.getSeenToken(tokenMint);
+
         if (tokenData && tokenData.lastAlertAt) {
             const minutesSince = (now - tokenData.lastAlertAt) / 60000;
             if (minutesSince < config.ALERT_COOLDOWN_MINUTES) {
@@ -33,23 +32,20 @@ export class CooldownManager {
         return { allowed: true };
     }
 
-    recordAlert(tokenMint: string, score: number, phase: string) {
+    async recordAlert(tokenMint: string, score: number, phase: string) {
         this.alertTimestamps.push(Date.now());
 
+        // Get existing to preserve firstSeen
+        const existing = await this.storage.getSeenToken(tokenMint);
+
         // Persist token data
-        const tokenData: SeenTokenData = {
-            firstSeenAt: Date.now(), // This technically overwrites firstSeen if we don't load it, but we should:
+        const tokenData = {
+            firstSeenAt: existing ? existing.firstSeenAt : Date.now(),
             lastAlertAt: Date.now(),
             lastScore: score,
             lastPhase: phase
         };
 
-        // Preserve firstSeen if exists
-        const state = this.storage.load();
-        if (state.seenTokens[tokenMint]) {
-            tokenData.firstSeenAt = state.seenTokens[tokenMint].firstSeenAt;
-        }
-
-        this.storage.updateSeenToken(tokenMint, tokenData);
+        await this.storage.saveSeenToken(tokenMint, tokenData);
     }
 }
