@@ -101,8 +101,8 @@ export class PostgresStorage {
         try {
             // Try deleting by ID or Phrase (normalized)
             await this.pool.query(
-                'DELETE FROM watchlist WHERE id = $1 OR phrase = $2',
-                [phraseOrId, phraseOrId.toLowerCase()]
+                'DELETE FROM watchlist WHERE id = $1 OR phrase = $1',
+                [phraseOrId]
             );
         } catch (err) {
             logger.error('[Postgres] removeWatchItem failed', err);
