@@ -58,14 +58,22 @@ export class TokenScanJob {
             // const state = this.storage.load(); // JSON Storage removed
 
             // 1. Fetch
-            const [pumpTokens, dexTokens, birdTokens] = await Promise.all([
+            // a. Get Watchlist tokens (ACTIVE TRACKING)
+            const watchlistItems = this.matcher.getWatchlistItems();
+            const watchlistMints = watchlistItems
+                .filter(i => i.phrase.length > 30 && !i.phrase.includes(' ')) // Simple CA check
+                .map(i => i.phrase);
+
+            // b. Execute fetches in parallel
+            const [pumpTokens, dexTokens, birdTokens, watchlistTokens] = await Promise.all([
                 this.pumpFun.getNewTokens(),
                 this.dexScreener.getLatestPairs(),
-                this.birdeye.getNewTokens(10) // Fetch top 10 new listings from Birdeye
+                this.birdeye.getNewTokens(10),
+                watchlistMints.length > 0 ? this.dexScreener.getTokens(watchlistMints) : Promise.resolve([])
             ]);
 
             // Deduplicate by mint
-            const allTokens = [...pumpTokens, ...dexTokens, ...birdTokens];
+            const allTokens = [...pumpTokens, ...dexTokens, ...birdTokens, ...watchlistTokens];
             const uniqueTokens: Record<string, TokenSnapshot> = {};
             allTokens.forEach(t => uniqueTokens[t.mint] = t);
             const candidates = Object.values(uniqueTokens);

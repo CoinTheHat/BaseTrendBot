@@ -4,6 +4,10 @@ import { MemeWatchlist } from './MemeWatchlist';
 export class Matcher {
     constructor(private watchlist: MemeWatchlist) { }
 
+    getWatchlistItems(): MemeWatchItem[] {
+        return this.watchlist.getWatchlist();
+    }
+
     match(token: TokenSnapshot): MemeMatchResult {
         const items = this.watchlist.getWatchlist();
         const tokenName = token.name.toLowerCase();
