@@ -7,10 +7,10 @@ export class ScoringEngine {
         let totalScore = 0;
         const breakdown: ScoreBreakdown[] = [];
 
-        // 1. Meme Match (+3)
+        // 1. Meme Match (VIP Pass)
         if (matchResult.memeMatch) {
-            totalScore += 3;
-            breakdown.push({ factor: 'Meme Match', points: 3, details: `Matches '${matchResult.matchedMeme?.phrase}'` });
+            totalScore += 10; // Massive boost to ensure alert
+            breakdown.push({ factor: 'Meme Match', points: 10, details: `Matches '${matchResult.matchedMeme?.phrase}'` });
         }
 
         // 2. Market Cap
@@ -22,8 +22,13 @@ export class ScoringEngine {
             // 0 points, too early
             breakdown.push({ factor: 'MC Range', points: 0, details: `MC $${(mc / 1000).toFixed(1)}k too low` });
         } else if (mc > config.MAX_MC_USD * 2) {
-            totalScore -= 2;
-            breakdown.push({ factor: 'MC Range', points: -2, details: `MC $${(mc / 1000).toFixed(1)}k too high` });
+            // Only penalize if NOT a specific match
+            if (!matchResult.memeMatch) {
+                totalScore -= 2;
+                breakdown.push({ factor: 'MC Range', points: -2, details: `MC $${(mc / 1000).toFixed(1)}k too high` });
+            } else {
+                breakdown.push({ factor: 'MC Range', points: 0, details: `MC High but Ignored (Matched)` });
+            }
         }
 
         // 3. Liquidity
