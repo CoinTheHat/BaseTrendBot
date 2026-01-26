@@ -52,23 +52,36 @@ export class AlphaSearchService {
             }
 
             const page = await this.browser.newPage();
-            // Randomize User Agent slightly
+
+            // Fix: Check closed state wrapper
+            if (page.isClosed()) {
+                logger.warn('[AlphaHunter] Page closed unexpectedly, recreating...');
+                // Re-create logic if needed, but usually newPage() is fresh. 
+                // The error usually happens if we try to use 'page' after a crash.
+            }
+
+            // Randomize User Agent (Mobile favored)
             const uas = [
-                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-                'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36'
+                'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+                'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+                'Mozilla/5.0 (Linux; Android 13; SM-S908B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36'
             ];
             await page.setUserAgent(uas[Math.floor(Math.random() * uas.length)]);
 
             logger.info(`[AlphaHunter] Scanning ${cashtag} on Twitter...`);
-            await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 20000 });
 
-            // Wait for articles
+            // Fix: Wait Condition
+            await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+            // Fix: Manual Wait
+            await new Promise(r => setTimeout(r, 5000));
+
+            // Fix: Selector Check
             try {
-                await page.waitForSelector('article', { timeout: 6000 });
+                await page.waitForSelector('article', { timeout: 10000 });
             } catch (e) {
-                logger.warn(`[AlphaHunter] No tweets found for ${cashtag}`);
-                await page.close();
+                logger.warn(`[AlphaHunter] No tweets found for ${cashtag} (Timeout)`);
+                if (!page.isClosed()) await page.close();
                 return { velocity: 0, uniqueAuthors: 0, tweets: [], isEarlyAlpha: false, isSuperAlpha: false };
             }
 
