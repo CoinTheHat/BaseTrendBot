@@ -173,7 +173,7 @@ ${narrative.dataSection}
 **Score:** ${score.totalScore}/10
 
 ${narrative.twitterStory ? `🔍 **DEDEKTİF ANALİZİ (Vibe Check)**
-Güven Skoru: **${narrative.twitterStory.trustScore}/100** (${narrative.twitterStory.trustScore >= 75 ? 'Güvenli ✅' : narrative.twitterStory.trustScore < 40 ? 'Riskli 🔴' : 'Orta 🟡'})
+Güven Skoru: **${narrative.twitterStory.trustScore ?? 50}/100** (${(narrative.twitterStory.trustScore ?? 50) >= 75 ? 'Güvenli ✅' : (narrative.twitterStory.trustScore ?? 50) < 40 ? 'Riskli 🔴' : 'Orta 🟡'})
 Twitter Havası: _"${narrative.twitterStory.riskAnalysis?.flags?.length ? '⚠️ ' + narrative.twitterStory.riskAnalysis.flags.join(', ') + ' tespit edildi.' : 'Temiz görünüyor.'}"_
 
 **Analiz Detayları:**
