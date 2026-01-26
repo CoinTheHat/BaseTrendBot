@@ -10,7 +10,7 @@ export class Matcher {
         const tokenSymbol = token.symbol.toLowerCase();
 
         for (const item of items) {
-            if (this.isMatch(tokenName, tokenSymbol, item)) {
+            if (this.isMatch(tokenName, tokenSymbol, item, token.mint)) {
                 return {
                     memeMatch: true,
                     matchedMeme: item,
@@ -22,7 +22,10 @@ export class Matcher {
         return { memeMatch: false };
     }
 
-    private isMatch(name: string, symbol: string, item: MemeWatchItem): boolean {
+    private isMatch(name: string, symbol: string, item: MemeWatchItem, mint: string): boolean {
+        // 0. Contract Address Match (Exact)
+        if (mint === item.phrase || mint === item.phrase.toLowerCase()) return true;
+
         // 1. Direct phrase match in Match
         if (name.includes(item.phrase)) return true;
 
