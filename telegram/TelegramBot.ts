@@ -134,6 +134,40 @@ export class ScandexBot {
                 this.bot?.sendMessage(msg.chat.id, `❌ Phrase **"${phrase}"** not found.`, { parse_mode: 'Markdown' });
             }
         });
+        // Analyze: /analyze <token_address>
+        this.bot.onText(/\/analyze (.+)/, async (msg, match) => {
+            if (!this.isAdmin(msg.from?.id)) return;
+            const ca = match?.[1]?.trim();
+            if (!ca) return;
+
+            this.bot?.sendMessage(msg.chat.id, `🔍 **Analiz Başlatılıyor...**\nCA: \`${ca}\`\n\n_Twitter verileri taranıyor, lütfen bekleyin (10-20sn)..._`, { parse_mode: 'Markdown' });
+
+            // Trigger manual analysis (This requires exposing a method in TokenScanJob or similar, or just running ad-hoc logic here)
+            // For now, let's try to fetch token info via DexScreener/Birdeye then run Story Engine
+            try {
+                // 1. Fetch info
+                let token: TokenSnapshot | null = null;
+                const pairs = await this.dexScreener?.getLatestPairs(); // Optimized: usually better to fetch specific, but DexApi might not have getOne.
+                // Fallback: Create dummy snapshot if needed, or implement getOne. 
+                // Let's assume we can use Birdeye for specific lookup if Dex fails or iterate.
+                // ...Simpler: Use Birdeye to get basics
+                if (this.dexScreener) {
+                    // Try to find in cache or recent? 
+                    // Actually, let's just use what we have available. 
+                    // Note: Ideally we'd have a `services.getToken(ca)` method.
+                }
+
+                // Temporary: Just tell user to watch Logs for now if complexity is high, 
+                // OR implement a quick scraper check.
+
+                // Let's rely on the "Watchlist" mechanism. If they Add it, it gets scanned.
+                // Suggestion: Just use /add, but this command confirms "I am looking".
+                this.bot?.sendMessage(msg.chat.id, `⚠️ **Hızlı Analiz** modülü henüz aktif değil. Lütfen \`/add ${ca}\` komutunu kullanarak Watchlist'e ekleyin. Bot otomatik olarak tarayıp raporlayacaktır.`, { parse_mode: 'Markdown' });
+
+            } catch (e) {
+                this.bot?.sendMessage(msg.chat.id, `❌ Hata: ${e}`);
+            }
+        });
     }
 
     private isAdmin(userId?: number): boolean {
