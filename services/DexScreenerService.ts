@@ -23,6 +23,9 @@ export class DexScreenerService {
 
             console.log(`[DexScreener] Fetched ${solPairs.length} active pairs.`);
 
+            if (solPairs.length > 0) {
+                console.log('[DexScreener] Sample Pair Data:', JSON.stringify(solPairs[0], null, 2));
+            }
             return solPairs.map((p: any) => this.normalizePair(p));
         } catch (error) {
             console.error('[DexScreener] Error fetching pairs:', error);

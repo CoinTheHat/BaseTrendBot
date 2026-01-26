@@ -4,11 +4,24 @@ import { MemeMatchResult } from '../models/types';
 export class NarrativeEngine {
 
     generate(token: TokenSnapshot, match: MemeMatchResult, score: ScoreResult): Narrative {
-        const memeName = match.matchedMeme ? match.matchedMeme.phrase : 'unknown';
+        let memeName = match.matchedMeme ? match.matchedMeme.phrase : 'unknown';
         const symbol = token.symbol;
 
+        // Visual Fit: If memeName is a CA (long), use Token Name instead
+        if (memeName.length > 15 && !memeName.includes(' ')) {
+            memeName = `${token.name} (${symbol})`;
+        }
+
         // 1. Narrative Context
-        const narrativeText = `The '${memeName}' meme is trending off-chain. First Solana token aligned with this vibe just spawned: **$${symbol}**.\n\n` +
+        // Dynamic "Why": Distinguish between Watchlist, Trend, and Alpha
+        let intro = `The '${memeName}' meme is trending off-chain.`;
+        if (match.matchedMeme?.tags?.includes('ALPHA')) {
+            intro = `High momentum detected for **$${symbol}**.`;
+        } else if (match.matchedMeme?.phrase === token.mint) {
+            intro = `**$${symbol}** detected via Watchlist (Specific CA match).`;
+        }
+
+        const narrativeText = `${intro} First Solana token aligned with this vibe just spawned: **$${symbol}**.\n\n` +
             `Alien sensors detected specific high-frequency alignment with human distress signals around this meme.`;
 
         // 2. Data Section
