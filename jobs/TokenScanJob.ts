@@ -151,7 +151,13 @@ export class TokenScanJob {
                 // 6. Alert Check
                 if (scoreRes.totalScore >= config.ALERT_SCORE_THRESHOLD) {
                     // Check Cooldown
-                    const { allowed, reason } = await this.cooldown.canAlert(enrichedToken.mint);
+                    // VIP Rule: If it's a specific Contract Address match (Watchlist), significantly reduce cooldown for testing/tracking.
+                    let customCooldown = undefined;
+                    if (matchResult.memeMatch && matchResult.matchedMeme?.phrase === enrichedToken.mint) {
+                        customCooldown = 0.5; // 30 seconds for specific CA matches
+                    }
+
+                    const { allowed, reason } = await this.cooldown.canAlert(enrichedToken.mint, customCooldown);
 
                     if (allowed) {
                         // Generate Narrative

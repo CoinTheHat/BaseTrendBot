@@ -9,7 +9,7 @@ export class CooldownManager {
     /**
      * Check if we can alert for this token
      */
-    async canAlert(tokenMint: string): Promise<{ allowed: boolean; reason?: string }> {
+    async canAlert(tokenMint: string, customCooldownMinutes?: number): Promise<{ allowed: boolean; reason?: string }> {
         const now = Date.now();
 
         // 1. Global Rate Limit
