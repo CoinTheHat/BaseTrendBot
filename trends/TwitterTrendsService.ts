@@ -55,6 +55,15 @@ export class TwitterTrendsService {
             // Increased timeout and wait condition
             await page.goto('https://trends24.in/united-states/', { waitUntil: 'domcontentloaded', timeout: 60000 });
 
+            const pageTitle = await page.title();
+            logger.info(`[Trends] Page loaded. Title: "${pageTitle}"`);
+
+            if (pageTitle.includes('Cloudflare') || pageTitle.includes('Just a moment') || pageTitle.includes('Access Denied')) {
+                logger.error('[Trends] Scraping blocked by Cloudflare/Anti-bot.');
+                await page.screenshot({ path: 'trends_block.png', fullPage: true });
+                throw new Error('Blocked by Anti-bot protection');
+            }
+
             // Wait for the list to appear
             try {
                 await page.waitForSelector('.trend-card__list', { timeout: 5000 });
@@ -66,7 +75,7 @@ export class TwitterTrendsService {
                 // Selector strategy: Try multiple potential selectors in case of changes
                 const selectors = [
                     '.trend-card:nth-child(1) .trend-card__list li', // Recommended Specific
-                    '.trend-card:first-child .trend-card__list li', 
+                    '.trend-card:first-child .trend-card__list li',
                     '#trend-list .trend-card__list li',
                     '.trend-card__list li'
                 ];

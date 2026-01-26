@@ -19,6 +19,8 @@ export class DexScreenerService {
             // Filter for Solana chain to be sure
             const solPairs = pairs.filter((p: any) => p.chainId === 'solana');
 
+            console.log(`[DexScreener] Raw pairs: ${pairs.length}, Solana pairs: ${solPairs.length}`);
+
             console.log(`[DexScreener] Fetched ${solPairs.length} active pairs.`);
 
             return solPairs.map((p: any) => this.normalizePair(p));

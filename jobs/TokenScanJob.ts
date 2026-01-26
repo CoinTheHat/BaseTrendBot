@@ -70,7 +70,13 @@ export class TokenScanJob {
             logger.info(`[Job] Fetched ${candidates.length} tokens.`);
 
             // Get Active Trends for matching
-            const topTrends = this.trendCollector.getTopTrends(5);
+            let topTrends = this.trendCollector.getTopTrends(20); // Increase limit for better matching chance
+
+            // Auto-Refresh if empty (Startup/Stale state fix)
+            if (topTrends.length === 0) {
+                logger.info('[Job] Trends list empty. Forcing refresh...');
+                topTrends = await this.trendCollector.refresh();
+            }
             const trendMatches = this.trendMatcher.matchTrends(topTrends, candidates);
             // Map matches to token mints for quick lookup
             const trendMatchMap = new Set<string>();

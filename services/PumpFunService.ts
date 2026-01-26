@@ -10,9 +10,9 @@ export class PumpFunService {
      */
     async getNewTokens(): Promise<TokenSnapshot[]> {
         try {
-            // Using the 'latest' or 'creation' endpoint. 
+            // Using the 'for-you' endpoint as it's often more reliable for fresh feeds
             // Note: This endpoint is public but might be rate limited.
-            const response = await axios.get(`${this.baseUrl}/coins/latest?offset=0&limit=10&includeNsfw=false`, {
+            const response = await axios.get(`${this.baseUrl}/coins/for-you?offset=0&limit=50&includeNsfw=false`, {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
                     'Origin': 'https://pump.fun',

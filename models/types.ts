@@ -60,6 +60,11 @@ export interface Narrative {
     twitterStory?: {
         summary: string;
         sampleLines: string[];
+        trustScore?: number; // 0..100
+        riskAnalysis?: {
+            level: "SAFE" | "UNKNOWN" | "SUSPICIOUS" | "DANGEROUS";
+            flags: string[];
+        };
     };
 }
 

@@ -1,10 +1,13 @@
 import { TrendItem, TokenSnapshot, TrendTokenMatch } from '../models/types';
 import { ScoringEngine } from './ScoringEngine';
 
+import { logger } from '../utils/Logger';
+
 export class TrendTokenMatcher {
     constructor(private scorer: ScoringEngine) { }
 
     matchTrends(trends: TrendItem[], tokens: TokenSnapshot[]): TrendTokenMatch[] {
+        logger.info(`[TrendMatcher] Matching ${trends.length} trends against ${tokens.length} tokens...`);
         const results: TrendTokenMatch[] = [];
 
         for (const trend of trends) {

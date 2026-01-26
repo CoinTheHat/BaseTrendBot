@@ -154,6 +154,11 @@ export class ScandexBot {
             titleLine = `🚨 **SON DAKİKA — TREND TESPİT EDİLDİ** 🚨`;
         }
 
+        // Add Risk Warning to top if DANGEROUS
+        if (narrative.twitterStory?.riskAnalysis?.level === 'DANGEROUS') {
+            titleLine = `⛔ **SCANDEX WARNING — HIGH RISK DETECTED** ⛔\n${titleLine}`;
+        }
+
         const message =
             `${titleLine}
 
@@ -167,11 +172,15 @@ ${narrative.dataSection}
 **Vibe:** ${narrative.vibeCheck}
 **Score:** ${score.totalScore}/10
 
-${narrative.twitterStory ? `**🐦 Twitter Insight (SON DAKİKA):**
+${narrative.twitterStory ? `🔍 **DEDEKTİF ANALİZİ (Vibe Check)**
+Güven Skoru: **${narrative.twitterStory.trustScore}/100** (${narrative.twitterStory.trustScore >= 75 ? 'Güvenli ✅' : narrative.twitterStory.trustScore < 40 ? 'Riskli 🔴' : 'Orta 🟡'})
+Twitter Havası: _"${narrative.twitterStory.riskAnalysis?.flags?.length ? '⚠️ ' + narrative.twitterStory.riskAnalysis.flags.join(', ') + ' tespit edildi.' : 'Temiz görünüyor.'}"_
+
+**Analiz Detayları:**
 ${narrative.twitterStory.summary}
 
-**Tweetler:**
-${narrative.twitterStory.sampleLines.join('\n')}` : ''}
+**Örnek Tweet:**
+${narrative.twitterStory.sampleLines[0] || 'Veri yok'}` : ''}
 
 [DexScreener](${token.links.dexScreener}) | [Pump.fun](${token.links.pumpfun}) | [Birdeye](${token.links.birdeye || '#'})
 
@@ -181,7 +190,7 @@ ${narrative.twitterStory.sampleLines.join('\n')}` : ''}
             await this.bot.sendMessage(config.TELEGRAM_CHAT_ID, message, { parse_mode: 'Markdown', disable_web_page_preview: true });
             logger.info(`[Telegram] Alert sent for ${token.symbol}`);
         } catch (err) {
-            logger.error(`[Telegram] Failed to send alert: ${err}`);
+            logger.error(`[Telegram] Failed to send alert: ${err} `);
         }
     }
 }
