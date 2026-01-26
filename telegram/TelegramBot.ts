@@ -149,12 +149,19 @@ export class ScandexBot {
 
         let titleLine = `${phaseEmoji} **SCANDEX MEME RADAR — ${score.phase}**`;
 
-        // Breaking News Override
+        // Breaking News Override (Viral/Trend)
         if (isTrendLinked) {
             titleLine = `🚨 **SON DAKİKA — TREND TESPİT EDİLDİ** 🚨`;
         }
 
-        // Add Risk Warning to top if DANGEROUS
+        // Early Alpha Override
+        if (narrative.twitterStory?.potentialCategory === 'EARLY_ALPHA') {
+            titleLine = `🔥 **EARLY ALPHA DETECTED** 🔥`;
+        } else if (narrative.twitterStory?.potentialCategory === 'SUPER_ALPHA') {
+            titleLine = `🚀 **SUPER ALPHA — HIGH MOMENTUM** 🚀`;
+        }
+
+        // Add Risk Warning to top if DANGEROUS including specific flags
         if (narrative.twitterStory?.riskAnalysis?.level === 'DANGEROUS') {
             titleLine = `⛔ **SCANDEX WARNING — HIGH RISK DETECTED** ⛔\n${titleLine}`;
         }

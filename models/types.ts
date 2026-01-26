@@ -65,6 +65,7 @@ export interface Narrative {
             level: "SAFE" | "UNKNOWN" | "SUSPICIOUS" | "DANGEROUS";
             flags: string[];
         };
+        potentialCategory?: "EARLY_ALPHA" | "VIRAL_HIGH_RISK" | "STANDARD" | "SUPER_ALPHA";
     };
 }
 

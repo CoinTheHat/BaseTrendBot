@@ -17,6 +17,7 @@ import { TwitterScraper } from '../twitter/TwitterScraper';
 import { TwitterStoryEngine } from '../narrative/TwitterStoryEngine';
 import { TrendCollector } from '../trends/TrendCollector';
 import { TrendTokenMatcher } from '../core/TrendTokenMatcher';
+import { AlphaSearchService } from '../twitter/AlphaSearchService';
 
 export class TokenScanJob {
     private isRunning = false;
@@ -36,7 +37,8 @@ export class TokenScanJob {
         private twitter: TwitterPublisher,
         private storage: PostgresStorage, // Updated type
         private trendCollector: TrendCollector,
-        private trendMatcher: TrendTokenMatcher
+        private trendMatcher: TrendTokenMatcher,
+        private alphaSearch: AlphaSearchService
     ) { }
 
     start() {
@@ -85,6 +87,7 @@ export class TokenScanJob {
             for (const token of candidates) {
                 // 2. Meme Match
                 let matchResult = this.matcher.match(token);
+                let alphaResult = null;
 
                 // Auto-Trend Match Fallback
                 if (!matchResult.memeMatch && trendMatchMap.has(token.mint)) {
@@ -100,7 +103,28 @@ export class TokenScanJob {
                     }
                 }
 
-                // Strategy: Only deeper process if meme matches OR if we want to track high volume regardless (V1: Meme Focused)
+                // 3. Alpha Hunter Trigger (Early Momentum)
+                if (!matchResult.memeMatch) {
+                    const vol = token.volume30mUsd || 0;
+                    const liq = token.liquidityUsd || 0;
+
+                    // Stricter Threads: >$15k Volume, >$5k Liquidity (Avoid Rugs)
+                    if (vol > 15000 && liq > 5000) {
+                        alphaResult = await this.alphaSearch.checkAlpha(token.symbol);
+
+                        if (alphaResult.isEarlyAlpha) {
+                            const isSuper = alphaResult.isSuperAlpha;
+                            matchResult = {
+                                memeMatch: true,
+                                matchedMeme: { id: 'alpha', phrase: isSuper ? 'High Momentum' : 'Rising Velocity', tags: ['ALPHA'], createdAt: new Date() },
+                                matchScore: isSuper ? 0.95 : 0.85
+                            };
+                            logger.info(`[Discovery] 🔥 ${isSuper ? 'SUPER' : 'EARLY'} ALPHA DETECTED: ${token.symbol} (Unique: ${alphaResult.uniqueAuthors}, Velocity: ${alphaResult.velocity})`);
+                        }
+                    }
+                }
+
+                // Strategy: Only deeper process if meme matches OR is Alpha
                 if (!matchResult.memeMatch) continue;
 
                 logger.info(`[Discovery] MATCH: ${token.symbol} matches '${matchResult.matchedMeme?.phrase}'`);
@@ -112,7 +136,6 @@ export class TokenScanJob {
                 const scoreRes = this.scorer.score(enrichedToken, matchResult);
 
                 // 5. Phase
-                // Pass scoreRes to detect... wait, PhaseDetector.detect(token, scoreRes)
                 const phase = this.phaseDetector.detect(enrichedToken, scoreRes);
                 scoreRes.phase = phase; // Update score result with final phase
 
@@ -125,17 +148,28 @@ export class TokenScanJob {
                         // Generate Narrative
                         const narrative = this.narrative.generate(enrichedToken, matchResult, scoreRes);
 
-                        // 7. Twitter Scraping (Enrichment)
+                        // 7. Twitter Scraping / Alpha Data integration
                         if (config.ENABLE_TWITTER_SCRAPING) {
                             try {
-                                logger.info(`[Job] Scraping Twitter for ${enrichedToken.symbol}...`);
-                                const queries = QueryBuilder.build(enrichedToken.name, enrichedToken.symbol);
-                                const tweets = await this.scraper.fetchTokenTweets(queries);
-
-                                if (tweets.length > 0) {
-                                    const story = this.storyEngine.buildStory(enrichedToken, tweets);
+                                if (alphaResult && alphaResult.isEarlyAlpha) {
+                                    // Use Alpha Tweets
+                                    const story = this.storyEngine.buildStory(enrichedToken, alphaResult.tweets, false);
+                                    story.potentialCategory = alphaResult.isSuperAlpha ? "SUPER_ALPHA" : "EARLY_ALPHA";
                                     narrative.twitterStory = story;
-                                    logger.info(`[Job] Added Twitter Story: ${story.summary}`);
+                                    logger.info(`[Job] Added ${story.potentialCategory} Story: ${story.summary}`);
+                                } else {
+                                    // Regular Scraping (Slow) for other matches
+                                    logger.info(`[Job] Scraping Twitter for ${enrichedToken.symbol}...`);
+                                    const queries = QueryBuilder.build(enrichedToken.name, enrichedToken.symbol);
+                                    const tweets = await this.scraper.fetchTokenTweets(queries);
+
+                                    if (tweets.length > 0) {
+                                        // Check if trend match
+                                        const isTrend = trendMatchMap.has(token.mint);
+                                        const story = this.storyEngine.buildStory(enrichedToken, tweets, isTrend);
+                                        narrative.twitterStory = story;
+                                        logger.info(`[Job] Added Twitter Story: ${story.summary}`);
+                                    }
                                 }
                             } catch (err) {
                                 logger.error(`[Job] Scraping failed for ${enrichedToken.symbol}: ${err}`);

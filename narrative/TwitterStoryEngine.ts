@@ -1,13 +1,14 @@
 import { TokenSnapshot, Narrative } from '../models/types';
 
 export class TwitterStoryEngine {
-    buildStory(token: TokenSnapshot, tweets: string[]): { summary: string; sampleLines: string[]; trustScore: number; riskAnalysis: { level: any; flags: string[] } } {
+    buildStory(token: TokenSnapshot, tweets: string[], isTrendMatch: boolean): { summary: string; sampleLines: string[]; trustScore: number; riskAnalysis: { level: any; flags: string[] }; potentialCategory: "EARLY_ALPHA" | "VIRAL_HIGH_RISK" | "STANDARD" | "SUPER_ALPHA" } {
         if (!tweets || tweets.length === 0) {
             return {
                 summary: "No clear Twitter chatter yet.",
                 sampleLines: [],
                 trustScore: 50,
-                riskAnalysis: { level: "UNKNOWN", flags: [] }
+                riskAnalysis: { level: "UNKNOWN", flags: [] },
+                potentialCategory: "STANDARD"
             };
         }
 
@@ -43,9 +44,19 @@ export class TwitterStoryEngine {
         if (detectedRed > 2 || trustScore < 20) riskLevel = "DANGEROUS";
         if (tweets.length < 3) riskLevel = "UNKNOWN";
 
+        // Determine Potential Category (Alpha vs Viral)
+        let potentialCategory: "EARLY_ALPHA" | "VIRAL_HIGH_RISK" | "STANDARD" | "SUPER_ALPHA" = "STANDARD";
+        if (isTrendMatch) {
+            potentialCategory = "VIRAL_HIGH_RISK"; // Already trending = late/risky
+        } else if (tweets.length > 5) { // Arbitrary threshold for "High Momentum" without being a global trend
+            potentialCategory = "EARLY_ALPHA";
+        }
+
         // 2. Build Summary
         let vibe = "Neutral";
-        if (riskLevel === "DANGEROUS") vibe = "TOXIC ☣️";
+        if (potentialCategory === "VIRAL_HIGH_RISK") vibe = "VIRAL/FOMO 🚨";
+        else if (potentialCategory === "EARLY_ALPHA") vibe = "ALPHA DETECTED ⚡";
+        else if (riskLevel === "DANGEROUS") vibe = "TOXIC ☣️";
         else if (trustScore > 80) vibe = "SAFU/HYPE 🚀";
         else if (detectedGreen > detectedRed) vibe = "Positive";
 
@@ -62,6 +73,6 @@ export class TwitterStoryEngine {
             .map(t => t.replace(/\n/g, ' ').substring(0, 100) + (t.length > 100 ? '...' : ''))
             .map(t => `- "${t}"`);
 
-        return { summary, sampleLines, trustScore, riskAnalysis: { level: riskLevel, flags: foundRedFlags } };
+        return { summary, sampleLines, trustScore, riskAnalysis: { level: riskLevel, flags: foundRedFlags }, potentialCategory };
     }
 }

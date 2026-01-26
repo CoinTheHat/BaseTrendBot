@@ -15,6 +15,7 @@ import { MemeWatchlist } from './core/MemeWatchlist';
 import { TwitterTrendsService } from './trends/TwitterTrendsService';
 import { TrendCollector } from './trends/TrendCollector';
 import { TrendTokenMatcher } from './core/TrendTokenMatcher';
+import { AlphaSearchService } from './twitter/AlphaSearchService';
 import { logger } from './utils/Logger';
 
 // Error handling
@@ -41,6 +42,7 @@ async function main() {
     const dexScreener = new DexScreenerService();
     const birdeye = new BirdeyeService();
     const twitterService = new TwitterTrendsService();
+    const alphaSearchService = new AlphaSearchService(); // Instantiated
 
     // 3. Core & Trends
     const trendCollector = new TrendCollector(twitterService, storage); // Injected
@@ -71,7 +73,8 @@ async function main() {
         twitter,
         storage,
         trendCollector,
-        trendMatcher
+        trendMatcher,
+        alphaSearchService // Injected
     );
 
     // Start
