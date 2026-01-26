@@ -124,7 +124,7 @@ export class ScandexBot {
         // Remove: /remove <phrase>
         this.bot.onText(/\/remove (.+)/, async (msg, match) => {
             if (!this.isAdmin(msg.from?.id)) return;
-            const phrase = match?.[1]?.trim().toLowerCase();
+            const phrase = match?.[1]?.trim(); // Keep Case!
             if (!phrase) return;
 
             const removed = await this.watchlist.removePhrase(phrase);

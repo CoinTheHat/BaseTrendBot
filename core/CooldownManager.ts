@@ -24,6 +24,13 @@ export class CooldownManager {
 
         if (tokenData && tokenData.lastAlertAt) {
             const minutesSince = (now - tokenData.lastAlertAt) / 60000;
+
+            // SPECIAL RULE: "Alpha" or "Early Match" alerts should be ONCE per cycle/forever to avoid spamming the same discovery.
+            // If the last alert was < 24 hours ago, we block it for Alpha Hunters.
+            // Let's make it configurable or just hardcode a 'Strict Mode' for re-alerts.
+            // For now: Stick to config, but maybe increase it for 'Alpha' phases if passed in?
+            // Actually, let's treat 'Alerted' as done for at least 30m.
+
             if (minutesSince < config.ALERT_COOLDOWN_MINUTES) {
                 return { allowed: false, reason: `Token cooldown (${minutesSince.toFixed(1)}m < ${config.ALERT_COOLDOWN_MINUTES}m)` };
             }
