@@ -58,13 +58,14 @@ export class TokenScanJob {
             // const state = this.storage.load(); // JSON Storage removed
 
             // 1. Fetch
-            const [pumpTokens, dexTokens] = await Promise.all([
+            const [pumpTokens, dexTokens, birdTokens] = await Promise.all([
                 this.pumpFun.getNewTokens(),
-                this.dexScreener.getLatestPairs()
+                this.dexScreener.getLatestPairs(),
+                this.birdeye.getNewTokens(10) // Fetch top 10 new listings from Birdeye
             ]);
 
             // Deduplicate by mint
-            const allTokens = [...pumpTokens, ...dexTokens];
+            const allTokens = [...pumpTokens, ...dexTokens, ...birdTokens];
             const uniqueTokens: Record<string, TokenSnapshot> = {};
             allTokens.forEach(t => uniqueTokens[t.mint] = t);
             const candidates = Object.values(uniqueTokens);

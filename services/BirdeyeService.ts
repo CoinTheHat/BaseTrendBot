@@ -66,4 +66,37 @@ export class BirdeyeService {
 
         return enriched;
     }
+    /**
+     * Fetch newly listed tokens on Solana via Birdeye.
+     * Useful when Pump.fun or DexScreener search is limited.
+     */
+    async getNewTokens(limit: number = 10): Promise<TokenSnapshot[]> {
+        if (!config.BIRDEYE_API_KEY) return [];
+
+        try {
+            const res = await axios.get(`${this.baseUrl}/new_listing?limit=${limit}`, { headers: this.headers });
+            const items = res.data?.data?.items;
+
+            if (!items || !Array.isArray(items)) return [];
+
+            return items.map((item: any) => ({
+                source: 'birdeye',
+                mint: item.address,
+                name: item.name || 'Unknown',
+                symbol: item.symbol || 'UNK',
+                priceUsd: item.price,
+                liquidityUsd: item.liquidity,
+                volume30mUsd: item.v24hUSD ? item.v24hUSD / 48 : 0, // Approx if only 24h available, but Birdeye usually gives 24h
+                updatedAt: new Date(),
+                createdAt: new Date(item.liquidityAddedAt || Date.now()), // API specific
+                links: {
+                    birdeye: `https://birdeye.so/token/${item.address}?chain=solana`,
+                    dexScreener: `https://dexscreener.com/solana/${item.address}`
+                }
+            }));
+        } catch (err: any) {
+            console.warn(`[Birdeye] Failed to fetch new tokens: ${err.message}`);
+            return [];
+        }
+    }
 }
