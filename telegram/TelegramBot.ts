@@ -166,7 +166,7 @@ export class ScandexBot {
             titleLine = `⛔ **SCANDEX WARNING — HIGH RISK DETECTED** ⛔\n${titleLine}`;
         }
 
-        const message =
+        let message =
             `${titleLine}
 
 **Narrative:**
