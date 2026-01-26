@@ -70,7 +70,7 @@ export class DexScreenerService {
             priceUsd: Number(pair.priceUsd) || 0,
             marketCapUsd: pair.fdv || 0, // FDV is often close to MC for fully minted memes
             liquidityUsd: pair.liquidity?.usd || 0,
-            volume5mUsd: pair.volume?.m5 || 0,
+            volume5mUsd: pair.volume?.m5 || (pair.volume?.h1 ? pair.volume.h1 / 12 : 0), // Fallback to avg 5m from 1h
             volume30mUsd: (pair.volume?.m5 || 0) + (pair.volume?.h1 ? pair.volume.h1 / 2 : 0), // rough approx if 30m not explicit
             // DexScreener doesn't always avail buyers count in public API v1
             createdAt: pair.pairCreatedAt ? new Date(pair.pairCreatedAt) : undefined,

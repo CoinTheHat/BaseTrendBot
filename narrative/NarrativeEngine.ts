@@ -14,9 +14,9 @@ export class NarrativeEngine {
         // 2. Data Section
         const dataSection =
             `• MC: $${(token.marketCapUsd || 0).toLocaleString()}\n` +
-            `• Liq: $${(token.liquidityUsd || 0).toLocaleString()}\n` +
-            `• Vol (5m): $${(token.volume5mUsd || 0).toLocaleString()}\n` +
-            `• Buyers (5m): ${token.buyers5m || 'N/A'}`;
+            `• Liq: $${(token.liquidityUsd ?? 0).toLocaleString()}\n` +
+            `• Vol (5m): $${(token.volume5mUsd ?? 0).toLocaleString()}\n` +
+            `• Buyers (5m): ${token.buyers5m ?? 'N/A'}`;
 
         // 3. Trade Lens
         let tradeLens = '';
