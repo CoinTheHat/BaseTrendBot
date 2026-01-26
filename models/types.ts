@@ -15,6 +15,8 @@ export interface TokenSnapshot {
     createdAt?: Date; // Launch time
     updatedAt: Date;  // Last scan time
     devWalletConcentration?: number; // %
+    top10HoldersSupply?: number; // %
+    mintAuthority?: boolean; // true if mint is open
     lpLocked?: boolean;
     links: {
         dexScreener?: string;

@@ -57,7 +57,7 @@ export class ScandexBot {
             const tokens = await this.dexScreener.getLatestPairs();
 
             // 3. Match
-            const matches = this.trendMatcher.matchTrends(trends, tokens);
+            let matches = this.trendMatcher.matchTrends(trends, tokens);
 
             // 4. Send
             const text = this.trendDigest.formatTrendTokenMatches(matches);
@@ -177,19 +177,28 @@ ${narrative.dataSection}
 
 **Phase:** ${score.phase}
 **Vibe:** ${narrative.vibeCheck}
-**Score:** ${score.totalScore}/10
+**Score:** ${score.totalScore}/10`;
 
-${narrative.twitterStory ? `🔍 **DEDEKTİF ANALİZİ (Vibe Check)**
-Güven Skoru: **${narrative.twitterStory.trustScore ?? 50}/100** (${(narrative.twitterStory.trustScore ?? 50) >= 75 ? 'Güvenli ✅' : (narrative.twitterStory.trustScore ?? 50) < 40 ? 'Riskli 🔴' : 'Orta 🟡'})
-Twitter Havası: _"${narrative.twitterStory.riskAnalysis?.flags?.length ? '⚠️ ' + narrative.twitterStory.riskAnalysis.flags.join(', ') + ' tespit edildi.' : 'Temiz görünüyor.'}"_
+        if (narrative.twitterStory) {
+            message += `\n\n🔍 **DEDEKTİF ANALİZİ (Vibe Check)**
+Güven Skoru: **${narrative.twitterStory.trustScore ?? 50}/100** (${(narrative.twitterStory.trustScore ?? 50) >= 75 ? 'Güvenli ✅' : (narrative.twitterStory.trustScore ?? 50) < 40 ? 'Riskli 🔴' : 'Orta 🟡'})`;
+            message += `\n🐦 **Twitter Havası:** ${narrative.twitterStory.riskAnalysis?.level === 'SAFE' ? 'Temiz ☀️' : 'Karışık 🌪️'}`;
+            message += `\n📝 **Analiz Detayları:**\n${narrative.twitterStory.summary}`;
 
-**Analiz Detayları:**
-${narrative.twitterStory.summary}
+            if (narrative.twitterStory.sampleLines.length > 0) {
+                message += `\n\n💬 **Örnek Tweet:**\n${narrative.twitterStory.sampleLines[0]}`;
+            }
+        }
 
-**Örnek Tweet:**
-${narrative.twitterStory.sampleLines[0] || 'Veri yok'}` : ''}
+        // Technical Security Seals
+        if (token.mintAuthority) {
+            message += `\n\n⚠️ **MINT IS OPEN (Yeni coin basılabilir!)**`;
+        }
+        if (token.top10HoldersSupply && token.top10HoldersSupply > 50) {
+            message += `\n🔴 **CENTRALIZED SUPPLY (Top 10 > %${token.top10HoldersSupply.toFixed(1)})**`;
+        }
 
-[DexScreener](${token.links.dexScreener}) | [Pump.fun](${token.links.pumpfun}) | [Birdeye](${token.links.birdeye || '#'})
+        message += `\n\n[DexScreener](${token.links.dexScreener}) | [Pump.fun](${token.links.pumpfun}) | [Birdeye](${token.links.birdeye || '#'})
 
 ⚠ _Yatırım Tavsiyesi Değildir._`;
 

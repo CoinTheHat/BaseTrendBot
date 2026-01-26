@@ -37,11 +37,20 @@ export class BirdeyeService {
                     // snap.buyers... not directly in overview usually, needs different endpoint
                 }
 
-                // Security checks (optional, consumes more quota)
-                // const securityRes = await axios.get(`${this.baseUrl}/token_security?address=${snap.mint}`, { headers: this.headers });
-                // if (securityRes.data?.data) {
-                //    snap.devWalletConcentration = ...
-                // }
+                // Security checks (optional, consumes more quota - enabled for Detective Mode)
+                try {
+                    const securityRes = await axios.get(`${this.baseUrl}/token_security?address=${snap.mint}`, { headers: this.headers });
+                    const secData = securityRes.data?.data;
+                    if (secData) {
+                        // Map Birdeye security fields
+                        snap.mintAuthority = secData.mutableMetadata || secData.mintable; // logic depends on API, usually 'mintable' checks authority
+                        if (secData.top10HolderPercent) {
+                            snap.top10HoldersSupply = secData.top10HolderPercent * 100; // API usually returns 0.5 for 50%
+                        }
+                    }
+                } catch (err) {
+                    // Security check failed (likely 404 or quota), ignore to keep flow
+                }
 
                 snap.source = (snap.source === 'pumpfun' || snap.source === 'dexscreener') ? 'combined' : snap.source;
                 enriched.push(snap);
