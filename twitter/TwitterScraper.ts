@@ -37,10 +37,17 @@ export class TwitterScraper {
                 logger.info(`[Scraper] Visiting: ${url}`);
 
                 try {
-                    await page.goto(url, { waitUntil: 'networkidle2', timeout: 15000 });
+                    // Optimized navigation
+                    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 20000 });
 
-                    // Wait for tweets to load
-                    await page.waitForSelector('article', { timeout: 5000 }).catch(() => null);
+                    // Wait for content - Twitter is heavy, give it a moment or look for specific failed states
+                    try {
+                        await page.waitForSelector('article', { timeout: 7000 });
+                    } catch (e) {
+                        // Retry once with reload or just log
+                        logger.warn(`[Scraper] Timeout waiting for tweets for ${query}, retrying load...`);
+                        await new Promise(r => setTimeout(r, 2000));
+                    }
 
                     // Extract text
                     const tweets = await page.evaluate(() => {

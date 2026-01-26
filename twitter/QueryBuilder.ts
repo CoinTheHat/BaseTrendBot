@@ -18,6 +18,16 @@ export class QueryBuilder {
             queries.push(`${cleanSymbol} solana`);
         }
 
+        // 4. Fallback: Broader for distinctive names
+        if (cleanName.length > 4 && !cleanName.includes(' ')) {
+            queries.push(`"${cleanName}" crypto`);
+        }
+
+        // 5. Fallback: Broader for distinctive symbols (4+ chars)
+        if (cleanSymbol.length >= 4) {
+            queries.push(`$${cleanSymbol} crypto`);
+        }
+
         // Deduplicate
         return Array.from(new Set(queries)).slice(0, 3); // Max 3 queries to save time
     }
