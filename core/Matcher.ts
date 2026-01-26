@@ -23,20 +23,24 @@ export class Matcher {
     }
 
     private isMatch(name: string, symbol: string, item: MemeWatchItem, mint: string): boolean {
-        // 0. Contract Address Match (Exact)
-        if (mint === item.phrase || mint === item.phrase.toLowerCase()) return true;
+        // 0. Contract Address Match (Exact Case)
+        if (mint === item.phrase) return true;
 
-        // 1. Direct phrase match in Match
-        if (name.includes(item.phrase)) return true;
+        // Prepare keywords for text matching
+        const phraseLower = item.phrase.toLowerCase();
 
-        // 2. Direct phrase match in Symbol (less likely but possible)
+        // 1. Direct phrase match in Match (Case Insensitive)
+        if (name.includes(phraseLower)) return true;
+
+        // 2. Direct phrase match in Symbol (Case Insensitive)
         // Remove $ and check
         const cleanBox = symbol.replace('$', '');
-        if (cleanBox.includes(item.phrase)) return true;
+        if (cleanBox.includes(phraseLower)) return true;
 
-        // 3. Tag matching
+        // 3. Tag matching (Case Insensitive)
         for (const tag of item.tags) {
-            if (name.includes(tag) || cleanBox.includes(tag)) {
+            const tagLower = tag.toLowerCase();
+            if (name.includes(tagLower) || cleanBox.includes(tagLower)) {
                 return true;
             }
         }
