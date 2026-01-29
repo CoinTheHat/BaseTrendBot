@@ -45,26 +45,21 @@ export class LLMService {
                 // Ensure we don't accidentally use 'gpt-4o-mini' from env if user switched providers
                 let model = config.AI_MODEL;
                 if (!model || !model.startsWith('gemini')) {
-                    model = 'gemini-3.0-flash';
+                    model = 'gemini-1.5-flash';
                 }
-
-                const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.GEMINI_API_KEY}`;
 
                 logger.info(`[LLM] Using Gemini Model: ${model}`); // Debug log
 
-                const response = await axios.post(url, {
-                    contents: [{
-                        parts: [{ text: systemPrompt + "\n\n" + userContent }]
-                    }],
-                    generationConfig: {
-                        responseMimeType: "application/json"
-                    }
-                });
+                let result = await this.callGemini(model, systemPrompt + "\n\n" + userContent);
 
-                const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (!text) return null;
-                const result = JSON.parse(text);
-                return this.normalizeResult(result);
+                // Fallback: If 3.0 or custom fails, try standard 1.5-flash
+                if (!result && model !== 'gemini-1.5-flash') {
+                    logger.warn(`[LLM] Model ${model} failed. Retrying with 'gemini-1.5-flash' fallback...`);
+                    result = await this.callGemini('gemini-1.5-flash', systemPrompt + "\n\n" + userContent);
+                }
+
+                if (result) return this.normalizeResult(result);
+                return null;
 
             } else {
                 // OPENAI Legacy Implementation
@@ -103,5 +98,24 @@ export class LLMService {
             vibeScore: result.vibeScore || 50,
             displayEmoji: result.displayEmoji || '🤖'
         };
+    }
+
+    private async callGemini(model: string, prompt: string): Promise<any | null> {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.GEMINI_API_KEY}`;
+        try {
+            const response = await axios.post(url, {
+                contents: [{
+                    parts: [{ text: prompt }]
+                }],
+                generationConfig: {
+                    responseMimeType: "application/json"
+                }
+            });
+            const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+            return text ? JSON.parse(text) : null;
+        } catch (error: any) {
+            logger.warn(`[LLM] Gemini attempt (${model}) failed: ${error.message}`);
+            return null;
+        }
     }
 }
