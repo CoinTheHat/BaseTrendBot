@@ -21,6 +21,10 @@ export const config = {
     TWITTER_AUTH_TOKEN: process.env.TWITTER_AUTH_TOKEN || '',
     TWITTER_CT0: process.env.TWITTER_CT0 || '',
 
+    // AI / LLM
+    OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
+    AI_MODEL: process.env.AI_MODEL || 'gpt-4o-mini',
+
     // Trends
     TREND_UPDATE_INTERVAL_MINUTES: Number(process.env.TREND_UPDATE_INTERVAL_MINUTES) || 30,
 

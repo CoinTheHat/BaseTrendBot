@@ -1,9 +1,12 @@
 import { TokenSnapshot, MemeWatchItem, ScoreResult, Narrative } from '../models/types';
 import { MemeMatchResult } from '../models/types';
+import { LLMService } from '../services/LLMService';
 
 export class NarrativeEngine {
 
-    generate(token: TokenSnapshot, match: MemeMatchResult, score: ScoreResult): Narrative {
+    constructor(private llm: LLMService) { }
+
+    async generate(token: TokenSnapshot, match: MemeMatchResult, score: ScoreResult, recentTweets: string[] = []): Promise<Narrative> {
         let memeName = match.matchedMeme ? match.matchedMeme.phrase : 'unknown';
         const symbol = token.symbol;
 
@@ -12,8 +15,7 @@ export class NarrativeEngine {
             memeName = `${token.name} (${symbol})`;
         }
 
-        // 1. Narrative Context
-        // Dynamic "Why": Distinguish between Watchlist, Trend, and Alpha
+        // 1. Narrative Context (Default / Fallback)
         let intro = `The '${memeName}' meme is trending off-chain.`;
         if (match.matchedMeme?.tags?.includes('ALPHA')) {
             intro = `High momentum detected for **$${symbol}**.`;
@@ -21,36 +23,47 @@ export class NarrativeEngine {
             intro = `**$${symbol}** detected via Watchlist (Specific CA match).`;
         }
 
-        const narrativeText = `${intro} First Solana token aligned with this vibe just spawned: **$${symbol}**.\n\n` +
+        let narrativeText = `${intro} First Solana token aligned with this vibe just spawned: **$${symbol}**.\n\n` +
             `Alien sensors detected specific high-frequency alignment with human distress signals around this meme.`;
 
-        // 2. Data Section
+        let vibeCheck = "Vibe matches galactic patterns. Monitor closely.";
+        let aiRisk = "";
+
+        // 2. AI Analysis (Override if available)
+        if (recentTweets.length > 0) {
+            const aiResult = await this.llm.analyzeToken(symbol, recentTweets);
+
+            if (aiResult) {
+                narrativeText = `🧠 **AI Analizi:**\n${aiResult.narrative}`;
+                vibeCheck = `${aiResult.displayEmoji} Score: ${aiResult.vibeScore}/100`;
+
+                if (aiResult.riskLevel === 'HIGH' || aiResult.riskLevel === 'DANGEROUS') {
+                    aiRisk = `\n\n⛔ **RISK UYARISI:** ${aiResult.riskReason}`;
+                }
+            }
+        }
+
+        if (aiRisk) narrativeText += aiRisk;
+
+
+        // 3. Data Section
         const dataSection =
             `• MC: $${(token.marketCapUsd || 0).toLocaleString()}\n` +
             `• Liq: $${(token.liquidityUsd ?? 0).toLocaleString()}\n` +
             `• Vol (5m): $${(token.volume5mUsd ?? 0).toLocaleString()}\n` +
             `• Buyers (5m): ${token.buyers5m ?? 'N/A'}`;
 
-        // 3. Trade Lens
+        // 4. Trade Lens
         let tradeLens = '';
         if (score.phase === 'SPOTTED') {
-            tradeLens = `Phase: SPOTTED 🛸 → Early discovery. Risk is max, upside is unknown.`;
+            tradeLens = `Phase: SPOTTED 🛸 → Early discovery. Risk is max.`;
         } else if (score.phase === 'TRACKING') {
-            tradeLens = `Phase: TRACKING 📡 → Volume building. Chart is forming structures.`;
+            tradeLens = `Phase: TRACKING 📡 → Volume building.`;
         } else if (score.phase === 'COOKING') {
-            tradeLens = `Phase: COOKING 🔥 → Momentum is high. Meme is validated.`;
+            tradeLens = `Phase: COOKING 🔥 → Momentum high.`;
         } else {
-            tradeLens = `Phase: SERVED 🍽 → Verify distribution before eating.`;
+            tradeLens = `Phase: SERVED 🍽 → Verify distribution.`;
         }
-
-        // 4. Vibe Check
-        const vibes = [
-            "Meme alignment strong. If humans keep posting this, we feast.",
-            "Vibe matches galactic patterns. Monitor closely.",
-            "High probability of dopamine extraction.",
-            "This one smells like fresh ozone and printer ink."
-        ];
-        const vibeCheck = vibes[Math.floor(Math.random() * vibes.length)];
 
         return {
             narrativeText,

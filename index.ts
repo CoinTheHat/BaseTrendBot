@@ -16,6 +16,7 @@ import { TwitterTrendsService } from './trends/TwitterTrendsService';
 import { TrendCollector } from './trends/TrendCollector';
 import { TrendTokenMatcher } from './core/TrendTokenMatcher';
 import { AlphaSearchService } from './twitter/AlphaSearchService';
+import { LLMService } from './services/LLMService';
 import { logger } from './utils/Logger';
 
 // Error handling
@@ -54,8 +55,11 @@ async function main() {
     const phaseDetector = new PhaseDetector();
     const cooldown = new CooldownManager(storage);
 
+
+
     // 4. Alerting
-    const narrative = new NarrativeEngine();
+    const llmService = new LLMService();
+    const narrative = new NarrativeEngine(llmService);
     const bot = new ScandexBot(watchlist, trendCollector, trendMatcher, dexScreener);
     const twitter = new TwitterPublisher();
 

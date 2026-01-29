@@ -160,35 +160,31 @@ export class TokenScanJob {
                     const { allowed, reason } = await this.cooldown.canAlert(enrichedToken.mint, customCooldown);
 
                     if (allowed) {
-                        // Generate Narrative
-                        const narrative = this.narrative.generate(enrichedToken, matchResult, scoreRes);
-
-                        // 7. Twitter Scraping / Alpha Data integration
+                        // 7. Twitter Scraping (Data Gathering)
+                        let tweets: string[] = [];
                         if (config.ENABLE_TWITTER_SCRAPING) {
                             try {
                                 if (alphaResult && alphaResult.isEarlyAlpha) {
-                                    // Use Alpha Tweets
-                                    const story = this.storyEngine.buildStory(enrichedToken, alphaResult.tweets, false);
-                                    story.potentialCategory = alphaResult.isSuperAlpha ? "SUPER_ALPHA" : "EARLY_ALPHA";
-                                    narrative.twitterStory = story;
-                                    logger.info(`[Job] Added ${story.potentialCategory} Story: ${story.summary}`);
+                                    tweets = alphaResult.tweets;
+                                    logger.info(`[Job] Using ${tweets.length} Alpha tweets for analysis.`);
                                 } else {
-                                    // Regular Scraping (Slow) for other matches
                                     logger.info(`[Job] Scraping Twitter for ${enrichedToken.symbol}...`);
                                     const queries = QueryBuilder.build(enrichedToken.name, enrichedToken.symbol);
-                                    const tweets = await this.scraper.fetchTokenTweets(queries);
-
-                                    if (tweets.length > 0) {
-                                        // Check if trend match
-                                        const isTrend = trendMatchMap.has(token.mint);
-                                        const story = this.storyEngine.buildStory(enrichedToken, tweets, isTrend);
-                                        narrative.twitterStory = story;
-                                        logger.info(`[Job] Added Twitter Story: ${story.summary}`);
-                                    }
+                                    tweets = await this.scraper.fetchTokenTweets(queries);
                                 }
                             } catch (err) {
                                 logger.error(`[Job] Scraping failed for ${enrichedToken.symbol}: ${err}`);
                             }
+                        }
+
+                        // Generate Narrative (Async, with AI Analysis if tweets exist)
+                        const narrative = await this.narrative.generate(enrichedToken, matchResult, scoreRes, tweets);
+
+                        // Attach specific flags if needed (Alpha, etc.)
+                        if (alphaResult && alphaResult.isEarlyAlpha) {
+                            // Force title override if not handled by AI logic
+                            // Actually, NarrativeEngine can handle this if we pass flags, or we mutate after.
+                            if (alphaResult.isSuperAlpha) narrative.narrativeText = "🚀 **SUPER ALPHA — HIGH MOMENTUM** 🚀\n" + narrative.narrativeText;
                         }
 
                         // Send Alerts
