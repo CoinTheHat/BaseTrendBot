@@ -52,8 +52,8 @@ export class DexScreenerService {
                 const response = await axios.get(url);
                 const pairs = response.data?.pairs || [];
 
-                // Filter for Solana pairs specifically
-                const solPairs = pairs.filter((p: any) => p.chainId === 'solana');
+                // Filter for Solana pairs specifically (Relaxed)
+                const solPairs = pairs.filter((p: any) => p.chainId?.toLowerCase() === 'solana' || p.url?.includes('/solana/'));
 
                 solPairs.forEach((p: any) => {
                     results.push(this.normalizePair(p));
