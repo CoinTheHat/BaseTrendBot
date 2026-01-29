@@ -24,7 +24,7 @@ export const config = {
     // AI / LLM
     OPENAI_API_KEY: process.env.OPENAI_API_KEY || '', // Kept for fallback
     GEMINI_API_KEY: process.env.GEMINI_API_KEY || '', // Google Gemini (Free Tier)
-    AI_MODEL: process.env.AI_MODEL || 'gemini-3.0-flash', // Corrected to 3.0 based on user input
+    AI_MODEL: process.env.AI_MODEL || 'gemini-2.5-flash', // Updated to 2026 standard fast model
 
     // Trends
     TREND_UPDATE_INTERVAL_MINUTES: Number(process.env.TREND_UPDATE_INTERVAL_MINUTES) || 30,

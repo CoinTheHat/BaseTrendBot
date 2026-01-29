@@ -52,9 +52,14 @@ export class LLMService {
 
                 let result = await this.callGemini(model, systemPrompt + "\n\n" + userContent);
 
-                // Fallback Chain: 2.0-exp -> 1.5-flash -> 1.5-pro
+                // Fallback Chain: 2.5-flash -> 3-preview -> 1.5-flash
                 if (!result) {
-                    const fallbacks = ['gemini-2.0-flash-exp', 'gemini-1.5-flash', 'gemini-1.5-pro-latest'];
+                    const fallbacks = [
+                        'gemini-2.5-flash',
+                        'gemini-3-flash-preview',
+                        'gemini-1.5-flash',
+                        'gemini-1.5-pro'
+                    ];
 
                     for (const fbModel of fallbacks) {
                         if (fbModel === model) continue; // Skip if already tried
