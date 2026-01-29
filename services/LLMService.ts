@@ -45,7 +45,7 @@ export class LLMService {
                 // Ensure we don't accidentally use 'gpt-4o-mini' from env if user switched providers
                 let model = config.AI_MODEL;
                 if (!model || !model.startsWith('gemini')) {
-                    model = 'gemini-1.5-flash';
+                    model = 'gemini-3.0-flash';
                 }
 
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.GEMINI_API_KEY}`;

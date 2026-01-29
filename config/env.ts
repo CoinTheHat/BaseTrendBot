@@ -21,10 +21,8 @@ export const config = {
     TWITTER_AUTH_TOKEN: process.env.TWITTER_AUTH_TOKEN || '',
     TWITTER_CT0: process.env.TWITTER_CT0 || '',
 
-    // AI / LLM
-    OPENAI_API_KEY: process.env.OPENAI_API_KEY || '',
     GEMINI_API_KEY: process.env.GEMINI_API_KEY || '', // Google Gemini (Free Tier)
-    AI_MODEL: process.env.AI_MODEL || 'gemini-1.5-flash', // Default to fast/free Gemini model
+    AI_MODEL: process.env.AI_MODEL || 'gemini-3.0-flash', // Corrected to 3.0 based on user input
 
     // Trends
     TREND_UPDATE_INTERVAL_MINUTES: Number(process.env.TREND_UPDATE_INTERVAL_MINUTES) || 30,
