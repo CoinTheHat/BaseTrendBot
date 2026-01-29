@@ -114,7 +114,11 @@ export class LLMService {
             const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
             return text ? JSON.parse(text) : null;
         } catch (error: any) {
-            logger.warn(`[LLM] Gemini attempt (${model}) failed: ${error.message}`);
+            const status = error.response?.status;
+            const data = error.response?.data;
+            const errorMsg = data?.error?.message || error.message;
+
+            logger.warn(`[LLM] Gemini attempt (${model}) failed: ${status} - ${errorMsg}`);
             return null;
         }
     }
