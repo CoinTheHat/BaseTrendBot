@@ -38,7 +38,9 @@ export class BirdService {
             CT0: config.TWITTER_CT0
         };
 
-        const cmd = `npx @steipete/bird search "${query}" --count ${limit} --json`;
+        // Escape inner double quotes to prevent shell issues
+        const safeQuery = query.replace(/"/g, '\\"');
+        const cmd = `npx @steipete/bird search "${safeQuery}" --count ${limit} --json`;
 
         try {
             logger.info(`[Bird] Searching: ${query}`);
