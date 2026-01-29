@@ -38,7 +38,7 @@ export class BirdService {
             CT0: config.TWITTER_CT0
         };
 
-        const cmd = `npx @steipete/bird search "${query}" --count ${limit} --json-full`;
+        const cmd = `npx @steipete/bird search "${query}" --count ${limit} --json`;
 
         try {
             logger.info(`[Bird] Searching: ${query}`);
