@@ -19,8 +19,8 @@ export class DexScreenerService {
             if (pairs.length > 0) {
                 console.log(`[DexScreener] DEBUG Raw ChainID: '${pairs[0].chainId}', First Pair:`, JSON.stringify(pairs[0], null, 2));
             }
-            // Filter for Solana chain to be sure
-            const solPairs = pairs.filter((p: any) => p.chainId === 'solana');
+            // Filter for Solana chain to be sure (Relaxed)
+            const solPairs = pairs.filter((p: any) => p.chainId?.toLowerCase() === 'solana' || p.url?.includes('/solana/'));
 
             console.log(`[DexScreener] Raw pairs: ${pairs.length}, Solana pairs: ${solPairs.length}`);
 
