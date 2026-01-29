@@ -43,19 +43,29 @@ export class LLMService {
             if (useGemini) {
                 // GEMINI API Implementation
                 // Ensure we don't accidentally use 'gpt-4o-mini' from env if user switched providers
-                let model = config.AI_MODEL;
+                let model = (config.AI_MODEL || '').trim();
                 if (!model || !model.startsWith('gemini')) {
-                    model = 'gemini-1.5-flash';
+                    model = 'gemini-2.0-flash-exp'; // Try the newest experimental first
                 }
 
-                logger.info(`[LLM] Using Gemini Model: ${model}`); // Debug log
+                logger.info(`[LLM] Requesting Gemini Model: ${model}`);
 
                 let result = await this.callGemini(model, systemPrompt + "\n\n" + userContent);
 
-                // Fallback: If 3.0 or custom fails, try standard 1.5-flash
-                if (!result && model !== 'gemini-1.5-flash') {
-                    logger.warn(`[LLM] Model ${model} failed. Retrying with 'gemini-1.5-flash' fallback...`);
-                    result = await this.callGemini('gemini-1.5-flash', systemPrompt + "\n\n" + userContent);
+                // Fallback Chain: 2.0-exp -> 1.5-flash -> 1.5-pro
+                if (!result) {
+                    const fallbacks = ['gemini-2.0-flash-exp', 'gemini-1.5-flash', 'gemini-1.5-pro-latest'];
+
+                    for (const fbModel of fallbacks) {
+                        if (fbModel === model) continue; // Skip if already tried
+
+                        logger.warn(`[LLM] Model ${model} failed. Retrying with '${fbModel}'...`);
+                        result = await this.callGemini(fbModel, systemPrompt + "\n\n" + userContent);
+                        if (result) {
+                            model = fbModel; // Update current success model
+                            break;
+                        }
+                    }
                 }
 
                 if (result) return this.normalizeResult(result);
@@ -101,7 +111,8 @@ export class LLMService {
     }
 
     private async callGemini(model: string, prompt: string): Promise<any | null> {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${config.GEMINI_API_KEY}`;
+        const apiKey = (config.GEMINI_API_KEY || '').trim();
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
         try {
             const response = await axios.post(url, {
                 contents: [{
