@@ -217,7 +217,7 @@ ${narrative.narrativeText}
 **Data:**
 ${narrative.dataSection}
 
-**Status:** ${tradeLens}
+**Status:** ${narrative.tradeLens}
 **Vibe:** ${narrative.vibeCheck}`;
 
         if (narrative.twitterStory) {

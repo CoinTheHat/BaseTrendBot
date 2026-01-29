@@ -32,10 +32,14 @@ export class NarrativeEngine {
             const aiResult = await this.llm.analyzeToken(symbol, recentTweets);
 
             if (aiResult) {
-                // Professional Format
+                // AI Override: Use AI's headline if provided, else keep intro
+                if (aiResult.headline) {
+                    narrativeText = `**${aiResult.headline}**\n${intro}\n`;
+                }
+
                 narrativeText += `\n💡 **Neden Yükseliyor?**\n• ${aiResult.analysis.join('\n• ')}\n`;
 
-                vibeCheck = `${aiResult.displayEmoji} Score: ${aiResult.vibeScore}/100`;
+                vibeCheck = `${aiResult.displayEmoji} Score: ${aiResult.score}/10`;
 
                 // Risk Analysis
                 if (aiResult.riskLevel === 'HIGH' || aiResult.riskLevel === 'DANGEROUS') {

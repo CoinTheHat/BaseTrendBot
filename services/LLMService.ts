@@ -3,11 +3,12 @@ import { config } from '../config/env';
 import { logger } from '../utils/Logger';
 
 export interface AIAnalysisResult {
+    headline: string;
     narrative: string;
     analysis: string[]; // Key insights
     riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'DANGEROUS';
     riskReason: string;
-    vibeScore: number;
+    score: number; // 0-10
     verdict: 'APE' | 'WATCH' | 'FADE';
     displayEmoji: string;
 }
@@ -44,16 +45,17 @@ export class LLMService {
 
         Output strictly these JSON fields (in Turkish):
         {
+            "headline": "Short, punchy title (e.g. '🚨 GEM DETECTED: $SYMBOL', '⚠️ RUG WARNING', '💎 SAFE PLAY')",
             "narrative": "One sharp sentence explaining the core narrative/meme.",
             "analysis": [
-                "Bullet point 1: Why it's hyped (e.g. 'Elon Musk tweeted PENGUIN')",
-                "Bullet point 2: Community vibe (e.g. 'Organic raids, no bots detected')"
+                "Bullet point 1: Why it's hyped",
+                "Bullet point 2: Community/Dev check"
             ],
             "riskLevel": "LOW" | "MEDIUM" | "HIGH" | "DANGEROUS",
-            "riskReason": "Specific warning (e.g. 'Top 10 holders own 60%', 'Dev dumped previous coin', or 'Clean launch').",
-            "vibeScore": 85,
+            "riskReason": "Specific warning.",
+            "score": 8, // 0-10 Integer based on your conviction (10 = Must Ape, 0 = Scam)
             "verdict": "APE" | "WATCH" | "FADE",
-            "displayEmoji": "🔥"
+            "displayEmoji": "🔥" | "💩" | "👀"
         }
         `;
 
@@ -127,11 +129,12 @@ export class LLMService {
 
     private normalizeResult(result: any): AIAnalysisResult {
         return {
+            headline: result.headline || `🚨 ANALYZING: $${config.AI_MODEL}`,
             narrative: result.narrative || "Trend analizi yapılamadı.",
             analysis: result.analysis || ["Veri yetersiz."],
             riskLevel: result.riskLevel || 'MEDIUM',
             riskReason: result.riskReason || '',
-            vibeScore: result.vibeScore || 50,
+            score: typeof result.score === 'number' ? result.score : 5,
             verdict: result.verdict || 'WATCH',
             displayEmoji: result.displayEmoji || '🤖'
         };
