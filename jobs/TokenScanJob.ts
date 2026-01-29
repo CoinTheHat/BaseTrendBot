@@ -181,6 +181,10 @@ export class TokenScanJob {
                             }
                         }
 
+                        if (!tweets || tweets.length === 0) {
+                            logger.warn(`[SKIPPED] No Twitter data for ${enrichedToken.symbol}. AI Analysis skipped.`);
+                        }
+
                         // Generate Narrative (Async, with AI Analysis if tweets exist)
                         const narrative = await this.narrative.generate(enrichedToken, matchResult, scoreRes, tweets);
 
@@ -190,20 +194,24 @@ export class TokenScanJob {
                         }
 
                         // 🛡️ GATEKEEPER: AI Score Check
-                        // If AI thinks it's trash (Score < 4), do NOT alert.
-                        const aiScore = narrative.aiScore || 0; // NarrativeEngine extracts this from AI result
+                        const aiScore = narrative.aiScore || 0;
+
+                        // Strict Check: If we have an AI Score and it is low (< 4), BLOCK IT.
                         if (aiScore > 0 && aiScore < 4) {
-                            logger.warn(`[Job] 🛡️ BLOCKED by AI Gatekeeper: ${token.symbol} (Score: ${aiScore}). Reason: Low conviction.`);
+                            const reason = narrative.aiReason ? narrative.aiReason.substring(0, 50) + "..." : "Low conviction";
+                            logger.warn(`[BLOCKED] ${enrichedToken.symbol} elendi. Puan: ${aiScore} | Sebep: ${reason}`);
                             // Optionally save to DB as "Rejected"
                         } else {
-                            // Send Alerts only if Gatekeeper passes
+                            // PASSED (Or No AI Score - Default allow if technical, but maybe strict later)
                             await this.bot.sendAlert(narrative, enrichedToken, scoreRes);
                             await this.twitter.postTweet(narrative, enrichedToken);
-
-                            // Update State (Cooldown manager handles saving)
                             await this.cooldown.recordAlert(enrichedToken.mint, scoreRes.totalScore, phase);
 
-                            logger.info(`[Job] Alerted for ${token.symbol}. Cooldown active.`);
+                            if (aiScore > 0) {
+                                logger.info(`[PASSED] ${enrichedToken.symbol} Telegram'a gönderildi. Puan: ${aiScore}`);
+                            } else {
+                                logger.info(`[PASSED] ${enrichedToken.symbol} Alert sent (No AI Analysis available).`);
+                            }
                         }
                     } else {
                         logger.info(`[Job] Skipped alert for ${token.symbol}: ${reason}`);

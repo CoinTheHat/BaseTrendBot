@@ -60,6 +60,7 @@ export interface Narrative {
     tradeLens: string;
     vibeCheck: string;
     aiScore?: number; // Added for Gatekeeper
+    aiReason?: string; // Added for Logging
     twitterStory?: {
         summary: string;
         sampleLines: string[];
