@@ -170,6 +170,15 @@ export class ScandexBot {
         });
     }
 
+    async notifyAdmin(message: string) {
+        if (!this.bot || !config.TELEGRAM_ADMIN_ID) return;
+        try {
+            await this.bot.sendMessage(config.TELEGRAM_ADMIN_ID, message, { parse_mode: 'Markdown' });
+        } catch (e) {
+            logger.error(`[Telegram] Failed to notify admin: ${e}`);
+        }
+    }
+
     private isAdmin(userId?: number): boolean {
         if (!userId) return false;
         return userId.toString() === config.TELEGRAM_ADMIN_ID;

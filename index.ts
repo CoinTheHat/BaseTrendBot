@@ -83,6 +83,7 @@ async function main() {
 
     // Start
     job.start();
+    await bot.notifyAdmin("🚀 **Sistemler Aktif!**\nSCANDEX taramaya başladı.\n_Bu mesajı görüyorsan bot çalışıyor demektir._");
     logger.info('✅ SCANDEX Systems Operational. Watching chains...');
 }
 
