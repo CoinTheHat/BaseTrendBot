@@ -67,6 +67,23 @@ export class DexScreenerService {
         return results;
     }
 
+    async search(query: string): Promise<TokenSnapshot[]> {
+        try {
+            // Encode query to avoid issues
+            const safeQuery = encodeURIComponent(query);
+            const response = await axios.get(`${this.apiUrl}/search?q=${safeQuery}`);
+            const pairs = response.data?.pairs || [];
+
+            // Filter for Solana (Relaxed)
+            const solPairs = pairs.filter((p: any) => p.chainId?.toLowerCase() === 'solana' || p.url?.includes('/solana/'));
+
+            return solPairs.map((p: any) => this.normalizePair(p));
+        } catch (error) {
+            console.error(`[DexScreener] Search failed for '${query}':`, error);
+            return [];
+        }
+    }
+
     private normalizePair(pair: any): TokenSnapshot {
         return {
             source: 'dexscreener',
@@ -74,15 +91,16 @@ export class DexScreenerService {
             name: pair.baseToken.name,
             symbol: pair.baseToken.symbol,
             priceUsd: Number(pair.priceUsd) || 0,
-            marketCapUsd: pair.fdv || 0, // FDV is often close to MC for fully minted memes
+            marketCapUsd: pair.fdv || 0,
             liquidityUsd: pair.liquidity?.usd || 0,
-            volume5mUsd: pair.volume?.m5 || (pair.volume?.h1 ? pair.volume.h1 / 12 : 0), // Fallback to avg 5m from 1h
-            volume30mUsd: (pair.volume?.m5 || 0) + (pair.volume?.h1 ? pair.volume.h1 / 2 : 0), // rough approx if 30m not explicit
-            // DexScreener doesn't always avail buyers count in public API v1
+            volume5mUsd: pair.volume?.m5 || 0,
+            volume30mUsd: (pair.volume?.m5 || 0) + (pair.volume?.h1 ? pair.volume.h1 / 2 : 0),
             createdAt: pair.pairCreatedAt ? new Date(pair.pairCreatedAt) : undefined,
             updatedAt: new Date(),
             links: {
-                dexScreener: pair.url
+                dexScreener: pair.url,
+                pumpfun: pair.url.includes('pump') ? pair.url : `https://pump.fun/${pair.baseToken.address}`,
+                birdeye: `https://birdeye.so/token/${pair.baseToken.address}?chain=solana`
             }
         };
     }

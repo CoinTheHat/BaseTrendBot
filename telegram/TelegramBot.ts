@@ -49,19 +49,35 @@ export class ScandexBot {
                 return;
             }
             await this.bot?.sendChatAction(msg.chat.id, 'typing');
+            this.bot?.sendMessage(msg.chat.id, "🕵️‍♂️ **Derin Tarama Başlatıldı...**\nHer trend için canlı havuz taranıyor. (Bu işlem 10-15s sürebilir)");
 
-            // 1. Get Trends
+            // 1. Get Top Trends
             const trends = this.trendCollector.getTopTrends(5);
+            let matches: any[] = [];
 
-            // 2. Get Recent Tokens (Fresh Scan)
-            const tokens = await this.dexScreener.getLatestPairs();
+            // 2. Targeted Search (The Fix)
+            // Instead of relying on a generic 'latest' list, we search specifically for each trend.
+            for (const trend of trends) {
+                // Search DexScreener for this trend phrase
+                const results = await this.dexScreener.search(trend.phrase);
 
-            // 3. Match
-            let matches = this.trendMatcher.matchTrends(trends, tokens);
+                // If found, add to matches (Reuse matcher logic or manual format)
+                if (results.length > 0) {
+                    // Pick best result (highest liquidity or exact match)
+                    const best = results.sort((a, b) => (b.liquidityUsd || 0) - (a.liquidityUsd || 0))[0];
+                    matches.push({
+                        trend: trend,
+                        tokens: [{ snapshot: best, score: 99 }]
+                    });
+                } else {
+                    // Add empty match to show we checked
+                    matches.push({ trend: trend, tokens: [] });
+                }
+            }
 
-            // 4. Send
+            // 4. Send Result
             const text = this.trendDigest.formatTrendTokenMatches(matches);
-            this.bot?.sendMessage(msg.chat.id, text, { parse_mode: 'Markdown' });
+            this.bot?.sendMessage(msg.chat.id, text, { parse_mode: 'Markdown', disable_web_page_preview: true });
         });
 
         this.bot.onText(/\/status/, (msg) => {
