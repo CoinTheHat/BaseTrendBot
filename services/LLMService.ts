@@ -38,6 +38,10 @@ export class LLMService {
         - **Narrative Strength:** Is there a real meme/story or just a random coin?
         - **Red Flags:** "Revoke authority", "Liquidity locked", "Pre-sale" mentions (if any).
 
+        CRITICAL INSTRUCTION: 
+        If users mention 'scam', 'rug', 'honeypot', 'fake' or if tweets are clearly bot spam, 
+        IMMEDIATELY set score < 3 and Verdict: FADE. Do not be fooled by high volume.
+
         Task:
         1. Explain WHY it is trending (The "Alpha").
         2. Identify specific RISKS (The "FUD").

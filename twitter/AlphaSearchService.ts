@@ -26,7 +26,9 @@ export class AlphaSearchService {
         }
 
         const cashtag = `$${symbol.toUpperCase()}`;
-        const searchUrl = `https://twitter.com/search?q=${encodeURIComponent(cashtag)}&f=live`;
+        // Refined Query: $SYMBOL (solana OR CA OR pump.fun) to reduce noise
+        const query = `${cashtag} (solana OR "CA" OR "pump.fun") -filter:links`;
+        const searchUrl = `https://twitter.com/search?q=${encodeURIComponent(query)}&f=live`;
         let velocity = 0;
         let uniqueAuthors = 0;
         let recentTweetTexts: string[] = [];

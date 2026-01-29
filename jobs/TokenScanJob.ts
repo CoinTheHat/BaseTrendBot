@@ -186,19 +186,25 @@ export class TokenScanJob {
 
                         // Attach specific flags if needed (Alpha, etc.)
                         if (alphaResult && alphaResult.isEarlyAlpha) {
-                            // Force title override if not handled by AI logic
-                            // Actually, NarrativeEngine can handle this if we pass flags, or we mutate after.
                             if (alphaResult.isSuperAlpha) narrative.narrativeText = "🚀 **SUPER ALPHA — HIGH MOMENTUM** 🚀\n" + narrative.narrativeText;
                         }
 
-                        // Send Alerts
-                        await this.bot.sendAlert(narrative, enrichedToken, scoreRes);
-                        await this.twitter.postTweet(narrative, enrichedToken);
+                        // 🛡️ GATEKEEPER: AI Score Check
+                        // If AI thinks it's trash (Score < 4), do NOT alert.
+                        const aiScore = narrative.aiScore || 0; // NarrativeEngine extracts this from AI result
+                        if (aiScore > 0 && aiScore < 4) {
+                            logger.warn(`[Job] 🛡️ BLOCKED by AI Gatekeeper: ${token.symbol} (Score: ${aiScore}). Reason: Low conviction.`);
+                            // Optionally save to DB as "Rejected"
+                        } else {
+                            // Send Alerts only if Gatekeeper passes
+                            await this.bot.sendAlert(narrative, enrichedToken, scoreRes);
+                            await this.twitter.postTweet(narrative, enrichedToken);
 
-                        // Update State (Cooldown manager handles saving)
-                        await this.cooldown.recordAlert(enrichedToken.mint, scoreRes.totalScore, phase);
+                            // Update State (Cooldown manager handles saving)
+                            await this.cooldown.recordAlert(enrichedToken.mint, scoreRes.totalScore, phase);
 
-                        logger.info(`[Job] Alerted for ${token.symbol}. Cooldown active.`);
+                            logger.info(`[Job] Alerted for ${token.symbol}. Cooldown active.`);
+                        }
                     } else {
                         logger.info(`[Job] Skipped alert for ${token.symbol}: ${reason}`);
                     }
