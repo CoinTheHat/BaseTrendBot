@@ -138,11 +138,11 @@ export class AlphaSearchService {
             }
         }
 
-        // Logic Revisions (User Request: Minimum 20-30 for hype):
-        // Early Alpha: >20 Unique Authors
-        // Super Alpha: >40 Unique Authors (High Momentum)
-        const isEarlyAlpha = uniqueAuthors >= 20;
-        const isSuperAlpha = uniqueAuthors >= 40;
+        // Logic Revisions (Optimized for Early Detection):
+        // Early Alpha: >10 Unique Authors (Was 20 - Reduced for faster alerts)
+        // Super Alpha: >30 Unique Authors (High Momentum)
+        const isEarlyAlpha = uniqueAuthors >= 10;
+        const isSuperAlpha = uniqueAuthors >= 30;
 
         logger.info(`[AlphaHunter] ${cashtag} Velocity: ${velocity}/10min (Unique: ${uniqueAuthors}). Alpha: ${isEarlyAlpha}`);
 
