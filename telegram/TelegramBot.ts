@@ -190,37 +190,35 @@ export class ScandexBot {
         const isTrendLinked = !!narrative.twitterStory;
         const phaseEmoji = score.phase === 'SPOTTED' ? '🛸' : score.phase === 'COOKING' ? '🔥' : score.phase === 'TRACKING' ? '📡' : '🍽';
 
-        let titleLine = `${phaseEmoji} **SCANDEX MEME RADAR — ${score.phase}**`;
+        let titleLine = `🚨 **TOKEN DETECTED: $${token.symbol}**`;
 
         // Breaking News Override (Viral/Trend)
         if (isTrendLinked) {
-            titleLine = `🚨 **SON DAKİKA — TREND TESPİT EDİLDİ** 🚨`;
+            titleLine = `📈 **TREND ALERT: $${token.symbol}**`;
         }
 
         // Early Alpha Override
         if (narrative.twitterStory?.potentialCategory === 'EARLY_ALPHA') {
-            titleLine = `🔥 **EARLY ALPHA DETECTED** 🔥`;
+            titleLine = `⚡ **EARLY MOVER: $${token.symbol}**`;
         } else if (narrative.twitterStory?.potentialCategory === 'SUPER_ALPHA') {
-            titleLine = `🚀 **SUPER ALPHA — HIGH MOMENTUM** 🚀`;
+            titleLine = `🚀 **HIGH VELOCITY: $${token.symbol}**`;
         }
 
         // Add Risk Warning to top if DANGEROUS including specific flags
         if (narrative.twitterStory?.riskAnalysis?.level === 'DANGEROUS') {
-            titleLine = `⛔ **SCANDEX WARNING — HIGH RISK DETECTED** ⛔\n${titleLine}`;
+            titleLine = `⛔ **RISK WARNING: $${token.symbol}** ⛔\n${titleLine}`;
         }
 
         let message =
             `${titleLine}
 
-**Narrative:**
 ${narrative.narrativeText}
 
 **Data:**
 ${narrative.dataSection}
 
-**Phase:** ${score.phase}
-**Vibe:** ${narrative.vibeCheck}
-**Score:** ${score.totalScore}/10`;
+**Status:** ${tradeLens}
+**Vibe:** ${narrative.vibeCheck}`;
 
         if (narrative.twitterStory) {
             message += `\n\n🔍 **DEDEKTİF ANALİZİ (Vibe Check)**

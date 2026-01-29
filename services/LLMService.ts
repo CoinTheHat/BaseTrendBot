@@ -3,10 +3,12 @@ import { config } from '../config/env';
 import { logger } from '../utils/Logger';
 
 export interface AIAnalysisResult {
-    narrative: string; // The "Story"
+    narrative: string;
+    analysis: string[]; // Key insights
     riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'DANGEROUS';
     riskReason: string;
-    vibeScore: number; // 0-100
+    vibeScore: number;
+    verdict: 'APE' | 'WATCH' | 'FADE';
     displayEmoji: string;
 }
 
@@ -26,15 +28,33 @@ export class LLMService {
         if (tweets.length === 0) return null;
 
         const systemPrompt = `
-        You are an expert crypto narrative analyst. 
-        Analyze these tweets about "$${symbol}".
-        Task:
-        1. Summarize WHY it is trending.
-        2. Assess RISK (Low/High).
-        3. Give Vibe Score (0-100).
+        You are an elite Crypto Degen Detective and Risk Analyst.
+        Your job is to analyze Twitter/X data for a new Solana token "$${symbol}" and determine if it's a hidden gem, a dangerous scam, or just noise.
         
-        Output JSON only:
-        { "narrative": "One sentence summary in Turkish", "riskLevel": "LOW/HIGH", "riskReason": "Short reason in Turkish", "vibeScore": 85, "displayEmoji": "🔥" }
+        Analyze the provided tweets critically. Look for:
+        - **Organic Hype vs. Bot Spam:** Do the tweets look real or scripted?
+        - **Influencer Involvement:** Are big names calling it? Who?
+        - **Narrative Strength:** Is there a real meme/story or just a random coin?
+        - **Red Flags:** "Revoke authority", "Liquidity locked", "Pre-sale" mentions (if any).
+
+        Task:
+        1. Explain WHY it is trending (The "Alpha").
+        2. Identify specific RISKS (The "FUD").
+        3. Give a Verdict: APE (Buy), WATCH (Wait), or FADE (Ignore/Risky).
+
+        Output strictly these JSON fields (in Turkish):
+        {
+            "narrative": "One sharp sentence explaining the core narrative/meme.",
+            "analysis": [
+                "Bullet point 1: Why it's hyped (e.g. 'Elon Musk tweeted PENGUIN')",
+                "Bullet point 2: Community vibe (e.g. 'Organic raids, no bots detected')"
+            ],
+            "riskLevel": "LOW" | "MEDIUM" | "HIGH" | "DANGEROUS",
+            "riskReason": "Specific warning (e.g. 'Top 10 holders own 60%', 'Dev dumped previous coin', or 'Clean launch').",
+            "vibeScore": 85,
+            "verdict": "APE" | "WATCH" | "FADE",
+            "displayEmoji": "🔥"
+        }
         `;
 
         const userContent = `Tweets:\n${tweets.slice(0, 15).map(t => `- ${t.replace(/\n/g, ' ')}`).join('\n')}`;
@@ -108,9 +128,11 @@ export class LLMService {
     private normalizeResult(result: any): AIAnalysisResult {
         return {
             narrative: result.narrative || "Trend analizi yapılamadı.",
+            analysis: result.analysis || ["Veri yetersiz."],
             riskLevel: result.riskLevel || 'MEDIUM',
             riskReason: result.riskReason || '',
             vibeScore: result.vibeScore || 50,
+            verdict: result.verdict || 'WATCH',
             displayEmoji: result.displayEmoji || '🤖'
         };
     }

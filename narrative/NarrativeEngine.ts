@@ -15,18 +15,16 @@ export class NarrativeEngine {
             memeName = `${token.name} (${symbol})`;
         }
 
-        // 1. Narrative Context (Default / Fallback)
-        let intro = `The '${memeName}' meme is trending off-chain.`;
+        // 1. Narrative Context (Clean & Professional)
+        let intro = `**${memeName}** is gaining traction.`;
         if (match.matchedMeme?.tags?.includes('ALPHA')) {
-            intro = `High momentum detected for **$${symbol}**.`;
+            intro = `🔥 High Momentum detected for **$${symbol}**.`;
         } else if (match.matchedMeme?.phrase === token.mint) {
-            intro = `**$${symbol}** detected via Watchlist (Specific CA match).`;
+            intro = `💎 **$${symbol}** matched via Watchlist.`;
         }
 
-        let narrativeText = `${intro} First Solana token aligned with this vibe just spawned: **$${symbol}**.\n\n` +
-            `Alien sensors detected specific high-frequency alignment with human distress signals around this meme.`;
-
-        let vibeCheck = "Vibe matches galactic patterns. Monitor closely.";
+        let narrativeText = `${intro}\n`;
+        let vibeCheck = "Analyzing...";
         let aiRisk = "";
 
         // 2. AI Analysis (Override if available)
@@ -34,12 +32,20 @@ export class NarrativeEngine {
             const aiResult = await this.llm.analyzeToken(symbol, recentTweets);
 
             if (aiResult) {
-                narrativeText = `🧠 **AI Analizi:**\n${aiResult.narrative}`;
+                // Professional Format
+                narrativeText += `\n💡 **Neden Yükseliyor?**\n• ${aiResult.analysis.join('\n• ')}\n`;
+
                 vibeCheck = `${aiResult.displayEmoji} Score: ${aiResult.vibeScore}/100`;
 
+                // Risk Analysis
                 if (aiResult.riskLevel === 'HIGH' || aiResult.riskLevel === 'DANGEROUS') {
-                    aiRisk = `\n\n⛔ **RISK UYARISI:** ${aiResult.riskReason}`;
+                    aiRisk = `\n⚠️ **RİSK FAKTÖRLERİ:**\n${aiResult.riskReason}`;
+                } else {
+                    aiRisk = `\n✅ **Risk Durumu:** ${aiResult.riskReason || 'Temiz görünüyor.'}`;
                 }
+
+                // Verdict Tag
+                narrativeText += `\n🎯 **Karar:** #${aiResult.verdict}`;
             }
         }
 
@@ -56,13 +62,13 @@ export class NarrativeEngine {
         // 4. Trade Lens
         let tradeLens = '';
         if (score.phase === 'SPOTTED') {
-            tradeLens = `Phase: SPOTTED 🛸 → Early discovery. Risk is max.`;
+            tradeLens = `Stage: **SPOTTED** (Early)`;
         } else if (score.phase === 'TRACKING') {
-            tradeLens = `Phase: TRACKING 📡 → Volume building.`;
+            tradeLens = `Stage: **TRACKING** (Volume Building)`;
         } else if (score.phase === 'COOKING') {
-            tradeLens = `Phase: COOKING 🔥 → Momentum high.`;
+            tradeLens = `Stage: **COOKING** 🔥 (Momentum)`;
         } else {
-            tradeLens = `Phase: SERVED 🍽 → Verify distribution.`;
+            tradeLens = `Stage: **SERVED** 🚀 (Confirmed)`;
         }
 
         return {
