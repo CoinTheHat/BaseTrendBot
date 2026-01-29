@@ -69,13 +69,16 @@ export class ScandexBot {
                         trend: trend,
                         tokens: [{ snapshot: best, score: 99 }]
                     });
-                } else {
-                    // Add empty match to show we checked
-                    matches.push({ trend: trend, tokens: [] });
                 }
+                // Else: Do not push empty match (Hide "Watching..." clutter)
             }
 
-            // 4. Send Result
+            // 4. Send Result (Filtered)
+            if (matches.length === 0) {
+                this.bot?.sendMessage(msg.chat.id, "📉 **Şu an Twitter trendlerine uyan bir Solana tokenı bulunamadı.**\nSistem taramaya devam ediyor...");
+                return;
+            }
+
             const text = this.trendDigest.formatTrendTokenMatches(matches);
             this.bot?.sendMessage(msg.chat.id, text, { parse_mode: 'Markdown', disable_web_page_preview: true });
         });
