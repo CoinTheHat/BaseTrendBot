@@ -38,8 +38,8 @@ export class BirdService {
             CT0: config.TWITTER_CT0
         };
 
-        // Escape inner double quotes to prevent shell issues
-        const safeQuery = query.replace(/"/g, '\\"');
+        // Escape inner double quotes AND dollar signs to prevent shell issues
+        const safeQuery = query.replace(/"/g, '\\"').replace(/\$/g, '\\$');
         const cmd = `npx @steipete/bird search "${safeQuery}" --count ${limit} --json`;
 
         try {
