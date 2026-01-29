@@ -27,9 +27,11 @@ export class NarrativeEngine {
         let vibeCheck = "Analyzing...";
         let aiRisk = "";
 
+        let aiResult: any = null;
+
         // 2. AI Analysis (Override if available)
         if (recentTweets.length > 0) {
-            const aiResult = await this.llm.analyzeToken(symbol, recentTweets);
+            aiResult = await this.llm.analyzeToken(symbol, recentTweets);
 
             if (aiResult) {
                 // AI Override: Use AI's headline if provided, else keep intro
