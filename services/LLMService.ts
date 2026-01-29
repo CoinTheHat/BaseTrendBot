@@ -81,7 +81,11 @@ export class LLMService {
             };
 
         } catch (error: any) {
-            logger.error(`[LLM] Analysis failed: ${error.message}`);
+            if (error.response?.status === 429) {
+                logger.error(`[LLM] ❌ OPENAI QUOTA EXCEEDED (429). Please check your OpenAI billing/credits.`);
+            } else {
+                logger.error(`[LLM] Analysis failed: ${error.message}`);
+            }
             return null;
         }
     }
