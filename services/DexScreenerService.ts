@@ -16,6 +16,9 @@ export class DexScreenerService {
             const response = await axios.get(`${this.apiUrl}/search?q=solana`);
             const pairs = response.data?.pairs || [];
 
+            if (pairs.length > 0) {
+                console.log(`[DexScreener] DEBUG Raw ChainID: '${pairs[0].chainId}', First Pair:`, JSON.stringify(pairs[0], null, 2));
+            }
             // Filter for Solana chain to be sure
             const solPairs = pairs.filter((p: any) => p.chainId === 'solana');
 
