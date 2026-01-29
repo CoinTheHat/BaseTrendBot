@@ -50,6 +50,14 @@ export class BirdService {
                 // Parse JSON output
                 const rawData = JSON.parse(stdout);
 
+                // Debug: Log what we got
+                logger.info(`[Bird] RAW Output Length: ${stdout.length}. Is Array? ${Array.isArray(rawData)}. First item: ${JSON.stringify(rawData[0] || 'NONE')}`);
+
+                if (!Array.isArray(rawData)) {
+                    logger.warn(`[Bird] Unexpected JSON structure: ${stdout.substring(0, 200)}`);
+                    return [];
+                }
+
                 return rawData.map((t: any) => {
                     // Mapping based on bird JSON schema
                     // Note: with --json-full, raw object might be under _raw or explicit fields.
