@@ -59,6 +59,7 @@ export interface Narrative {
     dataSection: string;
     tradeLens: string;
     vibeCheck: string;
+    aiScore?: number; // Added for Gatekeeper
     twitterStory?: {
         summary: string;
         sampleLines: string[];

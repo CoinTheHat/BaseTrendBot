@@ -76,10 +76,12 @@ export class NarrativeEngine {
         }
 
         return {
-            narrativeText,
-            dataSection,
-            tradeLens,
-            vibeCheck
-        };
+            return {
+                narrativeText,
+                dataSection,
+                tradeLens,
+                vibeCheck,
+                aiScore: (recentTweets.length > 0 && typeof aiResult !== 'undefined') ? aiResult?.score : undefined
+            };
+        }
     }
-}
