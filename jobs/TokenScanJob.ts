@@ -64,6 +64,10 @@ export class TokenScanJob {
                 .filter(i => i.phrase.length > 30 && !i.phrase.includes(' ')) // Simple CA check
                 .map(i => i.phrase);
 
+            if (watchlistMints.length > 0) {
+                logger.info(`[Job] Tracking ${watchlistMints.length} Watchlist CAs: ${watchlistMints.join(', ')}`);
+            }
+
             // b. Execute fetches in parallel
             const [pumpTokens, dexTokens, birdTokens, watchlistTokens] = await Promise.all([
                 this.pumpFun.getNewTokens(),
