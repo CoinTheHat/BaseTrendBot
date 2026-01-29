@@ -17,7 +17,12 @@ export const config = {
 
     // Scraping (Headless)
     ENABLE_TWITTER_SCRAPING: process.env.ENABLE_TWITTER_SCRAPING === 'true',
-    TWITTER_SCRAPE_MAX_TWEETS: Number(process.env.TWITTER_SCRAPE_MAX_TWEETS) || 5,
+    TWITTER_SCRAPE_MAX_TWEETS: Number(process.env.TWITTER_SCRAPE_MAX_TWEETS) || 10,
+    TWITTER_AUTH_TOKEN: process.env.TWITTER_AUTH_TOKEN || '',
+    TWITTER_CT0: process.env.TWITTER_CT0 || '',
+
+    // Trends
+    TREND_UPDATE_INTERVAL_MINUTES: Number(process.env.TREND_UPDATE_INTERVAL_MINUTES) || 30,
 
     // Database
     DATABASE_URL: process.env.DATABASE_URL || '',

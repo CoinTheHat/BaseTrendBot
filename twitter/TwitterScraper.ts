@@ -2,14 +2,36 @@ import puppeteer from 'puppeteer';
 import { logger } from '../utils/Logger';
 import { config } from '../config/env';
 
+import { BirdService } from './BirdService';
+
 export class TwitterScraper {
     private browser: any = null;
+    private bird: BirdService;
+
+    constructor() {
+        this.bird = new BirdService();
+    }
 
     async fetchTokenTweets(queries: string[]): Promise<string[]> {
         if (!config.ENABLE_TWITTER_SCRAPING) {
             return [];
         }
 
+        // Fast Path: Use Bird.Fast if credentials exist
+        if (config.TWITTER_AUTH_TOKEN) {
+            const allTexts: Set<string> = new Set();
+            for (const q of queries) {
+                try {
+                    const results = await this.bird.search(q, config.TWITTER_SCRAPE_MAX_TWEETS || 10);
+                    results.forEach(t => allTexts.add(t.text));
+                } catch (e) {
+                    logger.warn(`[Scraper] Bird search failed for ${q}: ${e}`);
+                }
+            }
+            return Array.from(allTexts);
+        }
+
+        // Fallback: Puppeteer (Legacy)
         const allTweets: Set<string> = new Set();
 
         try {
