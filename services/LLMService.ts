@@ -42,10 +42,10 @@ export class LLMService {
         const { systemPrompt, userContent } = this.buildPrompt(token, tweets, hasTweets);
 
         try {
-            logger.info(`[xAI Grok] Analyzing $${token.symbol} with ${config.XAI_MODEL || 'grok-2-latest'}...`);
+            logger.info(`[xAI Grok] Analyzing $${token.symbol} with ${config.XAI_MODEL || 'grok-2'}...`);
 
             const completion = await this.xai.chat.completions.create({
-                model: config.XAI_MODEL || "grok-2-latest", // Cost optimized model
+                model: config.XAI_MODEL || "grok-2", // Stable model
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userContent }
@@ -64,8 +64,8 @@ export class LLMService {
             logger.error(`[xAI Grok] Analysis failed for $${token.symbol}: ${error.message}`);
 
             if (error.status === 401 || error.message.includes('API key')) {
-                logger.error('[xAI Grok] FATAL: Invalid API Key. Stopping bot.');
-                process.exit(1);
+                logger.error('[xAI Grok] FATAL: Invalid API Key. Please check config.');
+                // Don't exit process, just stop analysis
             }
             return null;
         }
@@ -182,7 +182,7 @@ If no gems found, return: { "gems": [] }
             logger.info(`[xAI Grok] Batch analyzing ${tweets.length} tweets...`);
 
             const completion = await this.xai.chat.completions.create({
-                model: config.XAI_MODEL || "grok-2-latest", // Tasarruflu model
+                model: config.XAI_MODEL || "grok-2", // Tasarruflu model
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userContent }
