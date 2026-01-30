@@ -10,29 +10,50 @@ export class DexScreenerService {
      * DexScreener API is versatile. We might use `search` or specific specialized endpoints.
      * For this V1, we will assume we want to search for 'Solana' new pairs or similar.
      */
+    private userAgents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/605.1.15',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
+    ];
+
+    private getRandomUserAgent() {
+        return this.userAgents[Math.floor(Math.random() * this.userAgents.length)];
+    }
+
+    private async makeRequest(url: string): Promise<any> {
+        try {
+            const response = await axios.get(url, {
+                headers: { 'User-Agent': this.getRandomUserAgent() }
+            });
+            return response.data;
+        } catch (error: any) {
+            if (error.response?.status === 429) {
+                console.warn('[DexScreener] 🚨 Rate Limit! 60 saniye soğumaya alınıyor...');
+                await new Promise(resolve => setTimeout(resolve, 60000));
+                return null; // Return null to indicate skip
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Fetch latest Solana profiles/pairs.
+     */
     async getLatestPairs(): Promise<TokenSnapshot[]> {
         try {
             // Strategy: Use Token Profiles endpoint to get truly NEW tokens
-            // Then filter for Solana and enrich with pair data.
-            const response = await axios.get(this.profilesUrl);
-            const profiles = response.data || [];
+            const data = await this.makeRequest(this.profilesUrl);
+            const profiles = data || []; // Handle null/empty
 
             // 1. Strict Chain Filtering
             const solanaProfiles = profiles.filter((p: any) => p.chainId === 'solana');
 
             if (solanaProfiles.length === 0) {
-                console.log(`[DexScreener] 0 tokens found in profiles. (Total scanned: ${profiles.length}). Reason: None were on Solana chain. Switching to fallback search...`);
+                // If profiles failed/empty (or rate limited returned null -> empty arr), fallback.
+                console.log(`[DexScreener] 0 profiles/RateLimit. Switching to fallback search...`);
 
                 // Fallback 1: Search "solana"
-                const solanaFallback = await this.search("solana");
-                if (solanaFallback.length > 0) {
-                    console.log(`[DexScreener] Fallback 'solana' search found ${solanaFallback.length} pairs.`);
-                    return solanaFallback;
-                }
-
-                // Fallback 2: Search "pump.fun"
-                console.log(`[DexScreener] Fallback 'solana' yielded 0. Trying 'pump.fun'...`);
-                return await this.search("pump.fun");
+                return await this.search("solana");
             }
 
             console.log(`[DexScreener] Found ${solanaProfiles.length} new Solana profiles.`);
@@ -63,8 +84,8 @@ export class DexScreenerService {
         for (const chunk of chunks) {
             try {
                 const url = `${this.apiUrl}/tokens/${chunk.join(',')}`;
-                const response = await axios.get(url);
-                const pairs = response.data?.pairs || [];
+                const data = await this.makeRequest(url);
+                const pairs = data?.pairs || [];
 
                 // Strict filtering is done inside normalizePair
                 const validPairs = pairs
@@ -85,8 +106,8 @@ export class DexScreenerService {
         try {
             // Encode query to avoid issues
             const safeQuery = encodeURIComponent(query);
-            const response = await axios.get(`${this.apiUrl}/search?q=${safeQuery}`);
-            const pairs = response.data?.pairs || [];
+            const data = await this.makeRequest(`${this.apiUrl}/search?q=${safeQuery}`);
+            const pairs = data?.pairs || []; // If rate limited (null), pairs is []
 
             // Strict filtering via normalizePair
             return pairs

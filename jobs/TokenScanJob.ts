@@ -47,12 +47,27 @@ export class TokenScanJob {
     start() {
         if (this.isRunning) return;
         this.isRunning = true;
-        logger.info(`[Job] Token Scan Job started. Interval: ${config.SCAN_INTERVAL_SECONDS}s`);
 
-        // Initial run
-        this.runCycle();
+        // Use 90s + Random Jitter to avoid bot detection
+        logger.info(`[Job] Token Scan Job started. Interval: ~90s (Jitter Active)`);
 
-        setInterval(() => this.runCycle(), config.SCAN_INTERVAL_SECONDS * 1000);
+        // Start Loop
+        this.runLoop();
+    }
+
+    private async runLoop() {
+        if (!this.isRunning) return;
+
+        await this.runCycle();
+
+        // Calculate Next Run: 90s + random(0-10s)
+        const baseInterval = 90 * 1000;
+        const jitter = Math.random() * 10000;
+        const delay = baseInterval + jitter;
+
+        logger.info(`[Job] 💤 Sleeping for ${(delay / 1000).toFixed(1)}s...`);
+
+        setTimeout(() => this.runLoop(), delay);
     }
 
     private async runCycle() {
