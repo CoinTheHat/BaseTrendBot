@@ -148,43 +148,37 @@ JSON formatında derinlemesine ve yapılandırılmış bir analiz sun. TÜM ÇIK
         };
     }
 
-    async analyzeTrendBatch(tweetsInput: string[], sourceIds: string[]): Promise<any[]> {
-        if (tweetsInput.length === 0) return [];
+    async analyzeTweetBatch(tweets: { id: string; text: string }[]): Promise<Array<{ symbol: string; sentiment: string; reason: string; source_id: string }>> {
+        if (tweets.length === 0) return [];
+
+        // Combine tweets with IDs to track source
+        const userContent = tweets.map(t => `ID_${t.id}: ${t.text.replace(/\n/g, ' ')}`).join('\n\n');
 
         const systemPrompt = `
-Sen Uzman Bir Kripto Trend Avcısısın. Görevin, sana verilen tweet yığınını tarayıp, aralarındaki "ELMAS" (Gem) projeleri bulmak.
-Konu: ERC-8004 ve Yeni Hibrit Token Standartları.
+You are an expert Crypto Trend Hunter (Jeweler Mode).
+Analyze the provided tweets (ID_xxx: Content) regarding ERC-8004, Hybrid Tokens, or new tech trends.
 
-**Elmek İstediklerin (ÇÖP):**
-- Spam, Airdrop, Giveaway postları.
-- Anlamsız hype, sadece "$TK ticker" yazıp geçen botlar.
-- Tekrar eden içerikler.
+**Rules:**
+1. Ignore spam, airdrops, giveaways, and generic empty hype.
+2. Identify only HIGH POTENTIAL projects with real community interest or solid tech mentions.
+3. Look for Contract Addresses (CA) or Tickers ($SYM).
 
-**Aramak İstediklerin (ELMAS):**
-- Somut bir teknoloji veya proje anlatanlar.
-- Yeni bir kontrat adresi (CA) paylaşıp teknik detay verenler.
-- Topluluk tarafından ciddi ilgi gören (Like/RT yüksek) ve organik duranlar.
-
-Sana verilen metin formatı: "[ID] Tweet İçeriği"
-
-**Çıktı Formatı (JSON Array):**
-Eğer kayda değer hiçbir şey yoksa BOŞ ARRAY [] dön.
-Eğer varsa:
+**Output:**
+Return a JSON array of objects. If no gems found, return [].
+Include the 'source_id' (without 'ID_' prefix) in the output.
+Format:
 [
-  {
-    "projectName": "Proje Adı veya Ticker",
-    "summary": "Neden bu proje önemli? (Tek cümle, Türkçe)",
-    "sourceTweetId": "İlgili tweetin ID'si (Metinden al)",
-    "confidenceScore": 85
+  { 
+    "symbol": "$SYMBOL", 
+    "sentiment": "Score 1-10", 
+    "reason": "Short summary explaining why it is a gem (IN TURKISH LANGUAGE)",
+    "source_id": "12345..."
   }
 ]
 `;
 
-        // Combine tweets into a single text block
-        const userContent = tweetsInput.map((text, idx) => `[${sourceIds[idx]}] ${text.replace(/\n/g, ' ')}`).join('\n\n');
-
         try {
-            logger.info(`[xAI Grok] Batch analyzing ${tweetsInput.length} tweets...`);
+            logger.info(`[xAI Grok] Batch analyzing ${tweets.length} tweets...`);
 
             const completion = await this.xai.chat.completions.create({
                 model: config.XAI_MODEL || "grok-2-latest",
@@ -192,7 +186,7 @@ Eğer varsa:
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userContent }
                 ],
-                temperature: 0.1, // Very strict
+                temperature: 0.1, // Strict
                 response_format: { type: "json_object" }
             });
 
@@ -200,10 +194,10 @@ Eğer varsa:
             if (!content) return [];
 
             const parsed = JSON.parse(content);
-            // Handle wrapper object if any (e.g. { "projects": [...] }) or direct array
-            const projects = Array.isArray(parsed) ? parsed : (parsed.projects || parsed.gems || []);
+            // Support wrapper objects like {"gems": [...]} or direct array
+            const results = Array.isArray(parsed) ? parsed : (parsed.gems || parsed.projects || []);
 
-            return projects;
+            return results;
         } catch (err) {
             logger.error(`[xAI Batch] Analysis failed: ${err}`);
             return [];

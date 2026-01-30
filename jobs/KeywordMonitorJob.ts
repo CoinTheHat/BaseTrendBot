@@ -7,8 +7,8 @@ import { LLMService } from '../services/LLMService';
 
 export class KeywordMonitorJob {
     private job: CronJob;
-    // Updated Query: Filter retweets/airdrops, look for broader tech keywords
-    private readonly QUERY = '("ERC-8004" OR "ERC8004" OR "Hybrid Token") -is:retweet -airdrop -giveaway';
+    // Updated Query: Filter retweets, replies, airdrops, enforce min likes
+    private readonly QUERY = '("ERC-8004" OR "ERC8004" OR "Hybrid Token") -is:retweet -is:reply -airdrop -giveaway min_faves:5';
 
     constructor(
         private storage: PostgresStorage,
@@ -43,14 +43,13 @@ export class KeywordMonitorJob {
                 // Dup check
                 if (uniqueTweets.has(t.text)) continue;
 
-                // Content Check: Must have Cashtag OR CA OR High Engagement (>20 Likes)
-                // (Lowered threshold from 50 to 20 to catch early alpha)
+                // Content Check: Must have Cashtag OR CA
+                // (High engagement check is already handled by API query min_faves:5)
                 const hasCashtag = /\$[a-zA-Z]{2,}/.test(t.text);
                 const hasCA = /0x[a-fA-F0-9]{40}/.test(t.text);
-                const isHighEng = (t.metrics?.like_count || 0) > 20;
 
-                if (hasCashtag || hasCA || isHighEng) {
-                    uniqueTweets.set(t.text, t);
+                if (hasCashtag || hasCA) {
+                    uniqueTweets.set(t.text, { id: t.tweetId, text: t.text });
                 }
             }
 
@@ -60,29 +59,29 @@ export class KeywordMonitorJob {
                 return;
             }
 
-            logger.info(`[KeywordMonitor] Sending ${candidates.length} candidates to AI...`);
+            logger.info(`[KeywordMonitor] Sending ${candidates.length} candidates to Batch AI...`);
 
             // 3. BATCH ANALYSIS (The Brain)
-            const results = await this.llmService.analyzeTrendBatch(
-                candidates.map(c => c.text),
-                candidates.map(c => c.tweetId)
-            );
+            const results = await this.llmService.analyzeTweetBatch(candidates);
 
             // 4. NOTIFICATION (The Gem)
             for (const gem of results) {
-                // Check if we already alerted this tweet to allow "new news" about "same project"
-                // But avoid same tweet ID.
-                const isProcessed = await this.storage.hasSeenKeywordTweet(gem.sourceTweetId);
+                // Fallback if source_id missing (should not happen with new prompt)
+                const sourceId = gem.source_id || candidates[0].id;
+
+                // Check dup
+                const isProcessed = await this.storage.hasSeenKeywordTweet(sourceId);
                 if (isProcessed) continue;
 
-                const msg = `💎 **AI SEÇKİSİ: ERC-8004 FIRSATLARI**\n\n` +
-                    `🔹 **Proje:** ${gem.projectName}\n` +
-                    `📊 **AI Yorumu:** ${gem.summary} (Güven: %${gem.confidenceScore})\n` +
-                    `🔗 **Kaynak:** [Tweet Linki](https://x.com/i/web/status/${gem.sourceTweetId})\n\n` +
-                    `⚠️ *DYOR - Erken Aşama Teknik Trend*`;
+                const msg = `💎 **AI KUYUMCUSU: ERC-8004 FIRSATI**\n\n` +
+                    `🔹 **Token:** ${gem.symbol}\n` +
+                    `🧠 **Grok Puanı:** ${gem.sentiment}/10\n` +
+                    `📝 **Analiz:** ${gem.reason}\n\n` +
+                    `🔗 **Kaynak:** [Tweet Linki](https://x.com/i/web/status/${sourceId})\n` +
+                    `⚠️ *Otomatik analizdir, DYOR.*`;
 
                 await this.telegram.notifyAdmin(msg);
-                await this.storage.saveKeywordTweet(gem.sourceTweetId, gem.projectName, gem.summary);
+                await this.storage.saveKeywordTweet(sourceId, gem.symbol, gem.reason);
             }
 
         } catch (error) {
