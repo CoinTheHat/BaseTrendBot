@@ -147,13 +147,13 @@ export class TwitterAccountManager {
             account.lastBusyStart = 0;
 
             if (wasRateLimited) {
-                // 🛑 RATE LIMIT HIT: 5 Minute Penalty
-                account.cooldownUntil = Date.now() + (5 * 60 * 1000);
-                logger.warn(`[TwitterManager] Account #${index + 1} hit Rate Limit. Cooldown 5m until ${new Date(account.cooldownUntil).toTimeString().substring(0, 8)}`);
+                // 🛑 RATE LIMIT HIT: 2 Minute Penalty (Reduced from 5m)
+                account.cooldownUntil = Date.now() + (2 * 60 * 1000);
+                logger.warn(`[TwitterManager] Account #${index + 1} hit Rate Limit. Cooldown 2m until ${new Date(account.cooldownUntil).toTimeString().substring(0, 8)}`);
             } else {
-                // ✅ STANDARD CYCLE: 30 Second Rest (Requested)
-                account.cooldownUntil = Date.now() + (30 * 1000);
-                logger.debug(`[TwitterManager] Account #${index + 1} released. Resting 30s.`);
+                // ✅ STANDARD CYCLE: 10 Second Rest (Aggressive)
+                account.cooldownUntil = Date.now() + (10 * 1000);
+                logger.debug(`[TwitterManager] Account #${index + 1} released. Resting 10s.`);
             }
         }
     }
@@ -171,6 +171,19 @@ export class TwitterAccountManager {
 
     getAccountCount(): number {
         return this.accounts.length;
+    }
+
+    /**
+     * Resets locking capability for all accounts.
+     * Call this on bot startup to clear any ghost locks.
+     */
+    resetAllLocks() {
+        this.accounts.forEach(acc => {
+            acc.isBusy = false;
+            acc.lastBusyStart = 0;
+            acc.cooldownUntil = 0;
+        });
+        logger.info(`[TwitterManager] Force reset all ${this.accounts.length} account locks.`);
     }
 }
 

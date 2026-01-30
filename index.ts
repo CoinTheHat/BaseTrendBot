@@ -30,8 +30,13 @@ process.on('unhandledRejection', (reason) => {
     logger.error(`Unhandled Rejection: ${reason}`);
 });
 
+import { twitterAccountManager } from './twitter/TwitterAccountManager';
+
 async function main() {
     logger.info('🛸 SCANDEX V1 Initializing...');
+
+    // Unlock accounts on boot
+    twitterAccountManager.resetAllLocks();
 
     // 1. Storage & State
     const storage = new PostgresStorage();
