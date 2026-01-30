@@ -28,7 +28,10 @@ export class PerformanceMonitorJob {
         this.isRunning = true;
 
         try {
-            // 1. Get tokens to check
+            // STEP 0: BACKFILL - Sync missing tokens from processed_tokens
+            await this.storage.backfillMissingTokens();
+
+            // STEP 1: Get tokens to check
             // Only checking 'TRACKING' tokens alerted in last 48h
             const tokens = await this.storage.getTrackingTokens();
 

@@ -112,6 +112,36 @@ export class PostgresStorage {
         }
     }
 
+    // BACKFILL: Sync missing tokens from processed_tokens to token_performance
+    async backfillMissingTokens(): Promise<number> {
+        try {
+            const query = `
+                INSERT INTO token_performance (mint, symbol, alert_mc, ath_mc, current_mc, status, alert_timestamp)
+                SELECT 
+                    pt.mint,
+                    '' as symbol,
+                    COALESCE(pt.market_cap, 0) as alert_mc,
+                    COALESCE(pt.market_cap, 0) as ath_mc,
+                    0 as current_mc,
+                    'TRACKING' as status,
+                    to_timestamp(pt.first_seen_at / 1000) as alert_timestamp
+                FROM processed_tokens pt
+                WHERE pt.last_alert_at > 0
+                AND pt.mint NOT IN (SELECT mint FROM token_performance)
+                ON CONFLICT (mint) DO NOTHING
+            `;
+            const res = await this.pool.query(query);
+            const count = res.rowCount || 0;
+            if (count > 0) {
+                logger.info(`[Postgres] Backfilled ${count} missing tokens to token_performance`);
+            }
+            return count;
+        } catch (err) {
+            logger.error('[Postgres] backfillMissingTokens failed', err);
+            return 0;
+        }
+    }
+
     async getTrackingTokens(): Promise<TokenPerformance[]> {
         try {
             // Get tokens alerting in last 48h that are still TRACKING
