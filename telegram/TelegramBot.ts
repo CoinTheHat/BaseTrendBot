@@ -240,6 +240,7 @@ export class ScandexBot {
 
         let message =
             `${titleLine}
+📍 **CA:** \`${token.mint}\`
 
 ${narrative.narrativeText}
 

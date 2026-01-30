@@ -28,11 +28,13 @@ export class NarrativeEngine {
         let aiRisk = "";
 
         // 3. Data Section (Moved up for AI Context)
+        const twitterStatus = recentTweets.length > 0 ? `✅ Twitter Data: ${recentTweets.length} tweets` : '⚠️ Twitter Data: None';
         const dataSection =
             `• MC: $${(token.marketCapUsd || 0).toLocaleString()}\n` +
             `• Liq: $${(token.liquidityUsd ?? 0).toLocaleString()}\n` +
             `• Vol (5m): $${(token.volume5mUsd ?? 0).toLocaleString()}\n` +
-            `• Buyers (5m): ${token.buyers5m ?? 'N/A'}`;
+            `• Buyers (5m): ${token.buyers5m ?? 'N/A'}\n` +
+            `• ${twitterStatus}`;
 
         let aiResult: any = null;
 
