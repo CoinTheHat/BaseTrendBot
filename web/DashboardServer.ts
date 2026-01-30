@@ -13,7 +13,9 @@ export class DashboardServer {
 
         // Setup EJS
         this.app.set('view engine', 'ejs');
-        this.app.set('views', path.join(__dirname, 'views'));
+        // CRITICAL: Point to source directory since .ejs files aren't copied to dist by tsc
+        const viewsPath = path.join(__dirname, '../../web/views');
+        this.app.set('views', viewsPath);
 
         // Public static files (if needed)
         this.app.use(express.static(path.join(__dirname, 'public')));
