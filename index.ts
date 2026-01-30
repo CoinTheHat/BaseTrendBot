@@ -3,6 +3,8 @@ import { TokenScanJob } from './jobs/TokenScanJob';
 import { PumpFunService } from './services/PumpFunService';
 import { DexScreenerService } from './services/DexScreenerService';
 import { BirdeyeService } from './services/BirdeyeService';
+import { PerformanceMonitorJob } from './jobs/PerformanceMonitorJob';
+import { DashboardServer } from './web/DashboardServer';
 import { Matcher } from './core/Matcher';
 import { ScoringEngine } from './core/ScoringEngine';
 import { PhaseDetector } from './core/PhaseDetector';
@@ -80,6 +82,13 @@ async function main() {
         trendMatcher,
         alphaSearchService // Injected
     );
+
+    // 6. Performance & Dashboard
+    const performanceJob = new PerformanceMonitorJob(storage, dexScreener);
+    const dashboard = new DashboardServer(storage, process.env.PORT ? parseInt(process.env.PORT) : 3000);
+
+    performanceJob.start();
+    dashboard.start();
 
     // Start
     job.start();

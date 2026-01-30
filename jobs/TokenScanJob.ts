@@ -322,6 +322,18 @@ export class TokenScanJob {
                                     if (aiScore >= 8) await this.twitter.postTweet(narrative, enrichedToken); // Only tweet absolute bangers
                                     await this.cooldown.recordAlert(enrichedToken.mint, scoreRes.totalScore, phase, enrichedToken.priceUsd);
 
+                                    // RECORD PERFORMANCE
+                                    await this.storage.savePerformance({
+                                        mint: enrichedToken.mint,
+                                        symbol: enrichedToken.symbol,
+                                        alertMc: enrichedToken.marketCapUsd || 0,
+                                        athMc: enrichedToken.marketCapUsd || 0,
+                                        currentMc: enrichedToken.marketCapUsd || 0,
+                                        status: 'TRACKING',
+                                        alertTimestamp: new Date(),
+                                        lastUpdated: new Date()
+                                    });
+
                                     logger.info(`[PASSED] ${enrichedToken.symbol} SENT to Telegram. AI Score: ${aiScore} (Gourmet Mode)`);
                                 }
                             } else {

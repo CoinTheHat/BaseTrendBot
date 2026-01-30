@@ -98,3 +98,22 @@ export interface TrendTokenMatch {
         phase?: string;
     }[];
 }
+
+export interface TokenPerformance {
+    mint: string;
+    symbol: string;
+    alertMc: number;
+    athMc: number;
+    currentMc: number;
+    status: 'TRACKING' | 'MOONED' | 'RUGGED' | 'STABLE';
+    alertTimestamp: Date;
+    lastUpdated: Date;
+}
+
+export interface DashboardMetrics {
+    totalCalls: number;
+    winRate: number; // % of calls > 2x
+    moonCount: number;
+    topPerformers: TokenPerformance[];
+    recentCalls: TokenPerformance[];
+}

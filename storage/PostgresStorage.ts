@@ -1,7 +1,7 @@
 import { Pool } from 'pg';
 import { config } from '../config/env';
 import { logger } from '../utils/Logger';
-import { MemeWatchItem, TrendItem } from '../models/types';
+import { MemeWatchItem, TrendItem, TokenPerformance } from '../models/types';
 import { SeenTokenData } from './JsonStorage'; // Reusing interface or we can move it
 
 export class PostgresStorage {
@@ -56,7 +56,17 @@ export class PostgresStorage {
                 metrics JSONB,
                 trend_score INTEGER,
                 last_updated TIMESTAMP
-            );`
+            );`,
+            `CREATE TABLE IF NOT EXISTS token_performance(
+                mint TEXT PRIMARY KEY,
+                symbol TEXT,
+                alert_mc NUMERIC,
+                ath_mc NUMERIC,
+                current_mc NUMERIC,
+                status TEXT DEFAULT 'TRACKING',
+                alert_timestamp TIMESTAMP DEFAULT NOW(),
+                last_updated TIMESTAMP DEFAULT NOW()
+            ); `
         ];
 
         try {
@@ -64,7 +74,7 @@ export class PostgresStorage {
                 await this.pool.query(q);
             }
             // Auto-Migration for new features
-            await this.pool.query(`ALTER TABLE seen_tokens ADD COLUMN IF NOT EXISTS last_price NUMERIC;`);
+            await this.pool.query(`ALTER TABLE seen_tokens ADD COLUMN IF NOT EXISTS last_price NUMERIC; `);
 
             logger.info('[Postgres] Schema initialized.');
         } catch (err) {
@@ -72,6 +82,106 @@ export class PostgresStorage {
         }
     }
 
+    // ... (Existing methods) ...
+
+    // --- Performance Monitor ---
+
+    async savePerformance(perf: TokenPerformance) {
+        try {
+            await this.pool.query(
+                `INSERT INTO token_performance(mint, symbol, alert_mc, ath_mc, current_mc, status, alert_timestamp, last_updated)
+        VALUES($1, $2, $3, $4, $5, $6, $7, $8)
+                 ON CONFLICT(mint) DO NOTHING`, // Only insert on first alert
+                [perf.mint, perf.symbol, perf.alertMc, perf.athMc, perf.currentMc, perf.status, perf.alertTimestamp, perf.lastUpdated]
+            );
+        } catch (err) {
+            logger.error('[Postgres] savePerformance failed', err);
+        }
+    }
+
+    async updatePerformance(perf: TokenPerformance) {
+        try {
+            await this.pool.query(
+                `UPDATE token_performance
+                 SET ath_mc = $2, current_mc = $3, status = $4, last_updated = NOW()
+                 WHERE mint = $1`,
+                [perf.mint, perf.athMc, perf.currentMc, perf.status]
+            );
+        } catch (err) {
+            logger.error('[Postgres] updatePerformance failed', err);
+        }
+    }
+
+    async getTrackingTokens(): Promise<TokenPerformance[]> {
+        try {
+            // Get tokens alerting in last 48h that are still TRACKING
+            const res = await this.pool.query(
+                `SELECT * FROM token_performance 
+                 WHERE status = 'TRACKING' 
+                 AND alert_timestamp > NOW() - INTERVAL '48 hours'`
+            );
+            return res.rows.map(this.mapPerformanceRow);
+        } catch (err) {
+            logger.error('[Postgres] getTrackingTokens failed', err);
+            return [];
+        }
+    }
+
+    async getDashboardMetrics(): Promise<any> {
+        try {
+            // 1. Total Calls
+            const totalRes = await this.pool.query('SELECT COUNT(*) FROM token_performance');
+            const totalCalls = parseInt(totalRes.rows[0].count);
+
+            // 2. Win Rate (Tokens with > 2x ATH from Alert)
+            // Logic: ATH / Alert >= 2
+            const winRes = await this.pool.query(`
+                SELECT COUNT(*) FROM token_performance 
+                WHERE ath_mc >= alert_mc * 2
+            `);
+            const moons = parseInt(winRes.rows[0].count);
+            const winRate = totalCalls > 0 ? (moons / totalCalls) * 100 : 0;
+
+            // 3. Top Performers (Max Multiple)
+            const topRes = await this.pool.query(`
+        SELECT *, (ath_mc / NULLIF(alert_mc, 0)) as multiple 
+                FROM token_performance 
+                ORDER BY multiple DESC 
+                LIMIT 5
+            `);
+
+            // 4. Recent Calls
+            const recentRes = await this.pool.query(`
+        SELECT * FROM token_performance 
+                ORDER BY alert_timestamp DESC 
+                LIMIT 20
+            `);
+
+            return {
+                totalCalls,
+                winRate: Math.round(winRate),
+                moonCount: moons,
+                topPerformers: topRes.rows.map(this.mapPerformanceRow),
+                recentCalls: recentRes.rows.map(this.mapPerformanceRow)
+            };
+        } catch (err) {
+            logger.error('[Postgres] getDashboardMetrics failed', err);
+            return { totalCalls: 0, winRate: 0, moonCount: 0, topPerformers: [], recentCalls: [] };
+        }
+    }
+
+    private mapPerformanceRow(row: any): TokenPerformance {
+        return {
+            mint: row.mint,
+            symbol: row.symbol,
+            alertMc: Number(row.alert_mc),
+            athMc: Number(row.ath_mc),
+            currentMc: Number(row.current_mc),
+            status: row.status,
+            alertTimestamp: row.alert_timestamp,
+            lastUpdated: row.last_updated
+        };
+    }
     // --- Watchlist ---
 
     async getWatchlist(): Promise<MemeWatchItem[]> {
@@ -135,13 +245,13 @@ export class PostgresStorage {
     async saveSeenToken(mint: string, data: SeenTokenData) {
         try {
             await this.pool.query(
-                `INSERT INTO seen_tokens (mint, first_seen_at, last_alert_at, last_score, last_phase, last_price)
-                 VALUES ($1, $2, $3, $4, $5, $6)
-                 ON CONFLICT (mint) DO UPDATE SET
-                    last_alert_at = EXCLUDED.last_alert_at,
-                    last_score = EXCLUDED.last_score,
-                    last_phase = EXCLUDED.last_phase,
-                    last_price = EXCLUDED.last_price;`,
+                `INSERT INTO seen_tokens(mint, first_seen_at, last_alert_at, last_score, last_phase, last_price)
+        VALUES($1, $2, $3, $4, $5, $6)
+                 ON CONFLICT(mint) DO UPDATE SET
+        last_alert_at = EXCLUDED.last_alert_at,
+            last_score = EXCLUDED.last_score,
+            last_phase = EXCLUDED.last_phase,
+            last_price = EXCLUDED.last_price; `,
                 [mint, data.firstSeenAt, data.lastAlertAt, data.lastScore, data.lastPhase, data.lastPrice || 0]
             );
         } catch (err) {
@@ -157,12 +267,12 @@ export class PostgresStorage {
         try {
             for (const t of trends) {
                 await this.pool.query(
-                    `INSERT INTO trends (id, phrase, source, metrics, trend_score, last_updated)
-                     VALUES ($1, $2, $3, $4, $5, $6)
-                     ON CONFLICT (phrase) DO UPDATE SET
-                        trend_score = EXCLUDED.trend_score,
-                        metrics = EXCLUDED.metrics,
-                        last_updated = EXCLUDED.last_updated;`,
+                    `INSERT INTO trends(id, phrase, source, metrics, trend_score, last_updated)
+        VALUES($1, $2, $3, $4, $5, $6)
+                     ON CONFLICT(phrase) DO UPDATE SET
+        trend_score = EXCLUDED.trend_score,
+            metrics = EXCLUDED.metrics,
+            last_updated = EXCLUDED.last_updated; `,
                     [t.id, t.phrase, t.source, JSON.stringify(t.metrics), t.trendScore, t.lastUpdated]
                 );
             }
