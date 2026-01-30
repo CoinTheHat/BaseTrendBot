@@ -85,7 +85,7 @@ async function main() {
 
     // 6. Performance & Dashboard
     const performanceJob = new PerformanceMonitorJob(storage, dexScreener);
-    const dashboard = new DashboardServer(storage, process.env.PORT ? parseInt(process.env.PORT) : 3000);
+    const dashboard = new DashboardServer(storage); // Railway auto-sets PORT env var
 
     performanceJob.start();
     dashboard.start();

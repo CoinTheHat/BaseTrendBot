@@ -9,7 +9,7 @@ export class DashboardServer {
 
     constructor(private storage: PostgresStorage, port: number = 3000) {
         this.app = express();
-        this.port = process.env.PORT || port;
+        this.port = process.env.PORT ? parseInt(process.env.PORT) : port;
 
         // Setup EJS
         this.app.set('view engine', 'ejs');
@@ -42,8 +42,9 @@ export class DashboardServer {
     }
 
     start() {
-        this.app.listen(this.port, () => {
-            logger.info(`[Dashboard] Server running at http://localhost:${this.port}/dashboard`);
+        const host = '0.0.0.0'; // CRITICAL: Railway requires binding to 0.0.0.0, not localhost
+        this.app.listen(this.port, host, () => {
+            logger.info(`[Dashboard] Server running on port ${this.port} (accessible via Railway domain)`);
         });
     }
 }
