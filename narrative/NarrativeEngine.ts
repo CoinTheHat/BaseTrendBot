@@ -38,24 +38,29 @@ export class NarrativeEngine {
             `• MC: $${(token.marketCapUsd || 0).toLocaleString()}\n` +
             `• Liq: $${(token.liquidityUsd ?? 0).toLocaleString()}\n` +
             `• Vol (5m): $${(token.volume5mUsd ?? 0).toLocaleString()}\n` +
-            `• Buyers (5m): ${token.buyers5m ?? 'N/A'}\n` +
+            `• Buyers (5m): ${token.buyers5m ?? 'Veri Alınamadı'}\n` +
             `• ${twitterStatus}`;
 
         // PRE-FILTERING (User Request)
         const isLowLiquidity = (token.liquidityUsd || 0) < 5000;
         const hasNoTweets = recentTweets.length === 0;
 
-        if (isLowLiquidity || hasNoTweets) {
+        // EXCEPTION: If Liquidity > $20k, force AI even if no tweets (Technical Analysis)
+        const isHighLiqTrace = (token.liquidityUsd || 0) > 20000;
+
+        const shouldSkipAI = isLowLiquidity || (hasNoTweets && !isHighLiqTrace);
+
+        if (shouldSkipAI) {
             // SKIP AI
             intro = `⚠️ **Early Stage / High Risk** ($${symbol})`;
             narrativeText = `${caLine}${intro}\n\n`;
             narrativeText += `⚠️ **AI Analizi Atlandı:**\n`;
             if (isLowLiquidity) narrativeText += `• Likidite çok düşük (<$5k).\n`;
-            if (hasNoTweets) narrativeText += `• Twitter verisi bulunamadı.\n`;
+            if (hasNoTweets) narrativeText += `• Twitter verisi bulunamadı ve Likidite eşik altı (<$20k).\n`;
 
             narrativeText += `\n🚫 **Karar:** UZAK DUR (Otomatik)`;
             finalAiScore = 2; // Low score
-            finalAiReason = isLowLiquidity ? "Low Liquidity" : "No Socials";
+            finalAiReason = isLowLiquidity ? "Low Liquidity" : "No Socials & Low Liq";
             vibeCheck = "Ghost Town 👻";
 
         } else {
@@ -95,7 +100,8 @@ export class NarrativeEngine {
                 else if (finalAiScore >= 5) recEmoji = '⚠️';
                 else recEmoji = '🚫';
 
-                narrativeText += `\n${recEmoji} **Karar:** ${recommendation}`;
+                narrativeText += `\n🎯 **AI PUANI:** ${finalAiScore}/10\n`;
+                narrativeText += `${recEmoji} **Karar:** ${recommendation}`;
                 if (advice) narrativeText += `\n💬 **AI Tavsiyesi:** ${advice}`;
             } else {
                 // AI Failed
@@ -117,7 +123,7 @@ export class NarrativeEngine {
 
         return {
             narrativeText,
-            dataSection,
+            dataSection: dataSection.replace('N/A', 'Veri Alınamadı'), // Quick fix for text processing if needed, but better to handle upstream
             tradeLens,
             vibeCheck,
             aiScore: finalAiScore,

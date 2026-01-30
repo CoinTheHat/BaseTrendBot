@@ -83,8 +83,8 @@ export class AlphaSearchService {
 
             if (account) {
                 // Take a chunk for this worker
-                // User requested 10-20 per account. Let's do 10.
-                const batchSize = 10;
+                // User requested Batch Size = 2 (Reduced from 10 to avoid CPU load)
+                const batchSize = 2;
                 const chunk = queue.splice(0, batchSize);
 
                 if (chunk.length > 0) {
@@ -106,9 +106,10 @@ export class AlphaSearchService {
                 break;
             }
 
-            // If queue has items but no account, wait a bit
+            // If queue has items but no account, wait 30s as requested
             if (queue.length > 0 && !account) {
-                await new Promise(r => setTimeout(r, 2000));
+                logger.info(`[AlphaQueue] ⏳ All accounts busy/cooling. Queue: ${queue.length}. Waiting 30s...`);
+                await new Promise(r => setTimeout(r, 30000));
             }
         }
 
