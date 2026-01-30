@@ -131,15 +131,23 @@ export class TokenScanJob {
             // ⚠️ PRE-FETCH ALPHA (BATCH MODE) ⚠️
             // Identify tokens that need Twitter Scan (Stricter Filters)
             // Identify tokens that need Twitter Scan (Smart Resource Management)
+            // ⚠️ GOURMET FILTER (High Conviction Only) ⚠️
             const alphaCandidates = freshCandidates.filter(t => {
                 const vol5m = t.volume5mUsd || 0;
                 const liq = t.liquidityUsd || 0;
+                const mc = t.marketCapUsd || 1; // Avoid divide by zero
 
-                // User Request: Liq > $10k OR 1m Vol > $2k (Proxy: 5m Vol > $10k)
-                const isHighLiq = liq > 10000;
-                const isHighVelocity = vol5m > 10000;
+                // 1. Strict Liquidity Floor: $15,000 (Avoid Micro-Caps)
+                const isLiquid = liq > 15000;
 
-                return isHighLiq || isHighVelocity;
+                // 2. Volume/MC Ratio: > 20% (Must have real velocity, not just static MC)
+                const volumeRatio = vol5m / mc;
+                const isHighVelocity = volumeRatio > 0.20;
+
+                // EXCEPTIONAL CASE: If Volume 5m > $50k, pass regardless of MC ratio (Whale Ape)
+                const isWhaleVolume = vol5m > 50000;
+
+                return isLiquid && (isHighVelocity || isWhaleVolume);
             });
 
             const alphaMap = new Map<string, any>();
@@ -275,7 +283,7 @@ export class TokenScanJob {
                                     if (alphaResult.isSuperAlpha) narrative.narrativeText = "🚀 **SUPER ALPHA — HIGH MOMENTUM** 🚀\n" + narrative.narrativeText;
                                 }
 
-                                // 🛡️ GATEKEEPER: AI Score Check
+                                // 🛡️ GOURMET GATEKEEPER: AI Score Check
                                 const aiScore = narrative.aiScore;
                                 const vibeCheck = narrative.vibeCheck || '';
 
@@ -285,25 +293,25 @@ export class TokenScanJob {
                                     return; // Skip this token completely
                                 }
 
-                                // Score Threshold: Only send to Telegram if >= 5
-                                if (aiScore < 5) {
-                                    const reason = narrative.aiReason ? narrative.aiReason.substring(0, 50) + "..." : "Low conviction";
-                                    logger.warn(`[SILENT] ${enrichedToken.symbol} processed but rejected. Score: ${aiScore} | Reason: ${reason}`);
+                                // GOURMET THRESHOLD: Only send to Telegram if Score >= 7
+                                if (aiScore < 7) {
+                                    const reason = narrative.aiReason ? narrative.aiReason.substring(0, 50) + "..." : "Score < 7 (Gourmet Filter)";
+                                    logger.info(`[SILENT] ${enrichedToken.symbol} processed but rejected. Score: ${aiScore}/10 | Reason: ${reason}`);
 
-                                    // Save to DB but don't alert (Silent Process)
+                                    // Save to DB (Silent Process)
                                     await this.storage.saveSeenToken(enrichedToken.mint, {
                                         firstSeenAt: Date.now(),
                                         lastAlertAt: 0,
                                         lastScore: aiScore,
-                                        lastPhase: 'REJECTED'
+                                        lastPhase: 'REJECTED_LOW_SCORE'
                                     });
                                 } else {
-                                    // PASSED: Score is valid and >= 5
+                                    // PASSED: Score is valid and >= 7 (High Conviction)
                                     await this.bot.sendAlert(narrative, enrichedToken, scoreRes);
-                                    await this.twitter.postTweet(narrative, enrichedToken);
+                                    if (aiScore >= 8) await this.twitter.postTweet(narrative, enrichedToken); // Only tweet absolute bangers
                                     await this.cooldown.recordAlert(enrichedToken.mint, scoreRes.totalScore, phase);
 
-                                    logger.info(`[PASSED] ${enrichedToken.symbol} sent to Telegram. AI Score: ${aiScore}`);
+                                    logger.info(`[PASSED] ${enrichedToken.symbol} SENT to Telegram. AI Score: ${aiScore} (Gourmet Mode)`);
                                 }
                             } else {
                                 logger.info(`[Job] Skipped alert for ${token.symbol}: ${reason}`);

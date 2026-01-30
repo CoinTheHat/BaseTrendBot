@@ -45,6 +45,7 @@ Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. 
 - Likidite: $${token.liquidityUsd}
 - Market Cap: $${token.marketCapUsd}
 - Hacim (5dk): $${token.volume5mUsd}
+- Top 10 Holder: ${token.top10HoldersSupply ? token.top10HoldersSupply.toFixed(2) + '%' : 'Bilinmiyor'}
 - Twitter Kontext:
 (Kullanıcı mesajında eklidir)
 
@@ -55,7 +56,7 @@ JSON formatında derinlemesine ve yapılandırılmış bir analiz sun. TÜM ÇIK
 1. **Analist Özeti**: Bu token neden radarımızda? (2-3 cümle ile özetle)
 2. **Teknik Görünüm**: Likidite/MC oranını analiz et. Hacim organik mi? Likidite, piyasa değerini destekliyor mu?
 3. **Sosyal Vibe**: Tweetler bot gibi mi yoksa gerçek bir topluluk mu var? Kimler konuşuyor?
-4. **Risk Analizi**: Geliştirici cüzdan hareketleri, likidite kilidi veya dağılım risklerini belirt.
+4. **Risk Analizi**: Eğer Top 10 Holder oranı %30'un üzerindeyse "YÜKSEK BALİNA RİSKİ" uyarısı ver. Rug pull ihtimalini değerlendir.
 5. **Strateji**: Net bir aksiyon öner (Örn: "Düşüşü bekle", "Ufak bir miktar gir", "Uzak dur").
 6. **Puan (0-10)**:
    - 0-4: Çöp / Rug Riski
@@ -98,6 +99,7 @@ JSON formatında derinlemesine ve yapılandırılmış bir analiz sun. TÜM ÇIK
             - Likidite: $${token.liquidityUsd}
             - Market Cap: $${token.marketCapUsd}
             - Hacim (5dk): $${token.volume5mUsd}
+            - Top 10 Holder: ${token.top10HoldersSupply ? token.top10HoldersSupply.toFixed(2) + '%' : 'Bilinmiyor'}
 
             Sosyal veri olmasa bile teknik bir strateji ve görünüm sun.
             
