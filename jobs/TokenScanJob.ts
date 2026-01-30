@@ -132,7 +132,7 @@ export class TokenScanJob {
             const chunks = this.chunkArray(freshCandidates, 5);
 
             for (const chunk of chunks) {
-                logger.info(`[Job] Processing batch of ${chunk.length} tokens: ${chunk.map(t => t.symbol).join(', ')}`);
+                // logger.info(`[Job] Processing batch of ${chunk.length} tokens: ${chunk.map(t => t.symbol).join(', ')}`);
 
                 await Promise.all(chunk.map(async (token) => {
                     try {
@@ -181,7 +181,7 @@ export class TokenScanJob {
                         // Strategy: Only deeper process if meme matches OR is Alpha
                         if (!matchResult.memeMatch) return;
 
-                        logger.info(`[Discovery] MATCH: ${token.symbol} matches '${matchResult.matchedMeme?.phrase}'`);
+                        // logger.info(`[Discovery] MATCH: ${token.symbol} matches '${matchResult.matchedMeme?.phrase}'`);
 
                         // 3. Enrich (Birdeye) - selectively
                         const [enrichedToken] = await this.birdeye.enrichTokens([token]);
@@ -213,7 +213,7 @@ export class TokenScanJob {
                                             tweets = alphaResult.tweets;
                                             logger.info(`[Job] Using ${tweets.length} Alpha tweets for analysis.`);
                                         } else {
-                                            logger.info(`[Job] Scraping Twitter for ${enrichedToken.symbol}...`);
+                                            // logger.info(`[Job] Scraping Twitter for ${enrichedToken.symbol}...`);
                                             const queries = QueryBuilder.build(enrichedToken.name, enrichedToken.symbol);
                                             tweets = await this.scraper.fetchTokenTweets(queries);
                                         }
@@ -223,7 +223,8 @@ export class TokenScanJob {
                                 }
 
                                 if (!tweets || tweets.length === 0) {
-                                    logger.warn(`[SKIPPED] No Twitter data for ${enrichedToken.symbol}. AI Analysis skipped.`);
+                                    logger.info(`[Job] No Twitter data for ${enrichedToken.symbol}. Proceeding with Volume/Trend scoring...`);
+                                    // Add a dummy tweet to signal "No Data" to AI if needed, or rely on empty array
                                 }
 
                                 // Generate Narrative (Async, with AI Analysis if tweets exist)
