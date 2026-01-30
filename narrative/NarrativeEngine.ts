@@ -15,8 +15,7 @@ export class NarrativeEngine {
             memeName = `${token.name} (${symbol})`;
         }
 
-        // PREPEND CA (User Request)
-        const caLine = `📋 CA: \`${token.mint}\`\n\n`;
+        // CA Line moved to inline generation for better placement
 
         // 1. Narrative Context (Clean & Professional)
         let intro = `**${memeName}** is gaining traction.`;
@@ -53,7 +52,11 @@ export class NarrativeEngine {
         if (shouldSkipAI) {
             // SKIP AI
             intro = `⚠️ **Early Stage / High Risk** ($${symbol})`;
-            narrativeText = `${caLine}${intro}\n\n`;
+
+            narrativeText = `${intro}\n`;
+            narrativeText += `🚨 **TOKEN:** $${symbol}\n`;
+            narrativeText += `📋 **CA:** \`${token.mint}\`\n\n`;
+
             narrativeText += `⚠️ **AI Analizi Atlandı:**\n`;
             if (isLowLiquidity) narrativeText += `• Likidite çok düşük (<$5k).\n`;
             if (hasNoTweets) narrativeText += `• Twitter verisi bulunamadı ve Likidite eşik altı (<$20k).\n`;
@@ -78,30 +81,33 @@ export class NarrativeEngine {
 
                 // HEADER LOGIC (DISCIPLINE)
                 let headerPrefix = '';
-                let recEmoji = ''; // Initialize recEmoji here
+                // Removed explicit emoji var as it's part of the header string now
+
                 if (finalAiScore >= 9) {
-                    headerPrefix = `🔥 **GÜÇLÜ SİNYAL** 🔥 (Score: ${finalAiScore})`;
-                    recEmoji = '🚀';
+                    headerPrefix = `🔥 **GÜÇLÜ SİNYAL** • Puan: ${finalAiScore}/10`;
                 } else if (finalAiScore >= 7) {
-                    headerPrefix = `✨ **POTANSİYEL VAR** (Score: ${finalAiScore})`;
-                    recEmoji = '👀';
+                    headerPrefix = `✨ **POTANSİYEL VAR** • Puan: ${finalAiScore}/10`;
                 } else if (finalAiScore >= 5) {
-                    headerPrefix = `⚠️ **DİKKATLİ İZLE** (Score: ${finalAiScore})`;
-                    recEmoji = '⚖️';
+                    headerPrefix = `⚠️ **DİKKATLİ İZLE** • Puan: ${finalAiScore}/10`;
                 } else {
-                    headerPrefix = `🚫 **ZAYIF / RİSKLİ** (Score: ${finalAiScore})`;
-                    recEmoji = '🛑';
+                    headerPrefix = `🚫 **ZAYIF / RİSKLİ** • Puan: ${finalAiScore}/10`;
                 }
 
-                let header = ''; // Declare header here
+                let fullHeader = headerPrefix;
                 if (aiResult.headline) {
-                    header = `${headerPrefix}\n**${aiResult.headline}**`;
-                } else {
-                    header = headerPrefix;
+                    // Append headline if exists
+                    fullHeader += `\n**${aiResult.headline}**`;
                 }
 
-                // ASSEMBLE NEW TEMPLATE
-                narrativeText = `${caLine}\n${header}\n\n`;
+                // ASSEMBLE NEW TEMPLATE (CLEAN LOOK)
+                // 1. Header (Signal + Score)
+                narrativeText = `${fullHeader}\n`;
+
+                // 2. Token Identity
+                narrativeText += `🚨 **TOKEN:** $${symbol}\n`;
+                narrativeText += `📋 **CA:** \`${token.mint}\`\n\n`;
+
+                // 3. Analysis Body
                 narrativeText += `🧐 **ANALİST ÖZETİ:**\n${analystSummary}\n\n`;
 
                 // Add specific insights if available (Technical / Social)
@@ -115,12 +121,14 @@ export class NarrativeEngine {
                 const vibe = aiResult.vibe || 'Nötr';
                 vibeCheck = `${aiResult.displayEmoji} ${vibe}`;
 
-                // Add Score Line explicitly as requested (though it's in header now, better to keep the explicit line too)
-                narrativeText += `\n🎯 **AI PUANI:** ${finalAiScore}/10\n`;
+                // Removed redundant score line at bottom as requested
 
             } else {
                 // AI Failed
-                narrativeText = `${caLine}${intro}\n\n⚠️ AI Analizi başarısız oldu (Servis yok).`;
+                narrativeText = `${intro}\n`;
+                narrativeText += `🚨 **TOKEN:** $${symbol}\n`;
+                narrativeText += `📋 **CA:** \`${token.mint}\`\n\n`;
+                narrativeText += `⚠️ AI Analizi başarısız oldu (Servis yok).`;
             }
         }
 
