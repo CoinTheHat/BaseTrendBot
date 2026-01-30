@@ -1,7 +1,9 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import axios from 'axios';
 import { config } from '../config/env';
 import { logger } from '../utils/Logger';
 import { TokenSnapshot } from '../models/types';
+
 
 export interface AIAnalysisResult {
     headline: string;
@@ -180,46 +182,59 @@ Sosyal veri olmasa bile teknik bir strateji ve görünüm sun.
 
     // PRIMARY: Gemini-1.5-Flash with Key Rotation
     private async callGeminiFlash(systemPrompt: string, userContent: string, symbol: string): Promise<any | null> {
-        const model = 'gemini-1.5-flash'; // Simple version (no -latest suffix)
+        let modelTimeout = 'gemini-1.5-flash-001'; // Stable version
         const prompt = systemPrompt + "\n\n" + userContent;
         const maxAttempts = Math.min(this.keyManager.getTotalKeys(), 3); // Try up to 3 keys
 
-        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        for (let i = 0; i < maxAttempts; i++) {
             const keyInfo = this.keyManager.getNextKey();
             if (!keyInfo) {
-                logger.warn(`[Gemini-Flash] No available keys for $${symbol} (all in cooldown)`);
+                logger.warn(`[Gemini-Flash] No available keys (all in cooldown).`);
                 return null;
             }
 
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${keyInfo.key}`;
             try {
-                logger.info(`[Gemini-Flash] Attempt ${attempt + 1} with Key #${keyInfo.index + 1} for $${symbol}`);
-                const response = await axios.post(url, {
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: { responseMimeType: "application/json" }
-                }, { timeout: 15000 });
+                logger.info(`[Gemini-Flash] Attempt ${i + 1} with Key #${keyInfo.index + 1} for ${symbol} using ${modelTimeout}`);
 
-                const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (!text) throw new Error('Empty response from Gemini');
-                return JSON.parse(text);
+                const genAI = new GoogleGenerativeAI(keyInfo.key);
+                const model = genAI.getGenerativeModel({ model: modelTimeout });
+
+                const result = await model.generateContent(prompt);
+                const response = result.response;
+                const text = response.text();
+
+                // Clean JSON
+                const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
+                return JSON.parse(cleanText);
 
             } catch (error: any) {
-                const status = error.response?.status;
-                const errorMsg = error.response?.data?.error?.message || error.message;
-
-                if (status === 429) {
-                    logger.warn(`[Gemini-Flash] Key #${keyInfo.index + 1} RATE LIMITED (429). Cooling down 60s, rotating to next key...`);
-                    this.keyManager.markCooldown(keyInfo.key);
-                    continue; // Try next key
+                // If 404/Not Found, try fallback model 'gemini-pro' immediately
+                if (error.message?.includes('404') || error.message?.includes('not found')) {
+                    logger.warn(`[Gemini-Flash] Model ${modelTimeout} not found (404). Trying 'gemini-pro' fallback...`);
+                    try {
+                        const genAI = new GoogleGenerativeAI(keyInfo.key); // Use same key
+                        const fallbackModel = genAI.getGenerativeModel({ model: 'gemini-pro' });
+                        const result = await fallbackModel.generateContent(prompt);
+                        const cleanText = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+                        logger.info(`[Gemini-Flash] Fallback to 'gemini-pro' successful for ${symbol}`);
+                        return JSON.parse(cleanText);
+                    } catch (fallbackError) {
+                        logger.error(`[Gemini-Flash] Fallback model also failed:`, fallbackError);
+                        // Continue to rotate keys/models if needed, or mark cooldown
+                    }
                 }
 
-                // Other errors - don't retry with same model
-                logger.warn(`[Gemini-Flash] Error with Key #${keyInfo.index + 1}: ${status} - ${errorMsg}`);
-                return null;
+                if (error.status === 429 || error.message?.includes('429')) {
+                    logger.warn(`[Gemini-Flash] Rate Limit on Key #${keyInfo.index + 1}. Rotate...`);
+                    this.keyManager.markCooldown(keyInfo.key);
+                    continue; // Try next key
+                } else {
+                    logger.warn(`[Gemini-Flash] Error with Key #${keyInfo.index + 1}: ${error.message}`);
+                }
             }
         }
 
-        logger.warn(`[Gemini-Flash] All keys exhausted for $${symbol}`);
+        logger.warn(`[Gemini-Flash] All attempts failed for $${symbol}`);
         return null;
     }
 
