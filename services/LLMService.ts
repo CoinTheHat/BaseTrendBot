@@ -42,10 +42,10 @@ export class LLMService {
         const { systemPrompt, userContent } = this.buildPrompt(token, tweets, hasTweets);
 
         try {
-            logger.info(`[xAI Grok] Analyzing $${token.symbol} with ${config.XAI_MODEL}...`);
+            logger.info(`[xAI Grok] Analyzing $${token.symbol} with ${config.XAI_MODEL || 'grok-2-latest'}...`);
 
             const completion = await this.xai.chat.completions.create({
-                model: config.XAI_MODEL,
+                model: config.XAI_MODEL || "grok-2-latest", // Cost optimized model
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userContent }

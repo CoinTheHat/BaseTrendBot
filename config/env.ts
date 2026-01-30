@@ -27,7 +27,7 @@ export const config = {
 
     // Primary Engine: xAI (Grok)
     XAI_API_KEY: process.env.XAI_API_KEY || process.env.GROK_API_KEY || '',
-    XAI_MODEL: 'grok-4-latest',
+    XAI_MODEL: 'grok-2-latest',
 
     // Dashboard Security
     DASHBOARD_USER: process.env.DASHBOARD_USER || 'admin',
