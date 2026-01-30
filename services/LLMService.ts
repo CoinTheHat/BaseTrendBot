@@ -11,26 +11,31 @@ export interface AIAnalysisResult {
     score: number; // 0-10
     verdict: 'APE' | 'WATCH' | 'FADE';
     displayEmoji: string;
+    recommendation?: string;
+    advice?: string;
+    vibe?: string;
 }
 
 export class LLMService {
+    private keyManager: GeminiKeyManager;
 
-    constructor() { }
+    constructor() {
+        this.keyManager = new GeminiKeyManager(config.GEMINI_KEYS);
+    }
 
     async analyzeToken(symbol: string, tweets: string[], tokenStats?: string): Promise<AIAnalysisResult | null> {
-        // Prioritize Gemini if available (Free), else OpenAI
-        const useGemini = !!config.GEMINI_API_KEY;
-
-        if (!config.OPENAI_API_KEY && !config.GEMINI_API_KEY) {
-            logger.warn('[LLM] No API Key (OpenAI or Gemini) provided. Skipping AI analysis.');
-            return null;
-        }
+        // Validation: Pre-check is done in NarrativeEngine usually, but we safeguard here too.
+        // If caller passed 0 tweets, we treat it as technical analysis or skip if strictly required.
+        // User requested: "Likiditesi $5,000 altı olan veya 0 tweeti olan tokenları bu modellerin hiçbirine gönderme"
+        // Since we only get 'tokenStats' string here, we rely on the caller (NarrativeEngine) to filter Liquidity.
+        // We CAN check tweets length here though.
 
         const hasTweets = tweets.length > 0;
 
         let systemPrompt = '';
         let userContent = '';
 
+        // Standardized Prompt Construction
         if (hasTweets) {
             systemPrompt = `
         You are an elite Crypto Degen Detective and Risk Analyst.
@@ -47,16 +52,15 @@ export class LLMService {
         IMMEDIATELY set score < 3 and recommend UZAK DUR. Do not be fooled by high volume.
 
         Output Rules:
-        - ALL text must be in TURKISH except technical terms (Honeypot, Rugpull, Liquidity, etc.)
-        - Write naturally like a crypto analyst talking to a Turkish trader
+        - ALL text must be in TURKISH
         - Based on your score (0-10), provide specific recommendation:
           * 8-10: "GÜÇLÜ ALINABİLİR" with optimistic comment
           * 5-7: "DİKKATLİ İZLE" with cautious comment  
           * 0-4: "UZAK DUR" with warning
 
-        Output strictly these JSON fields (in Turkish):
+        Output strictly these JSON fields:
         {
-            "headline": "Short, punchy title (e.g. '🚨 GEM BULUNDU: $SYMBOL', '⚠️ RUG UYARISI', '💎 GÜVENLİ OYNATMA')",
+            "headline": "Short, punchy title (e.g. '🚨 GEM BULUNDU', '⚠️ RUG UYARISI')",
             "narrative": "Token'ın ruhunu ve karakterini anlatan tek cümle.",
             "analysis": [
                 "Neden yükseliyor - sosyal kanıt",
@@ -64,162 +68,225 @@ export class LLMService {
             ],
             "riskLevel": "LOW" | "MEDIUM" | "HIGH" | "DANGEROUS",
             "riskReason": "Spesifik uyarı veya güven nedeni.",
-            "score": 8, // 0-10 Integer based on your conviction (10 = Kesinlikle Al, 0 = Scam)
+            "score": 8, // 0-10 Integer
             "recommendation": "GÜÇLÜ ALINABİLİR" | "DİKKATLİ İZLE" | "UZAK DUR",
             "advice": "1 cümlelik kısa tavsiye (e.g. 'Sosyal medya patlıyor, trendin başındayız.')",
-            "vibe": "Token'ın ruh hali ve karakter analizi (e.g. 'Agresif ama riskli bir topluluk hareketi')",
+            "vibe": "Token'ın ruh hali (e.g. 'Agresif', 'Eğlenceli')",
             "displayEmoji": "🔥" | "💩" | "👀"
         }
         `;
-
-            userContent = `Tweets:\n${tweets.slice(0, 15).map(t => `- ${t.replace(/\n/g, ' ')}`).join('\n')}`;
+            userContent = `Tweets:\n${tweets.slice(0, 15).map(t => `- ${t.replace(/\n/g, ' ')}`).join('\n')}\n\nStats:\n${tokenStats || ''}`;
 
         } else {
-            // FALLBACK: No Twitter Data - Technical Only Analysis
-            logger.info(`[LLM] No tweets for $${symbol}. using Technical Fallback Analysis.`);
-
+            // Technical Analysis Fallback
             systemPrompt = `
             You are a Risk Analyst for Memecoins. 
             We have NO social data (Twitter) for the token "$${symbol}".
-            You must analyze the risk based PURELY on the provided technical statistics (Market Cap, Liquidity, Volume, etc.).
+            Analyze risk based PURELY on technicals.
 
             Statistics:
             ${tokenStats || 'No technical data provided.'}
 
-            Output Rules:
-            - ALL text must be in TURKISH except technical terms
-            - Be skeptical about tokens without social proof
-            - Based on score, provide recommendation:
-              * 8-10: "GÜÇLÜ ALINABİLİR" (very rare without socials)
-              * 5-7: "DİKKATLİ İZLE" 
-              * 0-4: "UZAK DUR"
-
-            Output strict JSON (in Turkish):
+            Output Strict JSON (Turkish):
             {
-                "headline": "Teknik Analiz Başlığı (e.g. '⚠️ SOSYAL YOK - YÜKSEK RİSK', '📊 HACİM PATLAMASI')",
-                "narrative": "Teknik durumun tek cümlelik özeti.",
-                "analysis": [
-                    "Hacim/Likidite gözlemi",
-                    "Sosyal kanıt eksikliği riski"
-                ],
+                "headline": "⚠️ TUNNEL VISION (NO SOCIALS)",
+                "narrative": "Sadece teknik verilere dayalı analiz.",
+                "analysis": ["Hacim ve Likidite durumu"],
                 "riskLevel": "HIGH", 
-                "riskReason": "Sosyal veri bulunamadı.",
-                "score": 4, // Cap score at 5 for unknowns, unless metrics are insane.
+                "riskReason": "Sosyal veri yok.",
+                "score": 4, 
                 "recommendation": "DİKKATLİ İZLE",
-                "advice": "Hacim var ama sosyal kanıt yok, küçük test pozisyonu denenebilir.",
-                "vibe": "Sessiz bir token, kimse konuşmuyor ama hacim var",
+                "advice": "Sosyal kanıt yok, risk yüksek.",
+                "vibe": "Sessiz",
                 "displayEmoji": "🎲"
             }
             `;
-
             userContent = "Analyze this technical data.";
         }
 
-        try {
-            if (useGemini) {
-                // GEMINI API Implementation
-                // Ensure we don't accidentally use 'gpt-4o-mini' from env if user switched providers
-                let model = (config.AI_MODEL || '').trim();
-                if (!model || !model.startsWith('gemini')) {
-                    model = 'gemini-2.0-flash-exp'; // Try the newest experimental first
-                }
+        // ROUTING LOGIC
+        return await this.generateAnalysis(systemPrompt, userContent, symbol);
+    }
 
-                logger.info(`[LLM] Requesting Gemini Model: ${model}`);
+    private async generateAnalysis(systemPrompt: string, userContent: string, symbol: string): Promise<AIAnalysisResult | null> {
 
-                let result = await this.callGemini(model, systemPrompt + "\n\n" + userContent);
-
-                // Fallback Chain: 2.5-flash -> 3-preview -> 1.5-flash
-                if (!result) {
-                    const fallbacks = [
-                        'gemini-2.5-flash',
-                        'gemini-3-flash-preview',
-                        'gemini-1.5-flash',
-                        'gemini-1.5-pro'
-                    ];
-
-                    for (const fbModel of fallbacks) {
-                        if (fbModel === model) continue; // Skip if already tried
-
-                        logger.warn(`[LLM] Model ${model} failed. Retrying with '${fbModel}'...`);
-                        result = await this.callGemini(fbModel, systemPrompt + "\n\n" + userContent);
-                        if (result) {
-                            model = fbModel; // Update current success model
-                            break;
-                        }
-                    }
-                }
-
-                if (result) {
-                    // THROTTLE: Wait 3s after each request to avoid rate limits (20 requests/min = 3s interval)
-                    await new Promise(resolve => setTimeout(resolve, 3000));
-                    logger.info('[LLM] Throttle: Waited 3s to respect rate limits.');
-                    return this.normalizeResult(result);
-                }
-                return null;
-
-            } else {
-                // OPENAI Legacy Implementation
-                const response = await axios.post(
-                    'https://api.openai.com/v1/chat/completions',
-                    {
-                        model: config.AI_MODEL || 'gpt-4o-mini',
-                        messages: [
-                            { role: 'system', content: 'You are a JSON-only crypto analysis bot.' },
-                            { role: 'user', content: systemPrompt + "\n" + userContent }
-                        ],
-                        response_format: { type: "json_object" }
-                    },
-                    { headers: { 'Authorization': `Bearer ${config.OPENAI_API_KEY}` } }
+        // 1. Try GROQ (Primary)
+        if (config.GROQ_API_KEY) {
+            try {
+                logger.info(`[AI Router] Trying Primary: Groq (${config.GROQ_MODEL}) for $${symbol}`);
+                const result = await this.callOpenAICompatible(
+                    'https://api.groq.com/openai/v1/chat/completions',
+                    config.GROQ_API_KEY,
+                    config.GROQ_MODEL,
+                    systemPrompt,
+                    userContent
                 );
-                const content = response.data?.choices?.[0]?.message?.content;
-                const result = JSON.parse(content || '{}');
-                return this.normalizeResult(result);
+                if (result) return this.normalizeResult(result);
+            } catch (e: any) {
+                logger.warn(`[AI Router] Groq failed for $${symbol} (${e.message}), switching to DeepSeek...`);
             }
+        }
+
+        // 2. Try DEEPSEEK (Fallback)
+        if (config.DEEPSEEK_API_KEY) {
+            try {
+                logger.info(`[AI Router] Trying Fallback: DeepSeek (${config.DEEPSEEK_MODEL}) for $${symbol}`);
+                const result = await this.callOpenAICompatible(
+                    'https://api.deepseek.com/chat/completions',
+                    config.DEEPSEEK_API_KEY,
+                    config.DEEPSEEK_MODEL,
+                    systemPrompt,
+                    userContent
+                );
+                if (result) return this.normalizeResult(result);
+            } catch (e: any) {
+                logger.warn(`[AI Router] DeepSeek failed for $${symbol} (${e.message}), switching to Gemini...`);
+            }
+        }
+
+        // 3. Try GEMINI (Last Resort)
+        if (this.keyManager.hasKeys()) {
+            logger.info(`[AI Router] Trying Last Resort: Gemini for $${symbol}`);
+            // Use the existing rotating logic, but simplified call
+            const result = await this.tryGeminiWithRotation(config.AI_MODEL, systemPrompt, userContent, symbol);
+            if (result) return result; // Already normalized
+        }
+
+        logger.error(`[AI Router] All Providers Failed for $${symbol}`);
+        return null; // All failed
+    }
+
+    // Generic Helper for OpenAI-Compatible APIs (Groq, DeepSeek)
+    private async callOpenAICompatible(endpoint: string, apiKey: string, model: string, system: string, user: string): Promise<any | null> {
+        try {
+            const response = await axios.post(
+                endpoint,
+                {
+                    model: model,
+                    messages: [
+                        { role: 'system', content: system + "\n IMPORTANT: Return ONLY valid JSON." },
+                        { role: 'user', content: user }
+                    ],
+                    response_format: { type: "json_object" },
+                    temperature: 0.5
+                },
+                {
+                    headers: {
+                        'Authorization': `Bearer ${apiKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: 15000 // 15s timeout
+                }
+            );
+
+            const content = response.data?.choices?.[0]?.message?.content;
+            if (!content) throw new Error('Empty response from LLM');
+            return JSON.parse(content);
 
         } catch (error: any) {
-            if (error.response?.status === 429) {
-                logger.error(`[LLM] ❌ QUOTA EXCEEDED (429). Check billing.`);
-            } else {
-                logger.error(`[LLM] Analysis failed: ${error.message}`);
-            }
-            return null;
+            // Throw up to allow router to catch
+            throw new Error(error.response?.data?.error?.message || error.message);
         }
+    }
+
+    private async tryGeminiWithRotation(initialModel: string, systemPrompt: string, userContent: string, symbol: string): Promise<AIAnalysisResult | null> {
+        // Reuse existing rotation logic but adapt to return normalized result
+        const fallbacks = ['gemini-2.0-flash-exp', 'gemini-2.5-flash', 'gemini-1.5-flash'];
+        const uniqueModels = [...new Set([initialModel, ...fallbacks])];
+
+        for (const currentModel of uniqueModels) {
+            const result = await this.callGeminiAutoRotate(currentModel, systemPrompt + "\n\n" + userContent, symbol);
+            if (result) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                return this.normalizeResult(result);
+            }
+        }
+        return null;
+    }
+
+    private async callGeminiAutoRotate(model: string, prompt: string, symbol: string): Promise<any | null> {
+        const maxRetries = 2; // Reduced retries for last resort to fail fast
+        let attempts = 0;
+
+        while (attempts < maxRetries) {
+            const keyInfo = this.keyManager.getNextKey();
+            if (!keyInfo) {
+                logger.warn(`[LLM] Gemini: No available keys for $${symbol} (all cooled down or missing).`);
+                return null;
+            }
+
+            // logger.info(`[LLM] Gemini Key #${keyInfo.index + 1} (${model})`);
+
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${keyInfo.key}`;
+            try {
+                const response = await axios.post(url, {
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { responseMimeType: "application/json" }
+                }, { timeout: 15000 }); // 15s timeout
+                const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+                return text ? JSON.parse(text) : null;
+            } catch (error: any) {
+                const status = error.response?.status;
+                const errorMsg = error.response?.data?.error?.message || error.message;
+                if (status === 429) {
+                    logger.warn(`[LLM] Gemini Key #${keyInfo.index + 1} QUOTA EXCEEDED (429) for $${symbol}. Cooldown 60s.`);
+                    this.keyManager.markCooldown(keyInfo.key);
+                    attempts++;
+                    continue;
+                }
+                logger.warn(`[LLM] Gemini attempt (${model}) failed for $${symbol}: ${status} - ${errorMsg}`);
+                return null;
+            }
+        }
+        logger.warn(`[LLM] Gemini: Max retries exhausted for $${symbol} with model ${model}.`);
+        return null;
     }
 
     private normalizeResult(result: any): AIAnalysisResult {
         return {
-            headline: result.headline || `🚨 ANALYZING: $${config.AI_MODEL}`,
+            headline: result.headline || `🚨 ANALYZING: ${config.AI_MODEL}`,
             narrative: result.narrative || "Trend analizi yapılamadı.",
             analysis: result.analysis || ["Veri yetersiz."],
             riskLevel: result.riskLevel || 'MEDIUM',
             riskReason: result.riskReason || '',
             score: typeof result.score === 'number' ? result.score : 5,
             verdict: result.verdict || 'WATCH',
-            displayEmoji: result.displayEmoji || '🤖'
+            displayEmoji: result.displayEmoji || '🤖',
+            recommendation: result.recommendation || 'DİKKATLİ İZLE',
+            advice: result.advice || '',
+            vibe: result.vibe || ''
         };
     }
+}
 
-    private async callGemini(model: string, prompt: string): Promise<any | null> {
-        const apiKey = (config.GEMINI_API_KEY || '').trim();
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-        try {
-            const response = await axios.post(url, {
-                contents: [{
-                    parts: [{ text: prompt }]
-                }],
-                generationConfig: {
-                    responseMimeType: "application/json"
-                }
-            });
-            const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-            return text ? JSON.parse(text) : null;
-        } catch (error: any) {
-            const status = error.response?.status;
-            const data = error.response?.data;
-            const errorMsg = data?.error?.message || error.message;
+class GeminiKeyManager {
+    private keys: string[];
+    private currentIndex: number = 0;
+    private cooldowns: Map<string, number> = new Map(); // Key -> Cooldown Expiry Timestamp
 
-            logger.warn(`[LLM] Gemini attempt (${model}) failed: ${status} - ${errorMsg}`);
-            return null;
+    constructor(keys: string[]) {
+        this.keys = keys;
+    }
+
+    hasKeys(): boolean {
+        return this.keys.length > 0;
+    }
+
+    getNextKey(): { key: string, index: number } | null {
+        if (this.keys.length === 0) return null;
+        const now = Date.now();
+        for (let i = 0; i < this.keys.length; i++) {
+            const ptr = (this.currentIndex + i) % this.keys.length;
+            const key = this.keys[ptr];
+            if (now > (this.cooldowns.get(key) || 0)) {
+                this.currentIndex = (ptr + 1) % this.keys.length;
+                return { key, index: ptr };
+            }
         }
+        return null;
+    }
+
+    markCooldown(key: string) {
+        this.cooldowns.set(key, Date.now() + 60000);
     }
 }

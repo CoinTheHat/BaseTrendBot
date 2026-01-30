@@ -15,6 +15,9 @@ export class NarrativeEngine {
             memeName = `${token.name} (${symbol})`;
         }
 
+        // PREPEND CA (User Request)
+        const caLine = `📋 CA: \`${token.mint}\`\n\n`;
+
         // 1. Narrative Context (Clean & Professional)
         let intro = `**${memeName}** is gaining traction.`;
         if (match.matchedMeme?.tags?.includes('ALPHA')) {
@@ -23,11 +26,13 @@ export class NarrativeEngine {
             intro = `💎 **$${symbol}** matched via Watchlist.`;
         }
 
-        let narrativeText = `${intro}\n`;
+        let narrativeText = ""; // Will build this up
         let vibeCheck = "Analyzing...";
         let aiRisk = "";
+        let finalAiScore: number | undefined = undefined;
+        let finalAiReason: string | undefined = undefined;
 
-        // 3. Data Section (Moved up for AI Context)
+        // 3. Data Section
         const twitterStatus = recentTweets.length > 0 ? `✅ Twitter Data: ${recentTweets.length} tweets` : '⚠️ Twitter Data: None';
         const dataSection =
             `• MC: $${(token.marketCapUsd || 0).toLocaleString()}\n` +
@@ -36,45 +41,67 @@ export class NarrativeEngine {
             `• Buyers (5m): ${token.buyers5m ?? 'N/A'}\n` +
             `• ${twitterStatus}`;
 
-        let aiResult: any = null;
+        // PRE-FILTERING (User Request)
+        const isLowLiquidity = (token.liquidityUsd || 0) < 5000;
+        const hasNoTweets = recentTweets.length === 0;
 
-        // 2. AI Analysis (Always run - fallback implemented in LLMService)
-        // if (recentTweets.length > 0) { // Check removed
-        aiResult = await this.llm.analyzeToken(symbol, recentTweets, dataSection);
+        if (isLowLiquidity || hasNoTweets) {
+            // SKIP AI
+            intro = `⚠️ **Early Stage / High Risk** ($${symbol})`;
+            narrativeText = `${caLine}${intro}\n\n`;
+            narrativeText += `⚠️ **AI Analizi Atlandı:**\n`;
+            if (isLowLiquidity) narrativeText += `• Likidite çok düşük (<$5k).\n`;
+            if (hasNoTweets) narrativeText += `• Twitter verisi bulunamadı.\n`;
 
-        if (aiResult) {
-            // AI Override: Use AI's headline if provided, else keep intro
-            if (aiResult.headline) {
-                narrativeText = `**${aiResult.headline}**\n${intro}\n`;
-            }
+            narrativeText += `\n🚫 **Karar:** UZAK DUR (Otomatik)`;
+            finalAiScore = 2; // Low score
+            finalAiReason = isLowLiquidity ? "Low Liquidity" : "No Socials";
+            vibeCheck = "Ghost Town 👻";
 
-            narrativeText += `\n💡 **Neden Yükseliyor?**\n• ${aiResult.analysis.join('\n• ')}\n`;
+        } else {
+            // RUN AI
+            let aiResult = await this.llm.analyzeToken(symbol, recentTweets, dataSection);
 
-            // Vibe: Token's character and mood from AI
-            const vibe = aiResult.vibe || 'Analiz yapılıyor...';
-            vibeCheck = `${aiResult.displayEmoji} ${vibe}`;
+            if (aiResult) {
+                // AI Override: Use AI's headline if provided, else keep intro
+                let header = intro;
+                if (aiResult.headline) {
+                    header = `**${aiResult.headline}**`;
+                }
 
-            // Risk Analysis
-            if (aiResult.riskLevel === 'HIGH' || aiResult.riskLevel === 'DANGEROUS') {
-                aiRisk = `\n⚠️ **RİSK FAKTÖRLERİ:**\n${aiResult.riskReason}`;
+                // Assemble Text
+                narrativeText = `${caLine}${header}\n${aiResult.narrative}\n`;
+                narrativeText += `\n💡 **Neden Yükseliyor?**\n• ${aiResult.analysis.join('\n• ')}\n`;
+
+                // Vibe
+                const vibe = aiResult.vibe || 'Analiz yapılıyor...';
+                vibeCheck = `${aiResult.displayEmoji} ${vibe}`;
+
+                // Risk Analysis
+                if (aiResult.riskLevel === 'HIGH' || aiResult.riskLevel === 'DANGEROUS') {
+                    aiRisk = `\n⚠️ **RİSK FAKTÖRLERİ:**\n${aiResult.riskReason}`;
+                } else {
+                    aiRisk = `\n✅ **Risk Durumu:** ${aiResult.riskReason || 'Temiz görünüyor.'}`;
+                }
+
+                // Turkish Recommendation
+                const recommendation = aiResult.recommendation || 'DİKKATLİ İZLE';
+                const advice = aiResult.advice || '';
+                finalAiScore = aiResult.score;
+                finalAiReason = aiResult.riskReason;
+
+                let recEmoji = '⚠️';
+                if (finalAiScore >= 8) recEmoji = '🚀';
+                else if (finalAiScore >= 5) recEmoji = '⚠️';
+                else recEmoji = '🚫';
+
+                narrativeText += `\n${recEmoji} **Karar:** ${recommendation}`;
+                if (advice) narrativeText += `\n💬 **AI Tavsiyesi:** ${advice}`;
             } else {
-                aiRisk = `\n✅ **Risk Durumu:** ${aiResult.riskReason || 'Temiz görünüyor.'}`;
+                // AI Failed
+                narrativeText = `${caLine}${intro}\n\n⚠️ AI Analizi başarısız oldu (Servis yok).`;
             }
-
-            // Turkish Recommendation with score-based emoji
-            const recommendation = aiResult.recommendation || 'DİKKATLİ İZLE';
-            const advice = aiResult.advice || '';
-            const score = aiResult.score || 0;
-
-            let recEmoji = '⚠️';
-            if (score >= 8) recEmoji = '🚀';
-            else if (score >= 5) recEmoji = '⚠️';
-            else recEmoji = '🚫';
-
-            narrativeText += `\n${recEmoji} **Karar:** ${recommendation}`;
-            if (advice) narrativeText += `\n💬 **AI Tavsiyesi:** ${advice}`;
         }
-        // }
 
         // 4. Trade Lens
         let tradeLens = '';
@@ -93,8 +120,8 @@ export class NarrativeEngine {
             dataSection,
             tradeLens,
             vibeCheck,
-            aiScore: (recentTweets.length > 0 && typeof aiResult !== 'undefined') ? aiResult?.score : undefined,
-            aiReason: (recentTweets.length > 0 && typeof aiResult !== 'undefined') ? aiResult?.riskReason : undefined
+            aiScore: finalAiScore,
+            aiReason: finalAiReason
         };
     }
 }

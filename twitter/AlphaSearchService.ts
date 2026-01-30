@@ -1,3 +1,4 @@
+import { twitterAccountManager } from './TwitterAccountManager';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { logger } from '../utils/Logger';
@@ -13,137 +14,209 @@ export interface AlphaSearchResult {
     isSuperAlpha: boolean;
 }
 
+
+
+export interface AlphaSearchResult {
+    velocity: number; // Tweets in last 10 mins
+    uniqueAuthors: number; // Unique users
+    tweets: string[];
+    isEarlyAlpha: boolean;
+    isSuperAlpha: boolean;
+}
+
 export class AlphaSearchService {
     private browser: any = null;
+
+    constructor() {
+        // Pre-launch browser? Or lazy load. Lazy load is safer for stability.
+    }
+
+    private async ensureBrowser() {
+        if (this.browser) {
+            if (this.browser.isConnected()) return;
+            // If disconnected, kill and restart
+            try { await this.browser.close(); } catch (e) { }
+            this.browser = null;
+        }
+
+        this.browser = await puppeteer.launch({
+            headless: true,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--no-first-run',
+                '--no-zygote',
+                '--disable-gpu'
+            ]
+        });
+
+        logger.info('[AlphaHunter] 🌐 Main Browser Instance Launched.');
+    }
 
     /**
      * Checks if a token has "Early Alpha" momentum on Twitter.
      * Logic: Search Cashtag -> Filter Live -> Count tweets in last 10 mins.
+     * Uses: Browser Context Rotation (Single Browser, Multi Context)
      */
-    async checkAlpha(symbol: string): Promise<AlphaSearchResult> {
-        if (!config.ENABLE_TWITTER_SCRAPING) {
+    /**
+     * Parallel Batch Scraper (Worker Pool Pattern)
+     * Distributes tokens across available accounts.
+     */
+    async scanBatch(symbols: string[]): Promise<Map<string, AlphaSearchResult>> {
+        const results = new Map<string, AlphaSearchResult>();
+        if (!config.ENABLE_TWITTER_SCRAPING || symbols.length === 0) return results;
+
+        const queue = [...symbols];
+        const activeWorkers: Promise<void>[] = [];
+
+        // Ensure browser is ready
+        await this.ensureBrowser();
+
+        logger.info(`[AlphaHunter] Starting Batch Scan for ${symbols.length} tokens...`);
+
+        // Dynamic Worker Loop
+        while (queue.length > 0 || activeWorkers.length > 0) {
+            // Check for available accounts
+            const account = twitterAccountManager.getAvailableAccount();
+
+            if (account) {
+                // Take a chunk for this worker
+                // User requested 10-20 per account. Let's do 10.
+                const batchSize = 10;
+                const chunk = queue.splice(0, batchSize);
+
+                if (chunk.length > 0) {
+                    const workerPromise = this.processBatchWorker(account, chunk, results).then(() => {
+                        // Worker finished, remove from active list
+                        const idx = activeWorkers.indexOf(workerPromise);
+                        if (idx > -1) activeWorkers.splice(idx, 1);
+                    });
+                    activeWorkers.push(workerPromise);
+                } else {
+                    // Account claimed but queue empty, release immediately
+                    twitterAccountManager.releaseAccount(account.index, false);
+                }
+            }
+
+            // Main loop wait (if queue is empty but workers running, just wait for them)
+            if (queue.length === 0 && activeWorkers.length > 0) {
+                await Promise.all(activeWorkers);
+                break;
+            }
+
+            // If queue has items but no account, wait a bit
+            if (queue.length > 0 && !account) {
+                await new Promise(r => setTimeout(r, 2000));
+            }
+        }
+
+        return results;
+    }
+
+    private async processBatchWorker(account: any, symbols: string[], results: Map<string, AlphaSearchResult>) {
+        let context: any = null;
+        let page: any = null;
+        let rateLimited = false;
+
+        logger.info(`[AlphaHunter] Worker #${account.index + 1} starting batch of ${symbols.length} tokens.`);
+
+        try {
+            if (!this.browser) await this.ensureBrowser();
+
+            context = await this.browser.createBrowserContext();
+            page = await context.newPage();
+
+            await page.setUserAgent(account.userAgent);
+            await page.setCookie(
+                { name: 'auth_token', value: account.authToken, domain: '.twitter.com' },
+                { name: 'ct0', value: account.ct0, domain: '.twitter.com' }
+            );
+
+            // Sequential processing within this worker
+            for (const symbol of symbols) {
+                try {
+                    const result = await this.scrapeSingle(page, symbol);
+                    results.set(symbol, result);
+
+                    // Small tactical delay between searches in same session
+                    await new Promise(r => setTimeout(r, 2000 + Math.random() * 2000));
+                } catch (e: any) {
+                    if (e.message.includes('Rate limit') || e.message.includes('Too Many Requests')) {
+                        logger.warn(`[AlphaHunter] Worker #${account.index + 1} HIT RATE LIMIT.`);
+                        rateLimited = true;
+                        break; // Stop this batch
+                    }
+                    logger.error(`[AlphaHunter] Worker #${account.index + 1} failed on ${symbol}: ${e.message}`);
+                }
+            }
+
+        } catch (err: any) {
+            logger.error(`[AlphaHunter] Worker #${account.index + 1} Critial Error: ${err.message}`);
+        } finally {
+            if (context) {
+                try { await context.close(); } catch (e) { }
+            }
+            logger.info(`[AlphaHunter] Worker #${account.index + 1} finished. releasing (RateLimited: ${rateLimited})`);
+            twitterAccountManager.releaseAccount(account.index, rateLimited);
+        }
+    }
+
+    private async scrapeSingle(page: any, symbol: string): Promise<AlphaSearchResult> {
+        const cashtag = `$${symbol.toUpperCase()}`;
+        const query = `${cashtag}`;
+        const searchUrl = `https://twitter.com/search?q=${encodeURIComponent(query)}&f=live`;
+
+        try {
+            await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
+            await page.waitForSelector('article', { timeout: 5000 });
+        } catch (e: any) {
+            // Basic timeout / no results
+            // logger.debug(`[AlphaHunter] No results for ${cashtag}`);
             return { velocity: 0, uniqueAuthors: 0, tweets: [], isEarlyAlpha: false, isSuperAlpha: false };
         }
 
-        const cashtag = `$${symbol.toUpperCase()}`;
-        // Emergency: Simplified Query to reduce timeouts
-        const query = `${cashtag}`;
-        const searchUrl = `https://twitter.com/search?q=${encodeURIComponent(query)}&f=live`;
-        let velocity = 0;
-        let uniqueAuthors = 0;
-        let tweets: string[] = [];
+        // Check for "Retry" button or Rate Limit text?
+        // TODO: Implement precise rate limit detection from DOM if needed.
 
-        try {
-            // Random delay 2-5s to be safe
-            const delay = Math.floor(Math.random() * 3000) + 2000;
-            await new Promise(r => setTimeout(r, delay));
+        // Extraction
+        const tweetData: any[] = await page.evaluate(() => {
+            const now = Date.now();
+            const minutes10 = 10 * 60 * 1000;
+            const articles = Array.from(document.querySelectorAll('article'));
+            return articles.map(article => {
+                const timeEl = article.querySelector('time');
+                const textEl = article.querySelector('div[data-testid="tweetText"]');
+                const userEl = article.querySelector('div[data-testid="User-Name"] a');
+                if (!timeEl || !textEl) return null;
+                const timeStr = timeEl.getAttribute('datetime');
+                const text = textEl.textContent || "";
+                const handle = userEl ? userEl.getAttribute('href') : "unknown";
+                if (!timeStr) return null;
+                const timeVal = new Date(timeStr).getTime();
+                return {
+                    time: timeVal, text, handle,
+                    isRecent: (now - timeVal) < minutes10
+                };
+            }).filter(t => t !== null);
+        });
 
-            if (!this.browser) {
-                this.browser = await puppeteer.launch({
-                    headless: true,
-                    args: [
-                        '--no-sandbox',
-                        '--disable-setuid-sandbox',
-                        '--disable-dev-shm-usage',
-                        '--disable-accelerated-2d-canvas',
-                        '--no-first-run',
-                        '--no-zygote',
-                        '--disable-gpu'
-                    ]
-                });
-            }
-
-            const page = await this.browser.newPage();
-
-            // Fix: Check closed state wrapper
-            if (page.isClosed()) {
-                logger.warn('[AlphaHunter] Page closed unexpectedly, recreating...');
-            }
-
-            // Randomize User Agent (Mobile favored)
-            const uas = [
-                'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-                'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-                'Mozilla/5.0 (Linux; Android 13; SM-S908B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36'
-            ];
-            await page.setUserAgent(uas[Math.floor(Math.random() * uas.length)]);
-
-            // Fix: Wait Condition - 2s timeout for fast fail-over
-            await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 2000 });
-
-            // Fix: Selector Check - 2s timeout
-            try {
-                await page.waitForSelector('article', { timeout: 2000 });
-            } catch (e) {
-                logger.warn(`[AlphaHunter] No tweets found for ${cashtag} (Timeout)`);
-            }
-
-            // Extract Data
-            const tweetData: any[] = await page.evaluate(() => {
-                const now = Date.now();
-                const minutes10 = 10 * 60 * 1000;
-
-                const articles = Array.from(document.querySelectorAll('article'));
-
-                return articles.map(article => {
-                    const timeEl = article.querySelector('time');
-                    const textEl = article.querySelector('div[data-testid="tweetText"]');
-                    const userEl = article.querySelector('div[data-testid="User-Name"] a');
-
-                    if (!timeEl || !textEl) return null;
-
-                    const timeStr = timeEl.getAttribute('datetime');
-                    const text = textEl.textContent || "";
-                    const handle = userEl ? userEl.getAttribute('href') : "unknown";
-
-                    if (!timeStr) return null;
-
-                    const timeVal = new Date(timeStr).getTime();
-                    return {
-                        time: timeVal,
-                        text: text,
-                        handle: handle,
-                        isRecent: (now - timeVal) < minutes10
-                    };
-                }).filter(t => t !== null);
-            });
-
-            // Process Results
-            const recentTweets = tweetData.filter((t: any) => t.isRecent);
-            velocity = recentTweets.length;
-
-            // Unique Authors
-            const authors = new Set(recentTweets.map((t: any) => t.handle));
-            uniqueAuthors = authors.size;
-
-            tweets = recentTweets.map((t: any) => t.text);
-
-            await page.close();
-
-        } catch (err: any) {
-            const errorMsg = err.message || err.toString();
-            console.log(`[AlphaHunter] DEBUG: Error for ${cashtag}: ${errorMsg}`); // Direct console
-            logger.error(`[AlphaHunter] Error scanning ${cashtag}: ${errorMsg}. (Status: ${err.response?.status || 'Unknown'})`);
-            if (this.browser) {
-                await this.browser.close().catch(() => { });
-                this.browser = null; // Force restart next time
-            }
-        }
-
-        // Logic Revisions (Optimized for Early Detection):
-        // Early Alpha: >10 Unique Authors (Was 20 - Reduced for faster alerts)
-        // Super Alpha: >30 Unique Authors (High Momentum)
-        const isEarlyAlpha = uniqueAuthors >= 10;
-        const isSuperAlpha = uniqueAuthors >= 30;
-
-        logger.info(`[AlphaHunter] ${cashtag} Velocity: ${velocity}/10min (Unique: ${uniqueAuthors}). Alpha: ${isEarlyAlpha}`);
+        const recentTweets = tweetData.filter((t: any) => t.isRecent);
+        const authors = new Set(recentTweets.map((t: any) => t.handle));
 
         return {
-            velocity,
-            uniqueAuthors,
-            tweets,
-            isEarlyAlpha,
-            isSuperAlpha
+            velocity: recentTweets.length,
+            uniqueAuthors: authors.size,
+            tweets: recentTweets.map((t: any) => t.text),
+            isEarlyAlpha: authors.size >= 10,
+            isSuperAlpha: authors.size >= 30
         };
+    }
+
+    // Legacy wrapper
+    async checkAlpha(symbol: string): Promise<AlphaSearchResult> {
+        const map = await this.scanBatch([symbol]);
+        return map.get(symbol) || { velocity: 0, uniqueAuthors: 0, tweets: [], isEarlyAlpha: false, isSuperAlpha: false };
     }
 }

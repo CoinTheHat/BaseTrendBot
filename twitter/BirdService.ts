@@ -1,7 +1,7 @@
 import { exec } from 'child_process';
 import util from 'util';
 import { logger } from '../utils/Logger';
-import { config } from '../config/env';
+import { twitterAccountManager } from './TwitterAccountManager';
 
 const execAsync = util.promisify(exec);
 
@@ -26,24 +26,29 @@ export class BirdService {
      * Executes bird CLI search command
      */
     async search(query: string, limit: number = 20): Promise<BirdTweet[]> {
-        if (!config.TWITTER_AUTH_TOKEN || !config.TWITTER_CT0) {
-            logger.warn('[Bird] Missing credentials, skipping.');
+        const account = twitterAccountManager.getNextAccount();
+
+        if (!account) {
+            logger.warn('[Bird] No Twitter accounts available active in pool. Skipping.');
             return [];
         }
 
-        // Prepare Env with Tokens
+        // Prepare Env with Tokens from the rotated account
         const env = {
             ...process.env,
-            AUTH_TOKEN: config.TWITTER_AUTH_TOKEN,
-            CT0: config.TWITTER_CT0
+            AUTH_TOKEN: account.authToken,
+            CT0: account.ct0
         };
+
+        // Log rotation (Optional, but good for debug)
+        // logger.info(`[Bird] using Account #${account.index + 1}`); 
 
         // Escape inner double quotes AND dollar signs to prevent shell issues
         const safeQuery = query.replace(/"/g, '\\"').replace(/\$/g, '\\$');
         const cmd = `npx @steipete/bird search "${safeQuery}" --count ${limit} --json`;
 
         try {
-            logger.info(`[Bird] Searching: ${query}`);
+            logger.info(`[Bird] Searching: ${query} (Account #${account.index + 1})`);
             const { stdout } = await execAsync(cmd, { env, timeout: 10000 });
 
             try {
@@ -51,7 +56,7 @@ export class BirdService {
                 const rawData = JSON.parse(stdout);
 
                 // Debug: Log what we got
-                logger.info(`[Bird] RAW Output Length: ${stdout.length}. Is Array? ${Array.isArray(rawData)}. First item: ${JSON.stringify(rawData[0] || 'NONE')}`);
+                logger.debug(`[Bird] RAW Output Length: ${stdout.length}. Is Array? ${Array.isArray(rawData)}.`);
 
                 if (!Array.isArray(rawData)) {
                     logger.warn(`[Bird] Unexpected JSON structure: ${stdout.substring(0, 200)}`);
@@ -91,29 +96,28 @@ export class BirdService {
 
         } catch (err: any) {
             // Enhanced Error Logging for Diagnostics
-            logger.error(`[Bird] Command failed: ${err.message || err.toString()}`);
+            // logger.error(`[Bird] Command failed: ${err.message || err.toString()}`);
 
             // Try to extract status code if embedded in message or props
             const status = err.code || err.status || 'Unknown';
             const msg = err.message || err.toString();
 
             // Log detailed error info
-            if (err.response) {
-                logger.error(`[Bird API Status] Code: ${err.response.status}`);
-                logger.error(`[Bird API Data] Content: ${JSON.stringify(err.response.data).substring(0, 200)}`);
-            }
+            // if (err.response) {
+            //     logger.error(`[Bird API Status] Code: ${err.response.status}`);
+            // }
 
             // Log stdout/stderr if available (CLI errors)
             if (err.stdout) logger.warn(`[Bird STDOUT]: ${err.stdout.substring(0, 200)}`);
-            if (err.stderr) logger.error(`[Bird STDERR]: ${err.stderr.substring(0, 200)}`);
+            // if (err.stderr) logger.error(`[Bird STDERR]: ${err.stderr.substring(0, 200)}`);
 
             // Special handling for rate limits or auth errors
             if (msg.includes('429')) {
-                logger.warn(`[Bird] ⚠️ RATE LIMIT (429). Twitter API limit reached.`);
+                logger.warn(`[Bird] ⚠️ RATE LIMIT (429) on Account #${account.index + 1}.`);
             } else if (msg.includes('401')) {
-                logger.warn(`[Bird] ⚠️ UNAUTHORIZED (401). Check AUTH_TOKEN and CT0 cookies.`);
+                logger.warn(`[Bird] ⚠️ UNAUTHORIZED (401) on Account #${account.index + 1}. Check credentials.`);
             } else {
-                logger.error(`[Bird] Error Code: ${status}`);
+                logger.error(`[Bird] Error Code: ${status} on Account #${account.index + 1}`);
             }
 
             return [];

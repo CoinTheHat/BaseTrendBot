@@ -128,6 +128,27 @@ export class TokenScanJob {
 
             logger.info(`[Job] Processing ${freshCandidates.length} fresh tokens (Parallel Batches)...`);
 
+            // ⚠️ PRE-FETCH ALPHA (BATCH MODE) ⚠️
+            // Identify tokens that need Twitter Scan (Stricter Filters)
+            const alphaCandidates = freshCandidates.filter(t => {
+                const vol = t.volume30mUsd || 0;
+                const liq = t.liquidityUsd || 0;
+                return vol > 15000 && liq > 5000;
+            });
+
+            const alphaMap = new Map<string, any>();
+
+            if (alphaCandidates.length > 0) {
+                const symbols = alphaCandidates.map(t => t.symbol);
+                // logger.info(`[Job] Batch Scanning ${symbols.length} tokens for Alpha Signals...`);
+
+                // This triggers the Multi-Worker, Multi-Account, Sequential Batch Logic
+                const batchResults = await this.alphaSearch.scanBatch(symbols);
+                // Copy to map
+                batchResults.forEach((val, key) => alphaMap.set(key, val));
+            }
+
+
             // Creates chunks of 2 (Reduced from 5 to avoid rate limits)
             const chunks = this.chunkArray(freshCandidates, 2);
 
@@ -164,9 +185,10 @@ export class TokenScanJob {
 
                             // Stricter Threads: >$15k Volume, >$5k Liquidity (Avoid Rugs)
                             if (vol > 15000 && liq > 5000) {
-                                alphaResult = await this.alphaSearch.checkAlpha(token.symbol);
+                                // USE BATCH RESULT
+                                alphaResult = alphaMap.get(token.symbol);
 
-                                if (alphaResult.isEarlyAlpha) {
+                                if (alphaResult && alphaResult.isEarlyAlpha) {
                                     const isSuper = alphaResult.isSuperAlpha;
                                     matchResult = {
                                         memeMatch: true,
@@ -236,15 +258,8 @@ export class TokenScanJob {
                                     logger.info(`[Job] No Twitter data for ${enrichedToken.symbol}. Proceeding with Volume/Trend scoring...`);
                                 }
 
-                                // PRE-FILTER: Skip AI for low-quality tokens to save quota
-                                const tweetCount = tweets.length;
-                                const liquidity = enrichedToken.liquidityUsd || 0;
-
-                                if (tweetCount < 5 && liquidity < 5000) {
-                                    logger.warn(`[PRE-FILTERED] ${enrichedToken.symbol} skipped (Tweets: ${tweetCount}, Liq: $${liquidity}). Auto-score: 1`);
-                                    // Skip AI analysis completely for this token
-                                    return; // Skip this token in the map
-                                }
+                                // PRE-FILTER: Delegated to NarrativeEngine (which handles score=2 logic)
+                                // We proceed to generate narrative even if low quality, so we can save the 'REJECTED' state.
 
                                 // Generate Narrative (Async, with AI Analysis if tweets exist)
                                 const narrative = await this.narrative.generate(enrichedToken, matchResult, scoreRes, tweets);
@@ -267,9 +282,15 @@ export class TokenScanJob {
                                 // Score Threshold: Only send to Telegram if >= 5
                                 if (aiScore < 5) {
                                     const reason = narrative.aiReason ? narrative.aiReason.substring(0, 50) + "..." : "Low conviction";
-                                    logger.warn(`[BLOCKED] ${enrichedToken.symbol} rejected for Telegram. Score: ${aiScore} | Reason: ${reason}`);
-                                    // Save to DB but don't alert
-                                    // await this.storage.saveToken(enrichedToken, 'REJECTED', aiScore);
+                                    logger.warn(`[SILENT] ${enrichedToken.symbol} processed but rejected. Score: ${aiScore} | Reason: ${reason}`);
+
+                                    // Save to DB but don't alert (Silent Process)
+                                    await this.storage.saveSeenToken(enrichedToken.mint, {
+                                        firstSeenAt: Date.now(),
+                                        lastAlertAt: 0,
+                                        lastScore: aiScore,
+                                        lastPhase: 'REJECTED'
+                                    });
                                 } else {
                                     // PASSED: Score is valid and >= 5
                                     await this.bot.sendAlert(narrative, enrichedToken, scoreRes);

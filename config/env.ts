@@ -18,13 +18,27 @@ export const config = {
     // Scraping (Headless)
     ENABLE_TWITTER_SCRAPING: process.env.ENABLE_TWITTER_SCRAPING === 'true',
     TWITTER_SCRAPE_MAX_TWEETS: Number(process.env.TWITTER_SCRAPE_MAX_TWEETS) || 10,
-    TWITTER_AUTH_TOKEN: process.env.TWITTER_AUTH_TOKEN || '',
-    TWITTER_CT0: process.env.TWITTER_CT0 || '',
+    TWITTER_AUTH_TOKEN: process.env.TWITTER_AUTH_TOKEN || '', // Legacy single
+    TWITTER_CT0: process.env.TWITTER_CT0 || '', // Legacy single
+
+    // Twitter Account Pool - Parses comma-separated lists
+    TWITTER_AUTH_TOKENS: (process.env.TWITTER_AUTH_TOKENS || process.env.TWITTER_AUTH_TOKEN || '').split(',').map(t => t.trim()).filter(t => t),
+    TWITTER_CT0S: (process.env.TWITTER_CT0S || process.env.TWITTER_CT0 || '').split(',').map(t => t.trim()).filter(t => t),
 
     // AI / LLM
     OPENAI_API_KEY: process.env.OPENAI_API_KEY || '', // Kept for fallback
-    GEMINI_API_KEY: process.env.GEMINI_API_KEY || '', // Google Gemini (Free Tier)
-    AI_MODEL: process.env.AI_MODEL || 'gemini-2.5-flash', // Updated to 2026 standard fast model
+
+    // Primary & Secondary Engines
+    GROQ_API_KEY: process.env.GROQ_API_KEY || '',
+    GROQ_MODEL: process.env.GROQ_MODEL || 'llama3-70b-8192', // Fast & Capable
+
+    DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY || '',
+    DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
+
+    // Backup Engine (Gemini)
+    GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
+    GEMINI_KEYS: (process.env.GEMINI_KEYS || process.env.GEMINI_API_KEY || '').split(',').map(k => k.trim()).filter(k => k),
+    AI_MODEL: process.env.AI_MODEL || 'gemini-2.0-flash-exp',
 
     // Trends
     TREND_UPDATE_INTERVAL_MINUTES: Number(process.env.TREND_UPDATE_INTERVAL_MINUTES) || 30,
