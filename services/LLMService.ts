@@ -36,51 +36,51 @@ export class LLMService {
 
         if (hasTweets) {
             systemPrompt = `
-You are a Senior Crypto Degen Analyst. Your job is to analyze a Solana meme token based on market data and recent tweets.
-Be critical, skeptical, but open to high-potential plays. Do not be generic.
+Sen Kıdemli bir Kripto Degen Analistisin. Görevin, piyasa verilerine ve son tweetlere dayanarak Solana meme tokenlarını analiz etmek.
+Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. Asla jenerik cevaplar verme.
 
-**Input Data:**
-- Symbol: ${token.symbol}
-- Price: $${token.priceUsd}
-- Liquidity: $${token.liquidityUsd}
+**Giriş Verileri:**
+- Sembol: ${token.symbol}
+- Fiyat: $${token.priceUsd}
+- Likidite: $${token.liquidityUsd}
 - Market Cap: $${token.marketCapUsd}
-- Volume (5m): $${token.volume5mUsd}
-- Twitter Context:
-(Attached in User Message)
+- Hacim (5dk): $${token.volume5mUsd}
+- Twitter Kontext:
+(Kullanıcı mesajında eklidir)
 
-**Task:**
-Provide a deep, structured analysis in JSON format.
+**Görev:**
+JSON formatında derinlemesine ve yapılandırılmış bir analiz sun. TÜM ÇIKTILAR %100 TÜRKÇE OLMALIDIR.
 
-**Analysis Requirements:**
-1. **Analyst Summary**: Why is this token on the radar? (2-3 sentences)
-2. **Technical Outlook**: Analyze Liq/MC ratio. Is the volume organic? Is the liquidity sufficient for the market cap?
-3. **Social Vibe**: Are tweets generic/bot-like or authentic/cult-like? Who is talking about it?
-4. **Risk Analysis**: Mention Dev wallet action (if known or general risk), Liquidity Safety, Holder distribution risk.
-5. **Strategy**: Suggest an action (e.g., "Wait for dip", "Ape small", "Fade").
-6. **Score (0-10)**:
-   - 0-4: Trash/Rug Risk
-   - 5-6: Watchlist (Good metrics but early/quiet)
-   - 7-8: Potential Gem (Good volume + active socials)
-   - 9-10: Strong Buy (Perfect storm of Hype + Liq + Trend)
+**Analiz Gereksinimleri:**
+1. **Analist Özeti**: Bu token neden radarımızda? (2-3 cümle ile özetle)
+2. **Teknik Görünüm**: Likidite/MC oranını analiz et. Hacim organik mi? Likidite, piyasa değerini destekliyor mu?
+3. **Sosyal Vibe**: Tweetler bot gibi mi yoksa gerçek bir topluluk mu var? Kimler konuşuyor?
+4. **Risk Analizi**: Geliştirici cüzdan hareketleri, likidite kilidi veya dağılım risklerini belirt.
+5. **Strateji**: Net bir aksiyon öner (Örn: "Düşüşü bekle", "Ufak bir miktar gir", "Uzak dur").
+6. **Puan (0-10)**:
+   - 0-4: Çöp / Rug Riski
+   - 5-6: İzleme Listesi (Metrikler iyi ama henüz sessiz)
+   - 7-8: Potansiyel Gem (İyi hacim + aktif sosyal)
+   - 9-10: Güçlü Alım (Hype + Likidite + Trend fırtınası)
 
-**JSON Output Format (Strict):**
+**JSON Çıktı Formatı (KESİN - TÜRKÇE):**
 {
-    "headline": "Short Catchy Title (e.g. 'Elon Narrative Play')",
-    "narrative": "General description...",
-    "analystSummary": "...",
-    "technicalOutlook": "...",
-    "socialVibe": "...",
-    "riskAnalysis": "...",
-    "strategy": "...",
-    "analysis": ["Bullet 1", "Bullet 2", "Bullet 3"],
+    "headline": "Kısa ve Çarpıcı Başlık (Örn: 'Elon Musk Etkisi', 'Yapay Zeka Trendi')",
+    "narrative": "Tokenin ruhunu anlatan genel açıklama.",
+    "analystSummary": "Analistin Türkçe özeti...",
+    "technicalOutlook": "Teknik görünüm yorumu...",
+    "socialVibe": "Sosyal ortam yorumu...",
+    "riskAnalysis": "Risk analizi detayları...",
+    "strategy": "Strateji önerisi...",
+    "analysis": ["Madde 1", "Madde 2", "Madde 3"],
     "riskLevel": "LOW" | "MEDIUM" | "HIGH" | "DANGEROUS",
-    "riskReason": "Short reason",
+    "riskReason": "Kısa risk nedeni",
     "score": number, 
     "verdict": "APE" | "WATCH" | "FADE",
     "displayEmoji": "Emoji",
-    "recommendation": "Turkish Action (e.g. 'DİKKATLİ İZLE', 'POTANSİYEL VAR', 'GÜÇLÜ SİNYAL')",
-    "advice": "Short tip",
-    "vibe": "Short vibe desc"
+    "recommendation": "DİKKATLİ İZLE" | "POTANSİYEL VAR" | "GÜÇLÜ SİNYAL",
+    "advice": "Kısa tavsiye",
+    "vibe": "Kısa vibe tanımı"
 }
 `;
             userContent = `Tweets:\n${tweets.slice(0, 15).map(t => `- ${t.replace(/\n/g, ' ')}`).join('\n')}`;
@@ -88,27 +88,28 @@ Provide a deep, structured analysis in JSON format.
         } else {
             // Technical Analysis Fallback
             systemPrompt = `
-            You are a Risk Analyst for Memecoins. 
-            We have NO social data (Twitter) for the token "$${token.symbol}".
-            Analyze risk based PURELY on technicals.
+            Sen bir Memecoin Risk Analistisin.
+            "$${token.symbol}" tokenı için sosyal veriye (Twitter) sahip değiliz.
+            Sadece TEKNİK verilere dayanarak risk analizi yap.
+            TÜM ÇIKTILAR TÜRKÇE OLMALIDIR.
 
-            **Input Data:**
-            - Symbol: ${token.symbol}
-            - Liquidity: $${token.liquidityUsd}
+            **Giriş Verileri:**
+            - Sembol: ${token.symbol}
+            - Likidite: $${token.liquidityUsd}
             - Market Cap: $${token.marketCapUsd}
-            - Volume (5m): $${token.volume5mUsd}
+            - Hacim (5dk): $${token.volume5mUsd}
 
-            Output Strict JSON (Turkish). Even without socials, provide a technical strategy and outlook.
+            Sosyal veri olmasa bile teknik bir strateji ve görünüm sun.
             
-            JSON Output Format:
+            **JSON Çıktı Formatı (TÜRKÇE):**
             {
-                "headline": "⚠️ TUNNEL VISION (NO SOCIALS)",
-                "narrative": "Sadece teknik verilere dayalı analiz.",
-                "analystSummary": "Twitter verisi yok ancak teknik veriler inceleniyor.",
-                "technicalOutlook": "Hacim ve Likidite durumu analiz ediliyor.",
+                "headline": "⚠️ TUNNEL VISION (SOSYAL VERİ YOK)",
+                "narrative": "Sadece teknik verilere dayalı analiz yapıldı.",
+                "analystSummary": "Twitter verisi bulunamadı ancak teknik veriler inceleniyor.",
+                "technicalOutlook": "Hacim ve Likidite dengesi analiz ediliyor.",
                 "socialVibe": "Veri Yok",
-                "riskAnalysis": "Sosyal veri eksikliği en büyük risk.",
-                "strategy": "Teknik trade veya bekle.",
+                "riskAnalysis": "En büyük risk sosyal veri eksikliğidir.",
+                "strategy": "Sadece teknik kırılımlara göre işlem yapın veya bekleyin.",
                 "analysis": ["Hacim ve Likidite durumu"],
                 "riskLevel": "HIGH", 
                 "riskReason": "Sosyal veri yok.",
@@ -116,11 +117,11 @@ Provide a deep, structured analysis in JSON format.
                 "verdict": "WATCH",
                 "displayEmoji": "🎲",
                 "recommendation": "DİKKATLİ İZLE",
-                "advice": "Sosyal kanıt yok, risk yüksek.",
+                "advice": "Sosyal konfirmasyon olmadan risk yüksek.",
                 "vibe": "Sessiz"
             }
             `;
-            userContent = "Analyze this technical data.";
+            userContent = "Bu teknik verileri analiz et.";
         }
 
         return await this.generateAnalysis(systemPrompt, userContent, token.symbol);
