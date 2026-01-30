@@ -186,6 +186,25 @@ export class TokenScanJob {
 
                 await Promise.all(chunk.map(async (token) => {
                     try {
+                        // --- BIRDEYE FALLBACK LOGIC START ---
+                        if (token.symbol === 'UNKNOWN' || token.name === 'Unknown Token' || !token.symbol) {
+                            try {
+                                console.log(`[BirdEye] Attempting to fix UNKNOWN token: ${token.mint}`);
+                                const metadata = await this.birdeye.getTokenMetadata(token.mint);
+
+                                if (metadata) {
+                                    token.symbol = metadata.symbol;
+                                    token.name = metadata.name;
+                                    console.log(`[BirdEye] ✅ FIXED: ${token.mint} is ${token.symbol}`);
+                                } else {
+                                    console.log(`[BirdEye] ❌ Could not find metadata for ${token.mint}`);
+                                }
+                            } catch (error: any) {
+                                console.log(`[BirdEye] API Error: ${error.message}`);
+                            }
+                        }
+                        // --- BIRDEYE FALLBACK LOGIC END ---
+
                         // Mark as processed immediately to prevent re-entry in race conditions
                         this.processedCache.set(token.mint, Date.now());
 

@@ -99,4 +99,25 @@ export class BirdeyeService {
             return [];
         }
     }
+
+    async getTokenMetadata(address: string): Promise<{ symbol: string; name: string } | null> {
+        if (!config.BIRDEYE_API_KEY) return null;
+
+        try {
+            // Using the endpoint requested: /defi/v3/token/meta-data/single
+            const res = await axios.get(`${this.baseUrl}/v3/token/meta-data/single`, {
+                params: { address },
+                headers: this.headers
+            });
+
+            if (res.data && res.data.success && res.data.data) {
+                const { symbol, name } = res.data.data;
+                return { symbol, name };
+            }
+            return null;
+        } catch (error: any) {
+            // console.log(`[BirdEye] API Error: ${error.message}`);
+            return null;
+        }
+    }
 }
