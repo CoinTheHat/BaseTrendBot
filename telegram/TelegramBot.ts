@@ -239,8 +239,9 @@ export class ScandexBot {
         }
 
         let message =
-            `${titleLine}
-📍 **CA:** \`${token.mint}\`
+            `📍 **CA:** \`${token.mint}\`
+
+${titleLine}
 
 ${narrative.narrativeText}
 

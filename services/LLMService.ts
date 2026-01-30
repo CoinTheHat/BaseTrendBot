@@ -44,25 +44,30 @@ export class LLMService {
 
         CRITICAL INSTRUCTION: 
         If users mention 'scam', 'rug', 'honeypot', 'fake' or if tweets are clearly bot spam, 
-        IMMEDIATELY set score < 3 and Verdict: FADE. Do not be fooled by high volume.
+        IMMEDIATELY set score < 3 and recommend UZAK DUR. Do not be fooled by high volume.
 
-        Task:
-        1. Explain WHY it is trending (The "Alpha").
-        2. Identify specific RISKS (The "FUD").
-        3. Give a Verdict: APE (Buy), WATCH (Wait), or FADE (Ignore/Risky).
+        Output Rules:
+        - ALL text must be in TURKISH except technical terms (Honeypot, Rugpull, Liquidity, etc.)
+        - Write naturally like a crypto analyst talking to a Turkish trader
+        - Based on your score (0-10), provide specific recommendation:
+          * 8-10: "GÜÇLÜ ALINABİLİR" with optimistic comment
+          * 5-7: "DİKKATLİ İZLE" with cautious comment  
+          * 0-4: "UZAK DUR" with warning
 
         Output strictly these JSON fields (in Turkish):
         {
-            "headline": "Short, punchy title (e.g. '🚨 GEM DETECTED: $SYMBOL', '⚠️ RUG WARNING', '💎 SAFE PLAY')",
-            "narrative": "One sharp sentence explaining the core narrative/meme.",
+            "headline": "Short, punchy title (e.g. '🚨 GEM BULUNDU: $SYMBOL', '⚠️ RUG UYARISI', '💎 GÜVENLİ OYNATMA')",
+            "narrative": "Token'ın ruhunu ve karakterini anlatan tek cümle.",
             "analysis": [
-                "Bullet point 1: Why it's hyped",
-                "Bullet point 2: Community/Dev check"
+                "Neden yükseliyor - sosyal kanıt",
+                "Topluluk ve dev kontrolü"
             ],
             "riskLevel": "LOW" | "MEDIUM" | "HIGH" | "DANGEROUS",
-            "riskReason": "Specific warning.",
-            "score": 8, // 0-10 Integer based on your conviction (10 = Must Ape, 0 = Scam)
-            "verdict": "APE" | "WATCH" | "FADE",
+            "riskReason": "Spesifik uyarı veya güven nedeni.",
+            "score": 8, // 0-10 Integer based on your conviction (10 = Kesinlikle Al, 0 = Scam)
+            "recommendation": "GÜÇLÜ ALINABİLİR" | "DİKKATLİ İZLE" | "UZAK DUR",
+            "advice": "1 cümlelik kısa tavsiye (e.g. 'Sosyal medya patlıyor, trendin başındayız.')",
+            "vibe": "Token'ın ruh hali ve karakter analizi (e.g. 'Agresif ama riskli bir topluluk hareketi')",
             "displayEmoji": "🔥" | "💩" | "👀"
         }
         `;
@@ -81,25 +86,28 @@ export class LLMService {
             Statistics:
             ${tokenStats || 'No technical data provided.'}
 
-            Task:
-            1. Analyze the Volume/Liquidity ratio.
-            2. Look for Volume Velocity (sudden spikes or sustained high volume).
-            3. Identify Buyer/Seller Ratios if available (e.g., more buyers than sellers).
-            4. Identify if this looks like a "Dead Coin", "Silent Accumulation", or "High Risk Gamble".
-            5. Since there is no social proof, you must be skeptical, but allow for higher scores if technicals are exceptionally strong.
+            Output Rules:
+            - ALL text must be in TURKISH except technical terms
+            - Be skeptical about tokens without social proof
+            - Based on score, provide recommendation:
+              * 8-10: "GÜÇLÜ ALINABİLİR" (very rare without socials)
+              * 5-7: "DİKKATLİ İZLE" 
+              * 0-4: "UZAK DUR"
 
             Output strict JSON (in Turkish):
             {
-                "headline": "Technical Analysis Title (e.g. '⚠️ NO SOCIALS - HIGH RISK', '📊 VOLUME SPIKE DETECTED')",
-                "narrative": "One sentence summary of the technical state.",
+                "headline": "Teknik Analiz Başlığı (e.g. '⚠️ SOSYAL YOK - YÜKSEK RİSK', '📊 HACİM PATLAMASI')",
+                "narrative": "Teknik durumun tek cümlelik özeti.",
                 "analysis": [
-                    "Observation from Volume/Liq",
-                    "Risk assessment based on missing socials"
+                    "Hacim/Likidite gözlemi",
+                    "Sosyal kanıt eksikliği riski"
                 ],
                 "riskLevel": "HIGH", 
-                "riskReason": "No social data found.",
+                "riskReason": "Sosyal veri bulunamadı.",
                 "score": 4, // Cap score at 5 for unknowns, unless metrics are insane.
-                "verdict": "WATCH",
+                "recommendation": "DİKKATLİ İZLE",
+                "advice": "Hacim var ama sosyal kanıt yok, küçük test pozisyonu denenebilir.",
+                "vibe": "Sessiz bir token, kimse konuşmuyor ama hacim var",
                 "displayEmoji": "🎲"
             }
             `;

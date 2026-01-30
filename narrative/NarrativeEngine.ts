@@ -50,7 +50,9 @@ export class NarrativeEngine {
 
             narrativeText += `\n💡 **Neden Yükseliyor?**\n• ${aiResult.analysis.join('\n• ')}\n`;
 
-            vibeCheck = `${aiResult.displayEmoji} Score: ${aiResult.score}/10`;
+            // Vibe: Token's character and mood from AI
+            const vibe = aiResult.vibe || 'Analiz yapılıyor...';
+            vibeCheck = `${aiResult.displayEmoji} ${vibe}`;
 
             // Risk Analysis
             if (aiResult.riskLevel === 'HIGH' || aiResult.riskLevel === 'DANGEROUS') {
@@ -59,8 +61,18 @@ export class NarrativeEngine {
                 aiRisk = `\n✅ **Risk Durumu:** ${aiResult.riskReason || 'Temiz görünüyor.'}`;
             }
 
-            // Verdict Tag
-            narrativeText += `\n🎯 **Karar:** #${aiResult.verdict}`;
+            // Turkish Recommendation with score-based emoji
+            const recommendation = aiResult.recommendation || 'DİKKATLİ İZLE';
+            const advice = aiResult.advice || '';
+            const score = aiResult.score || 0;
+
+            let recEmoji = '⚠️';
+            if (score >= 8) recEmoji = '🚀';
+            else if (score >= 5) recEmoji = '⚠️';
+            else recEmoji = '🚫';
+
+            narrativeText += `\n${recEmoji} **Karar:** ${recommendation}`;
+            if (advice) narrativeText += `\n💬 **AI Tavsiyesi:** ${advice}`;
         }
         // }
 
