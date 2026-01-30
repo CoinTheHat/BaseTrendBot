@@ -1,5 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-import axios from 'axios';
+import OpenAI from "openai";
 import { config } from '../config/env';
 import { logger } from '../utils/Logger';
 import { TokenSnapshot } from '../models/types';
@@ -22,76 +21,59 @@ export interface AIAnalysisResult {
     recommendation?: string;
     advice?: string;
     vibe?: string;
-    secondOpinion?: {
-        provider: string;
-        score: number;
-        agrees: boolean;
-    };
 }
 
 export class LLMService {
-    private keyManager: GeminiKeyManager;
+    private xai: OpenAI;
 
     constructor() {
-        this.keyManager = new GeminiKeyManager(config.GEMINI_KEYS);
+        if (!config.XAI_API_KEY) {
+            logger.error('[LLMService] XAI_API_KEY (Grok) is missing!');
+        }
+        this.xai = new OpenAI({
+            apiKey: config.XAI_API_KEY || 'dummy', // Prevent crash if missing
+            baseURL: "https://api.x.ai/v1",
+        });
     }
 
     async analyzeToken(token: TokenSnapshot, tweets: string[]): Promise<AIAnalysisResult | null> {
         const hasTweets = tweets.length > 0;
         const { systemPrompt, userContent } = this.buildPrompt(token, tweets, hasTweets);
 
-        // STEP A: PRIMARY ANALYSIS with Gemini-1.5-Flash (Workhorse)
-        logger.info(`[AI Hybrid] STEP A: Calling Gemini-1.5-Flash for $${token.symbol}`);
-        let primaryResult = await this.callGeminiFlash(systemPrompt, userContent, token.symbol);
+        try {
+            logger.info(`[xAI Grok] Analyzing $${token.symbol} with ${config.XAI_MODEL}...`);
 
-        // Fallback if Gemini completely fails
-        if (!primaryResult) {
-            logger.warn(`[AI Hybrid] Gemini-Flash failed for $${token.symbol}, trying fallback providers...`);
-            primaryResult = await this.tryFallbackProviders(systemPrompt, userContent, token.symbol);
-            if (!primaryResult) {
-                logger.error(`[AI Hybrid] All providers failed for $${token.symbol}`);
-                return null;
+            const completion = await this.xai.chat.completions.create({
+                model: config.XAI_MODEL || "grok-2-latest",
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userContent }
+                ],
+                temperature: 0.7, // Creative but accurate
+                response_format: { type: "json_object" } // Grok supports JSON mode
+            });
+
+            const content = completion.choices[0].message.content;
+            if (!content) throw new Error('Empty response from xAI');
+
+            const result = JSON.parse(content);
+            return this.normalizeResult(result);
+
+        } catch (error: any) {
+            logger.error(`[xAI Grok] Analysis failed for $${token.symbol}: ${error.message}`);
+
+            // Temporary Fallback to mocked response if API fails (to keep bot running)
+            if (error.status === 401 || error.message.includes('API key')) {
+                logger.error('[xAI Grok] Invalid API Key. Please update XAI_API_KEY.');
             }
+            return null;
         }
-
-        const normalized = this.normalizeResult(primaryResult);
-        const primaryScore = normalized.score;
-
-        // STEP B: SNIPER CHECK - Second Opinion for High-Conviction Calls
-        if (primaryScore >= 7) {
-            logger.info(`[AI Hybrid] STEP B: Score ${primaryScore}/10 >= 7, requesting Groq second opinion...`);
-            const secondOpinion = await this.getGroqSecondOpinion(token, tweets, primaryScore);
-
-            if (secondOpinion) {
-                normalized.secondOpinion = secondOpinion;
-
-                // STEP C: DECISION LOGIC
-                const scoreDiff = Math.abs(primaryScore - secondOpinion.score);
-                if (scoreDiff > 2) {
-                    // Significant disagreement - average the scores
-                    const averaged = Math.round((primaryScore + secondOpinion.score) / 2);
-                    logger.info(`[AI Hybrid] Score disagreement detected. Gemini: ${primaryScore}, Groq: ${secondOpinion.score}. Averaging to ${averaged}/10`);
-                    normalized.score = averaged;
-                    secondOpinion.agrees = false;
-                } else {
-                    // Agreement or minor difference
-                    logger.info(`[AI Hybrid] Models agree. Gemini: ${primaryScore}, Groq: ${secondOpinion.score}`);
-                    secondOpinion.agrees = true;
-                    // Keep the higher score
-                    normalized.score = Math.max(primaryScore, secondOpinion.score);
-                }
-            }
-        } else {
-            logger.info(`[AI Hybrid] Score ${primaryScore}/10 < 7, skipping Groq validation (saving API calls)`);
-        }
-
-        return normalized;
     }
 
     private buildPrompt(token: TokenSnapshot, tweets: string[], hasTweets: boolean): { systemPrompt: string; userContent: string } {
-        if (hasTweets) {
-            const systemPrompt = `
-Sen Kıdemli bir Kripto Degen Analistisin. Görevin, piyasa verilerine ve son tweetlere dayanarak Solana meme tokenlarını analiz etmek.
+        // ... (Prompt logic remains mostly same, just optimized for Grok)
+        const systemPrompt = `
+Sen Kıdemli bir Kripto Degen Analistisin (xAI Grok tabanlı). Görevin, piyasa verilerine ve son tweetlere dayanarak Solana meme tokenlarını analiz etmek.
 Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. Asla jenerik cevaplar verme.
 
 **Giriş Verileri:**
@@ -117,7 +99,7 @@ JSON formatında derinlemesine ve yapılandırılmış bir analiz sun. TÜM ÇIK
    - 7-8: Potansiyel Gem (İyi hacim + aktif sosyal)
    - 9-10: Güçlü Alım (Hype + Likidite + Trend fırtınası)
 
-**JSON Çıktı Formatı (KESİN - TÜRKÇE):**
+**JSON Çıktı Formatı (KESİN):**
 {
     "headline": "Kısa ve Çarpıcı Başlık",
     "narrative": "Tokenin ruhunu anlatan genel açıklama.",
@@ -137,237 +119,11 @@ JSON formatında derinlemesine ve yapılandırılmış bir analiz sun. TÜM ÇIK
     "vibe": "Kısa vibe"
 }
 `;
-            const userContent = `Tweets:\n${tweets.slice(0, 15).map(t => `- ${t.replace(/\n/g, ' ')}`).join('\n')}`;
-            return { systemPrompt, userContent };
-        } else {
-            // Technical fallback (no tweets)
-            const systemPrompt = `
-Sen bir Memecoin Risk Analistisin.
-"$${token.symbol}" tokenı için sosyal veriye (Twitter) sahip değiliz.
-Sadece TEKNİK verilere dayanarak risk analizi yap.
-TÜM ÇIKTILAR TÜRKÇE OLMALIDIR.
+        const userContent = hasTweets
+            ? `Tweets:\n${tweets.slice(0, 20).map(t => `- ${t.replace(/\n/g, ' ')}`).join('\n')}`
+            : `Twitter verisi yok. Sadece teknik verileri analiz et. Risk seviyesini yüksek tut.`;
 
-**Giriş Verileri:**
-- Sembol: ${token.symbol}
-- Likidite: $${token.liquidityUsd}
-- Market Cap: $${token.marketCapUsd}
-- Hacim (5dk): $${token.volume5mUsd}
-- Top 10 Holder: ${token.top10HoldersSupply ? token.top10HoldersSupply.toFixed(2) + '%' : 'Bilinmiyor'}
-
-Sosyal veri olmasa bile teknik bir strateji ve görünüm sun.
-
-**JSON Çıktı Formatı (TÜRKÇE):**
-{
-    "headline": "⚠️ TUNNEL VISION (SOSYAL VERİ YOK)",
-    "narrative": "Sadece teknik verilere dayalı analiz yapıldı.",
-    "analystSummary": "Twitter verisi bulunamadı ancak teknik veriler inceleniyor.",
-    "technicalOutlook": "Hacim ve Likidite dengesi analiz ediliyor.",
-    "socialVibe": "Veri Yok",
-    "riskAnalysis": "En büyük risk sosyal veri eksikliğidir.",
-    "strategy": "Sadece teknik kırılımlara göre işlem yapın.",
-    "analysis": ["Hacim ve Likidite durumu"],
-    "riskLevel": "HIGH", 
-    "riskReason": "Sosyal veri yok.",
-    "score": 4, 
-    "verdict": "WATCH",
-    "displayEmoji": "🎲",
-    "recommendation": "DİKKATLİ İZLE",
-    "advice": "Sosyal konfirmasyon olmadan risk yüksek.",
-    "vibe": "Sessiz"
-}
-`;
-            return { systemPrompt, userContent: "Bu teknik verileri analiz et." };
-        }
-    }
-
-    // PRIMARY: Gemini-1.5-Flash with Key Rotation
-    private async callGeminiFlash(systemPrompt: string, userContent: string, symbol: string): Promise<any | null> {
-        let modelTimeout = 'gemini-1.5-flash-001'; // Stable version
-        const prompt = systemPrompt + "\n\n" + userContent;
-        const maxAttempts = Math.min(this.keyManager.getTotalKeys(), 3); // Try up to 3 keys
-
-        for (let i = 0; i < maxAttempts; i++) {
-            const keyInfo = this.keyManager.getNextKey();
-            if (!keyInfo) {
-                logger.warn(`[Gemini-Flash] No available keys (all in cooldown).`);
-                return null;
-            }
-
-            try {
-                logger.info(`[Gemini-Flash] Attempt ${i + 1} with Key #${keyInfo.index + 1} for ${symbol} using ${modelTimeout}`);
-
-                const genAI = new GoogleGenerativeAI(keyInfo.key);
-                const model = genAI.getGenerativeModel({ model: modelTimeout });
-
-                const result = await model.generateContent(prompt);
-                const response = result.response;
-                const text = response.text();
-
-                // Clean JSON
-                const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
-                return JSON.parse(cleanText);
-
-            } catch (error: any) {
-                // If 404/Not Found, try fallback model 'gemini-pro' immediately
-                if (error.message?.includes('404') || error.message?.includes('not found')) {
-                    logger.warn(`[Gemini-Flash] Model ${modelTimeout} not found (404). Trying 'gemini-pro' fallback...`);
-                    try {
-                        const genAI = new GoogleGenerativeAI(keyInfo.key); // Use same key
-                        const fallbackModel = genAI.getGenerativeModel({ model: 'gemini-pro' });
-                        const result = await fallbackModel.generateContent(prompt);
-                        const cleanText = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-                        logger.info(`[Gemini-Flash] Fallback to 'gemini-pro' successful for ${symbol}`);
-                        return JSON.parse(cleanText);
-                    } catch (fallbackError) {
-                        logger.error(`[Gemini-Flash] Fallback model also failed:`, fallbackError);
-                        // Continue to rotate keys/models if needed, or mark cooldown
-                    }
-                }
-
-                if (error.status === 429 || error.message?.includes('429')) {
-                    logger.warn(`[Gemini-Flash] Rate Limit on Key #${keyInfo.index + 1}. Rotate...`);
-                    this.keyManager.markCooldown(keyInfo.key);
-                    continue; // Try next key
-                } else {
-                    logger.warn(`[Gemini-Flash] Error with Key #${keyInfo.index + 1}: ${error.message}`);
-                }
-            }
-        }
-
-        logger.warn(`[Gemini-Flash] All attempts failed for $${symbol}`);
-        return null;
-    }
-
-    // SNIPER: Groq Second Opinion (Only for High-Conviction)
-    private async getGroqSecondOpinion(token: TokenSnapshot, tweets: string[], primaryScore: number): Promise<{ provider: string; score: number; agrees: boolean } | null> {
-        if (!config.GROQ_API_KEY) {
-            logger.warn(`[Groq] API key not configured, skipping second opinion`);
-            return null;
-        }
-
-        try {
-            // Simplified prompt for quick validation
-            const validationPrompt = `You are a crypto analyst validator. Review this Solana token and rate it 1-10.
-
-Token: ${token.symbol}
-Price: $${token.priceUsd}
-Liquidity: $${token.liquidityUsd}
-Market Cap: $${token.marketCapUsd}
-Volume (5m): $${token.volume5mUsd}
-${tweets.length > 0 ? `\nRecent Activity:\n${tweets.slice(0, 5).join('\n')}` : ''}
-
-Primary analysis scored this ${primaryScore}/10. Do you agree?
-
-Return ONLY JSON: { "score": number, "reason": "brief explanation" }`;
-
-            const response = await axios.post(
-                'https://api.groq.com/openai/v1/chat/completions',
-                {
-                    model: config.GROQ_MODEL,
-                    messages: [
-                        { role: 'system', content: 'You are a crypto analyst. Return ONLY valid JSON.' },
-                        { role: 'user', content: validationPrompt }
-                    ],
-                    response_format: { type: "json_object" },
-                    temperature: 0.3 // Lower temperature for more consistent validation
-                },
-                {
-                    headers: {
-                        'Authorization': `Bearer ${config.GROQ_API_KEY}`,
-                        'Content-Type': 'application/json'
-                    },
-                    timeout: 10000
-                }
-            );
-
-            const content = response.data?.choices?.[0]?.message?.content;
-            if (!content) throw new Error('Empty response from Groq');
-
-            const result = JSON.parse(content);
-            const groqScore = typeof result.score === 'number' ? result.score : 5;
-
-            logger.info(`[Groq] Second opinion: ${groqScore}/10 (Primary was ${primaryScore}/10)`);
-
-            return {
-                provider: 'Groq (llama-3-70b)',
-                score: groqScore,
-                agrees: Math.abs(groqScore - primaryScore) <= 2
-            };
-
-        } catch (error: any) {
-            logger.warn(`[Groq] Second opinion failed: ${error.message}`);
-            return null;
-        }
-    }
-
-    // FALLBACK: DeepSeek if Gemini completely fails
-    private async tryFallbackProviders(systemPrompt: string, userContent: string, symbol: string): Promise<any | null> {
-        // Try DeepSeek
-        if (config.DEEPSEEK_API_KEY) {
-            try {
-                logger.info(`[Fallback] Trying DeepSeek for $${symbol}`);
-                const result = await this.callOpenAICompatible(
-                    'https://api.deepseek.com/chat/completions',
-                    config.DEEPSEEK_API_KEY,
-                    config.DEEPSEEK_MODEL,
-                    systemPrompt,
-                    userContent
-                );
-                if (result) return result;
-            } catch (e: any) {
-                logger.warn(`[Fallback] DeepSeek failed: ${e.message}`);
-            }
-        }
-
-        // Try Groq as last resort (if not already used)
-        if (config.GROQ_API_KEY) {
-            try {
-                logger.info(`[Fallback] Trying Groq as last resort for $${symbol}`);
-                const result = await this.callOpenAICompatible(
-                    'https://api.groq.com/openai/v1/chat/completions',
-                    config.GROQ_API_KEY,
-                    config.GROQ_MODEL,
-                    systemPrompt,
-                    userContent
-                );
-                if (result) return result;
-            } catch (e: any) {
-                logger.warn(`[Fallback] Groq failed: ${e.message}`);
-            }
-        }
-
-        return null;
-    }
-
-    private async callOpenAICompatible(endpoint: string, apiKey: string, model: string, system: string, user: string): Promise<any | null> {
-        try {
-            const response = await axios.post(
-                endpoint,
-                {
-                    model: model,
-                    messages: [
-                        { role: 'system', content: system + "\n IMPORTANT: Return ONLY valid JSON." },
-                        { role: 'user', content: user }
-                    ],
-                    response_format: { type: "json_object" },
-                    temperature: 0.5
-                },
-                {
-                    headers: {
-                        'Authorization': `Bearer ${apiKey}`,
-                        'Content-Type': 'application/json'
-                    },
-                    timeout: 15000
-                }
-            );
-
-            const content = response.data?.choices?.[0]?.message?.content;
-            if (!content) throw new Error('Empty response from LLM');
-            return JSON.parse(content);
-
-        } catch (error: any) {
-            throw new Error(error.response?.data?.error?.message || error.message);
-        }
+        return { systemPrompt, userContent };
     }
 
     private normalizeResult(result: any): AIAnalysisResult {
@@ -389,49 +145,5 @@ Return ONLY JSON: { "score": number, "reason": "brief explanation" }`;
             advice: result.advice || '',
             vibe: result.vibe || ''
         };
-    }
-}
-
-// KEY MANAGER: Handles Gemini API Key Rotation & Cooldown
-class GeminiKeyManager {
-    private keys: string[];
-    private currentIndex: number = 0;
-    private cooldowns: Map<string, number> = new Map(); // Key -> Expiry Timestamp
-
-    constructor(keys: string[]) {
-        this.keys = keys;
-        if (keys.length > 0) {
-            logger.info(`[KeyManager] Initialized with ${keys.length} Gemini API key(s)`);
-        }
-    }
-
-    getTotalKeys(): number {
-        return this.keys.length;
-    }
-
-    getNextKey(): { key: string; index: number } | null {
-        if (this.keys.length === 0) return null;
-
-        const now = Date.now();
-        // Try each key in round-robin order
-        for (let i = 0; i < this.keys.length; i++) {
-            const idx = (this.currentIndex + i) % this.keys.length;
-            const key = this.keys[idx];
-            const cooldownExpiry = this.cooldowns.get(key) || 0;
-
-            if (now > cooldownExpiry) {
-                // Key is available
-                this.currentIndex = (idx + 1) % this.keys.length; // Move to next for next call
-                return { key, index: idx };
-            }
-        }
-
-        // All keys in cooldown
-        return null;
-    }
-
-    markCooldown(key: string, durationMs: number = 60000) {
-        this.cooldowns.set(key, Date.now() + durationMs);
-        logger.info(`[KeyManager] Key marked in cooldown for ${durationMs / 1000}s`);
     }
 }

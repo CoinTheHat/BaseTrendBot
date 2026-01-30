@@ -35,6 +35,10 @@ export const config = {
     DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY || '',
     DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
 
+    // Primary Engine: xAI (Grok)
+    XAI_API_KEY: process.env.XAI_API_KEY || process.env.GROK_API_KEY || '',
+    XAI_MODEL: 'grok-2-latest',
+
     // Backup Engine (Gemini)
     GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
     GEMINI_KEYS: (process.env.GEMINI_API_KEY || '')
