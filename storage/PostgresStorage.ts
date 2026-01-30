@@ -129,30 +129,51 @@ export class PostgresStorage {
 
     async getDashboardMetrics(): Promise<any> {
         try {
+            // UNION QUERY: Combine new system (token_performance) + historical (processed_tokens)
+            const combinedView = `
+                SELECT 
+                    mint, symbol, alert_mc, ath_mc, current_mc, status, alert_timestamp
+                FROM token_performance
+                
+                UNION ALL
+                
+                SELECT 
+                    mint,
+                    '' as symbol,
+                    0 as alert_mc,
+                    0 as ath_mc,
+                    0 as current_mc,
+                    'HISTORIC' as status,
+                    to_timestamp(first_seen_at / 1000) as alert_timestamp
+                FROM processed_tokens
+                WHERE last_alert_at > 0
+                AND mint NOT IN (SELECT mint FROM token_performance)
+            `;
+
             // 1. Total Calls
-            const totalRes = await this.pool.query('SELECT COUNT(*) FROM token_performance');
+            const totalRes = await this.pool.query(`SELECT COUNT(*) FROM (${combinedView}) combined`);
             const totalCalls = parseInt(totalRes.rows[0].count);
 
             // 2. Win Rate (Tokens with > 2x ATH from Alert)
-            // Logic: ATH / Alert >= 2
             const winRes = await this.pool.query(`
-                SELECT COUNT(*) FROM token_performance 
-                WHERE ath_mc >= alert_mc * 2
+                SELECT COUNT(*) FROM (${combinedView}) combined
+                WHERE ath_mc >= alert_mc * 2 AND alert_mc > 0
             `);
             const moons = parseInt(winRes.rows[0].count);
             const winRate = totalCalls > 0 ? (moons / totalCalls) * 100 : 0;
 
             // 3. Top Performers (Max Multiple)
             const topRes = await this.pool.query(`
-        SELECT *, (ath_mc / NULLIF(alert_mc, 0)) as multiple 
-                FROM token_performance 
+                SELECT *, (ath_mc / NULLIF(alert_mc, 0)) as multiple 
+                FROM (${combinedView}) combined
+                WHERE alert_mc > 0
                 ORDER BY multiple DESC 
                 LIMIT 5
             `);
 
             // 4. Recent Calls
             const recentRes = await this.pool.query(`
-        SELECT * FROM token_performance 
+                SELECT * FROM (${combinedView}) combined
                 ORDER BY alert_timestamp DESC 
                 LIMIT 20
             `);
