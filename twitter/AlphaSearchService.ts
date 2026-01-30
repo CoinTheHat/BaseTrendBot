@@ -31,7 +31,7 @@ export class AlphaSearchService {
         const searchUrl = `https://twitter.com/search?q=${encodeURIComponent(query)}&f=live`;
         let velocity = 0;
         let uniqueAuthors = 0;
-        let recentTweetTexts: string[] = [];
+        let tweets: string[] = [];
 
         try {
             // Random delay 2-5s to be safe
@@ -58,8 +58,6 @@ export class AlphaSearchService {
             // Fix: Check closed state wrapper
             if (page.isClosed()) {
                 logger.warn('[AlphaHunter] Page closed unexpectedly, recreating...');
-                // Re-create logic if needed, but usually newPage() is fresh. 
-                // The error usually happens if we try to use 'page' after a crash.
             }
 
             // Randomize User Agent (Mobile favored)
@@ -70,25 +68,18 @@ export class AlphaSearchService {
             ];
             await page.setUserAgent(uas[Math.floor(Math.random() * uas.length)]);
 
-            // logger.info(`[AlphaHunter] Scanning ${cashtag} on Twitter...`);
+            // Fix: Wait Condition - 2s timeout for fast fail-over
+            await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 2000 });
 
-            // Fix: Wait Condition
-            await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 15000 });
-
-            // Fix: Manual Wait (Shortened)
-            await new Promise(r => setTimeout(r, 2000));
-
-            // Fix: Selector Check
+            // Fix: Selector Check - 2s timeout
             try {
-                await page.waitForSelector('article', { timeout: 10000 });
+                await page.waitForSelector('article', { timeout: 2000 });
             } catch (e) {
                 logger.warn(`[AlphaHunter] No tweets found for ${cashtag} (Timeout)`);
-                if (!page.isClosed()) await page.close();
-                return { velocity: 0, uniqueAuthors: 0, tweets: [], isEarlyAlpha: false, isSuperAlpha: false };
             }
 
             // Extract Data
-            const tweetData = await page.evaluate(() => {
+            const tweetData: any[] = await page.evaluate(() => {
                 const now = Date.now();
                 const minutes10 = 10 * 60 * 1000;
 
@@ -118,22 +109,20 @@ export class AlphaSearchService {
             });
 
             // Process Results
-            // @ts-ignore
-            const recentTweets = tweetData.filter(t => t.isRecent);
+            const recentTweets = tweetData.filter((t: any) => t.isRecent);
             velocity = recentTweets.length;
 
             // Unique Authors
-            // @ts-ignore
-            const authors = new Set(recentTweets.map(t => t.handle));
+            const authors = new Set(recentTweets.map((t: any) => t.handle));
             uniqueAuthors = authors.size;
 
-            // @ts-ignore
-            recentTweetTexts = recentTweets.map(t => t.text);
+            tweets = recentTweets.map((t: any) => t.text);
 
             await page.close();
 
         } catch (err: any) {
             const errorMsg = err.message || err.toString();
+            console.log(`[AlphaHunter] DEBUG: Error for ${cashtag}: ${errorMsg}`); // Direct console
             logger.error(`[AlphaHunter] Error scanning ${cashtag}: ${errorMsg}. (Status: ${err.response?.status || 'Unknown'})`);
             if (this.browser) {
                 await this.browser.close().catch(() => { });
@@ -152,7 +141,7 @@ export class AlphaSearchService {
         return {
             velocity,
             uniqueAuthors,
-            tweets: recentTweetTexts,
+            tweets,
             isEarlyAlpha,
             isSuperAlpha
         };

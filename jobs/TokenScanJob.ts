@@ -174,6 +174,16 @@ export class TokenScanJob {
                                         matchScore: isSuper ? 0.95 : 0.85
                                     };
                                     logger.info(`[Discovery] 🔥 ${isSuper ? 'SUPER' : 'EARLY'} ALPHA DETECTED: ${token.symbol} (Unique: ${alphaResult.uniqueAuthors}, Velocity: ${alphaResult.velocity})`);
+                                } else {
+                                    // FALLBACK: Tech Trigger
+                                    // If we are here, it means Vol/Liq are good, but Twitter failed or is silent.
+                                    // We PASS it as a purely technical play.
+                                    matchResult = {
+                                        memeMatch: true,
+                                        matchedMeme: { id: 'technical', phrase: 'High Volume (No Socials)', tags: ['TECHNICAL'], createdAt: new Date() },
+                                        matchScore: 0.85
+                                    };
+                                    logger.info(`[Discovery] ⚠️ TECH FALLBACK: ${token.symbol} has High Volume but no Social Match.`);
                                 }
                             }
                         }

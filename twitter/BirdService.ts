@@ -90,14 +90,31 @@ export class BirdService {
             }
 
         } catch (err: any) {
+            // Enhanced Error Logging for Diagnostics
+            logger.error(`[Bird] Command failed: ${err.message || err.toString()}`);
+
             // Try to extract status code if embedded in message or props
             const status = err.code || err.status || 'Unknown';
             const msg = err.message || err.toString();
 
+            // Log detailed error info
+            if (err.response) {
+                logger.error(`[Bird API Status] Code: ${err.response.status}`);
+                logger.error(`[Bird API Data] Content: ${JSON.stringify(err.response.data).substring(0, 200)}`);
+            }
+
+            // Log stdout/stderr if available (CLI errors)
+            if (err.stdout) logger.warn(`[Bird STDOUT]: ${err.stdout.substring(0, 200)}`);
+            if (err.stderr) logger.error(`[Bird STDERR]: ${err.stderr.substring(0, 200)}`);
+
             // Special handling for rate limits or auth errors
-            if (msg.includes('429')) logger.warn(`[Bird] ⚠️ RATE LIMIT (429).`);
-            else if (msg.includes('401')) logger.warn(`[Bird] ⚠️ UNAUTHORIZED (401). Check cookies.`);
-            else logger.error(`[Bird] Command failed: ${msg} (Code: ${status})`);
+            if (msg.includes('429')) {
+                logger.warn(`[Bird] ⚠️ RATE LIMIT (429). Twitter API limit reached.`);
+            } else if (msg.includes('401')) {
+                logger.warn(`[Bird] ⚠️ UNAUTHORIZED (401). Check AUTH_TOKEN and CT0 cookies.`);
+            } else {
+                logger.error(`[Bird] Error Code: ${status}`);
+            }
 
             return [];
         }

@@ -83,8 +83,10 @@ export class LLMService {
 
             Task:
             1. Analyze the Volume/Liquidity ratio.
-            2. Identify if this looks like a "Dead Coin", "Silent Accumulation", or "High Risk Gamble".
-            3. Since there is no social proof, you must be skeptical.
+            2. Look for Volume Velocity (sudden spikes or sustained high volume).
+            3. Identify Buyer/Seller Ratios if available (e.g., more buyers than sellers).
+            4. Identify if this looks like a "Dead Coin", "Silent Accumulation", or "High Risk Gamble".
+            5. Since there is no social proof, you must be skeptical, but allow for higher scores if technicals are exceptionally strong.
 
             Output strict JSON (in Turkish):
             {
