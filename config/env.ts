@@ -37,8 +37,11 @@ export const config = {
 
     // Backup Engine (Gemini)
     GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
-    GEMINI_KEYS: (process.env.GEMINI_KEYS || process.env.GEMINI_API_KEY || '').split(',').map(k => k.trim()).filter(k => k),
-    AI_MODEL: process.env.AI_MODEL || 'gemini-2.0-flash-exp',
+    GEMINI_KEYS: (process.env.GEMINI_API_KEY || '')
+        .split(',')
+        .map(k => k.trim())
+        .filter(k => k),
+    AI_MODEL: process.env.AI_MODEL || 'gemini-1.5-flash', // Changed default to flash
 
     // Trends
     TREND_UPDATE_INTERVAL_MINUTES: Number(process.env.TREND_UPDATE_INTERVAL_MINUTES) || 30,

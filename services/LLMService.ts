@@ -1,17 +1,17 @@
 import axios from 'axios';
 import { config } from '../config/env';
 import { logger } from '../utils/Logger';
-import { TokenSnapshot } from '../models/types'; // Correct import path
+import { TokenSnapshot } from '../models/types';
 
 export interface AIAnalysisResult {
     headline: string;
-    narrative: string; // Key snippet for compatibility
-    analystSummary: string; // 🧐 New: 2-3 sentences summary
-    technicalOutlook: string; // 📊 New: Liq/MC, Volume sustainability
-    socialVibe: string; // 🗣️ New: Bot vs Real community check
-    riskAnalysis: string; // 🚩 New: Dev, Liq Lock, Sell Pressure
-    strategy: string; // 🚀 New: Entry/Wait advice
-    analysis: string[]; // Key insights (Points)
+    narrative: string;
+    analystSummary: string;
+    technicalOutlook: string;
+    socialVibe: string;
+    riskAnalysis: string;
+    strategy: string;
+    analysis: string[];
     riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'DANGEROUS';
     riskReason: string;
     score: number; // 0-10
@@ -20,6 +20,11 @@ export interface AIAnalysisResult {
     recommendation?: string;
     advice?: string;
     vibe?: string;
+    secondOpinion?: {
+        provider: string;
+        score: number;
+        agrees: boolean;
+    };
 }
 
 export class LLMService {
@@ -31,11 +36,59 @@ export class LLMService {
 
     async analyzeToken(token: TokenSnapshot, tweets: string[]): Promise<AIAnalysisResult | null> {
         const hasTweets = tweets.length > 0;
-        let systemPrompt = '';
-        let userContent = '';
+        const { systemPrompt, userContent } = this.buildPrompt(token, tweets, hasTweets);
 
+        // STEP A: PRIMARY ANALYSIS with Gemini-1.5-Flash (Workhorse)
+        logger.info(`[AI Hybrid] STEP A: Calling Gemini-1.5-Flash for $${token.symbol}`);
+        let primaryResult = await this.callGeminiFlash(systemPrompt, userContent, token.symbol);
+
+        // Fallback if Gemini completely fails
+        if (!primaryResult) {
+            logger.warn(`[AI Hybrid] Gemini-Flash failed for $${token.symbol}, trying fallback providers...`);
+            primaryResult = await this.tryFallbackProviders(systemPrompt, userContent, token.symbol);
+            if (!primaryResult) {
+                logger.error(`[AI Hybrid] All providers failed for $${token.symbol}`);
+                return null;
+            }
+        }
+
+        const normalized = this.normalizeResult(primaryResult);
+        const primaryScore = normalized.score;
+
+        // STEP B: SNIPER CHECK - Second Opinion for High-Conviction Calls
+        if (primaryScore >= 7) {
+            logger.info(`[AI Hybrid] STEP B: Score ${primaryScore}/10 >= 7, requesting Groq second opinion...`);
+            const secondOpinion = await this.getGroqSecondOpinion(token, tweets, primaryScore);
+
+            if (secondOpinion) {
+                normalized.secondOpinion = secondOpinion;
+
+                // STEP C: DECISION LOGIC
+                const scoreDiff = Math.abs(primaryScore - secondOpinion.score);
+                if (scoreDiff > 2) {
+                    // Significant disagreement - average the scores
+                    const averaged = Math.round((primaryScore + secondOpinion.score) / 2);
+                    logger.info(`[AI Hybrid] Score disagreement detected. Gemini: ${primaryScore}, Groq: ${secondOpinion.score}. Averaging to ${averaged}/10`);
+                    normalized.score = averaged;
+                    secondOpinion.agrees = false;
+                } else {
+                    // Agreement or minor difference
+                    logger.info(`[AI Hybrid] Models agree. Gemini: ${primaryScore}, Groq: ${secondOpinion.score}`);
+                    secondOpinion.agrees = true;
+                    // Keep the higher score
+                    normalized.score = Math.max(primaryScore, secondOpinion.score);
+                }
+            }
+        } else {
+            logger.info(`[AI Hybrid] Score ${primaryScore}/10 < 7, skipping Groq validation (saving API calls)`);
+        }
+
+        return normalized;
+    }
+
+    private buildPrompt(token: TokenSnapshot, tweets: string[], hasTweets: boolean): { systemPrompt: string; userContent: string } {
         if (hasTweets) {
-            systemPrompt = `
+            const systemPrompt = `
 Sen Kıdemli bir Kripto Degen Analistisin. Görevin, piyasa verilerine ve son tweetlere dayanarak Solana meme tokenlarını analiz etmek.
 Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. Asla jenerik cevaplar verme.
 
@@ -46,8 +99,6 @@ Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. 
 - Market Cap: $${token.marketCapUsd}
 - Hacim (5dk): $${token.volume5mUsd}
 - Top 10 Holder: ${token.top10HoldersSupply ? token.top10HoldersSupply.toFixed(2) + '%' : 'Bilinmiyor'}
-- Twitter Kontext:
-(Kullanıcı mesajında eklidir)
 
 **Görev:**
 JSON formatında derinlemesine ve yapılandırılmış bir analiz sun. TÜM ÇIKTILAR %100 TÜRKÇE OLMALIDIR.
@@ -66,92 +117,180 @@ JSON formatında derinlemesine ve yapılandırılmış bir analiz sun. TÜM ÇIK
 
 **JSON Çıktı Formatı (KESİN - TÜRKÇE):**
 {
-    "headline": "Kısa ve Çarpıcı Başlık (Örn: 'Elon Musk Etkisi', 'Yapay Zeka Trendi')",
+    "headline": "Kısa ve Çarpıcı Başlık",
     "narrative": "Tokenin ruhunu anlatan genel açıklama.",
     "analystSummary": "Analistin Türkçe özeti...",
     "technicalOutlook": "Teknik görünüm yorumu...",
     "socialVibe": "Sosyal ortam yorumu...",
     "riskAnalysis": "Risk analizi detayları...",
     "strategy": "Strateji önerisi...",
-    "analysis": ["Madde 1", "Madde 2", "Madde 3"],
+    "analysis": ["Madde 1", "Madde 2"],
     "riskLevel": "LOW" | "MEDIUM" | "HIGH" | "DANGEROUS",
     "riskReason": "Kısa risk nedeni",
     "score": number, 
     "verdict": "APE" | "WATCH" | "FADE",
     "displayEmoji": "Emoji",
-    "recommendation": "DİKKATLİ İZLE" | "POTANSİYEL VAR" | "GÜÇLÜ SİNYAL",
+    "recommendation": "Tavsiye",
     "advice": "Kısa tavsiye",
-    "vibe": "Kısa vibe tanımı"
+    "vibe": "Kısa vibe"
 }
 `;
-            userContent = `Tweets:\n${tweets.slice(0, 15).map(t => `- ${t.replace(/\n/g, ' ')}`).join('\n')}`;
-
+            const userContent = `Tweets:\n${tweets.slice(0, 15).map(t => `- ${t.replace(/\n/g, ' ')}`).join('\n')}`;
+            return { systemPrompt, userContent };
         } else {
-            // Technical Analysis Fallback
-            systemPrompt = `
-            Sen bir Memecoin Risk Analistisin.
-            "$${token.symbol}" tokenı için sosyal veriye (Twitter) sahip değiliz.
-            Sadece TEKNİK verilere dayanarak risk analizi yap.
-            TÜM ÇIKTILAR TÜRKÇE OLMALIDIR.
+            // Technical fallback (no tweets)
+            const systemPrompt = `
+Sen bir Memecoin Risk Analistisin.
+"$${token.symbol}" tokenı için sosyal veriye (Twitter) sahip değiliz.
+Sadece TEKNİK verilere dayanarak risk analizi yap.
+TÜM ÇIKTILAR TÜRKÇE OLMALIDIR.
 
-            **Giriş Verileri:**
-            - Sembol: ${token.symbol}
-            - Likidite: $${token.liquidityUsd}
-            - Market Cap: $${token.marketCapUsd}
-            - Hacim (5dk): $${token.volume5mUsd}
-            - Top 10 Holder: ${token.top10HoldersSupply ? token.top10HoldersSupply.toFixed(2) + '%' : 'Bilinmiyor'}
+**Giriş Verileri:**
+- Sembol: ${token.symbol}
+- Likidite: $${token.liquidityUsd}
+- Market Cap: $${token.marketCapUsd}
+- Hacim (5dk): $${token.volume5mUsd}
+- Top 10 Holder: ${token.top10HoldersSupply ? token.top10HoldersSupply.toFixed(2) + '%' : 'Bilinmiyor'}
 
-            Sosyal veri olmasa bile teknik bir strateji ve görünüm sun.
-            
-            **JSON Çıktı Formatı (TÜRKÇE):**
-            {
-                "headline": "⚠️ TUNNEL VISION (SOSYAL VERİ YOK)",
-                "narrative": "Sadece teknik verilere dayalı analiz yapıldı.",
-                "analystSummary": "Twitter verisi bulunamadı ancak teknik veriler inceleniyor.",
-                "technicalOutlook": "Hacim ve Likidite dengesi analiz ediliyor.",
-                "socialVibe": "Veri Yok",
-                "riskAnalysis": "En büyük risk sosyal veri eksikliğidir.",
-                "strategy": "Sadece teknik kırılımlara göre işlem yapın veya bekleyin.",
-                "analysis": ["Hacim ve Likidite durumu"],
-                "riskLevel": "HIGH", 
-                "riskReason": "Sosyal veri yok.",
-                "score": 4, 
-                "verdict": "WATCH",
-                "displayEmoji": "🎲",
-                "recommendation": "DİKKATLİ İZLE",
-                "advice": "Sosyal konfirmasyon olmadan risk yüksek.",
-                "vibe": "Sessiz"
-            }
-            `;
-            userContent = "Bu teknik verileri analiz et.";
+Sosyal veri olmasa bile teknik bir strateji ve görünüm sun.
+
+**JSON Çıktı Formatı (TÜRKÇE):**
+{
+    "headline": "⚠️ TUNNEL VISION (SOSYAL VERİ YOK)",
+    "narrative": "Sadece teknik verilere dayalı analiz yapıldı.",
+    "analystSummary": "Twitter verisi bulunamadı ancak teknik veriler inceleniyor.",
+    "technicalOutlook": "Hacim ve Likidite dengesi analiz ediliyor.",
+    "socialVibe": "Veri Yok",
+    "riskAnalysis": "En büyük risk sosyal veri eksikliğidir.",
+    "strategy": "Sadece teknik kırılımlara göre işlem yapın.",
+    "analysis": ["Hacim ve Likidite durumu"],
+    "riskLevel": "HIGH", 
+    "riskReason": "Sosyal veri yok.",
+    "score": 4, 
+    "verdict": "WATCH",
+    "displayEmoji": "🎲",
+    "recommendation": "DİKKATLİ İZLE",
+    "advice": "Sosyal konfirmasyon olmadan risk yüksek.",
+    "vibe": "Sessiz"
+}
+`;
+            return { systemPrompt, userContent: "Bu teknik verileri analiz et." };
         }
-
-        return await this.generateAnalysis(systemPrompt, userContent, token.symbol);
     }
 
-    private async generateAnalysis(systemPrompt: string, userContent: string, symbol: string): Promise<AIAnalysisResult | null> {
+    // PRIMARY: Gemini-1.5-Flash with Key Rotation
+    private async callGeminiFlash(systemPrompt: string, userContent: string, symbol: string): Promise<any | null> {
+        const model = 'gemini-1.5-flash'; // Fixed model
+        const prompt = systemPrompt + "\n\n" + userContent;
+        const maxAttempts = Math.min(this.keyManager.getTotalKeys(), 3); // Try up to 3 keys
 
-        // 1. Try GROQ (Primary)
-        if (config.GROQ_API_KEY) {
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            const keyInfo = this.keyManager.getNextKey();
+            if (!keyInfo) {
+                logger.warn(`[Gemini-Flash] No available keys for $${symbol} (all in cooldown)`);
+                return null;
+            }
+
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${keyInfo.key}`;
             try {
-                logger.info(`[AI Router] Trying Primary: Groq (${config.GROQ_MODEL}) for $${symbol}`);
-                const result = await this.callOpenAICompatible(
-                    'https://api.groq.com/openai/v1/chat/completions',
-                    config.GROQ_API_KEY,
-                    config.GROQ_MODEL,
-                    systemPrompt,
-                    userContent
-                );
-                if (result) return this.normalizeResult(result);
-            } catch (e: any) {
-                logger.warn(`[AI Router] Groq failed for $${symbol} (${e.message}), switching to DeepSeek...`);
+                logger.info(`[Gemini-Flash] Attempt ${attempt + 1} with Key #${keyInfo.index + 1} for $${symbol}`);
+                const response = await axios.post(url, {
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: { responseMimeType: "application/json" }
+                }, { timeout: 15000 });
+
+                const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!text) throw new Error('Empty response from Gemini');
+                return JSON.parse(text);
+
+            } catch (error: any) {
+                const status = error.response?.status;
+                const errorMsg = error.response?.data?.error?.message || error.message;
+
+                if (status === 429) {
+                    logger.warn(`[Gemini-Flash] Key #${keyInfo.index + 1} RATE LIMITED (429). Cooling down 60s, rotating to next key...`);
+                    this.keyManager.markCooldown(keyInfo.key);
+                    continue; // Try next key
+                }
+
+                // Other errors - don't retry with same model
+                logger.warn(`[Gemini-Flash] Error with Key #${keyInfo.index + 1}: ${status} - ${errorMsg}`);
+                return null;
             }
         }
 
-        // 2. Try DEEPSEEK (Fallback)
+        logger.warn(`[Gemini-Flash] All keys exhausted for $${symbol}`);
+        return null;
+    }
+
+    // SNIPER: Groq Second Opinion (Only for High-Conviction)
+    private async getGroqSecondOpinion(token: TokenSnapshot, tweets: string[], primaryScore: number): Promise<{ provider: string; score: number; agrees: boolean } | null> {
+        if (!config.GROQ_API_KEY) {
+            logger.warn(`[Groq] API key not configured, skipping second opinion`);
+            return null;
+        }
+
+        try {
+            // Simplified prompt for quick validation
+            const validationPrompt = `You are a crypto analyst validator. Review this Solana token and rate it 1-10.
+
+Token: ${token.symbol}
+Price: $${token.priceUsd}
+Liquidity: $${token.liquidityUsd}
+Market Cap: $${token.marketCapUsd}
+Volume (5m): $${token.volume5mUsd}
+${tweets.length > 0 ? `\nRecent Activity:\n${tweets.slice(0, 5).join('\n')}` : ''}
+
+Primary analysis scored this ${primaryScore}/10. Do you agree?
+
+Return ONLY JSON: { "score": number, "reason": "brief explanation" }`;
+
+            const response = await axios.post(
+                'https://api.groq.com/openai/v1/chat/completions',
+                {
+                    model: config.GROQ_MODEL,
+                    messages: [
+                        { role: 'system', content: 'You are a crypto analyst. Return ONLY valid JSON.' },
+                        { role: 'user', content: validationPrompt }
+                    ],
+                    response_format: { type: "json_object" },
+                    temperature: 0.3 // Lower temperature for more consistent validation
+                },
+                {
+                    headers: {
+                        'Authorization': `Bearer ${config.GROQ_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    },
+                    timeout: 10000
+                }
+            );
+
+            const content = response.data?.choices?.[0]?.message?.content;
+            if (!content) throw new Error('Empty response from Groq');
+
+            const result = JSON.parse(content);
+            const groqScore = typeof result.score === 'number' ? result.score : 5;
+
+            logger.info(`[Groq] Second opinion: ${groqScore}/10 (Primary was ${primaryScore}/10)`);
+
+            return {
+                provider: 'Groq (llama-3-70b)',
+                score: groqScore,
+                agrees: Math.abs(groqScore - primaryScore) <= 2
+            };
+
+        } catch (error: any) {
+            logger.warn(`[Groq] Second opinion failed: ${error.message}`);
+            return null;
+        }
+    }
+
+    // FALLBACK: DeepSeek if Gemini completely fails
+    private async tryFallbackProviders(systemPrompt: string, userContent: string, symbol: string): Promise<any | null> {
+        // Try DeepSeek
         if (config.DEEPSEEK_API_KEY) {
             try {
-                logger.info(`[AI Router] Trying Fallback: DeepSeek (${config.DEEPSEEK_MODEL}) for $${symbol}`);
+                logger.info(`[Fallback] Trying DeepSeek for $${symbol}`);
                 const result = await this.callOpenAICompatible(
                     'https://api.deepseek.com/chat/completions',
                     config.DEEPSEEK_API_KEY,
@@ -159,24 +298,32 @@ JSON formatında derinlemesine ve yapılandırılmış bir analiz sun. TÜM ÇIK
                     systemPrompt,
                     userContent
                 );
-                if (result) return this.normalizeResult(result);
+                if (result) return result;
             } catch (e: any) {
-                logger.warn(`[AI Router] DeepSeek failed for $${symbol} (${e.message}), switching to Gemini...`);
+                logger.warn(`[Fallback] DeepSeek failed: ${e.message}`);
             }
         }
 
-        // 3. Try GEMINI (Last Resort)
-        if (this.keyManager.hasKeys()) {
-            logger.info(`[AI Router] Trying Last Resort: Gemini for $${symbol}`);
-            const result = await this.tryGeminiWithRotation(config.AI_MODEL, systemPrompt, userContent, symbol);
-            if (result) return result; // Already normalized
+        // Try Groq as last resort (if not already used)
+        if (config.GROQ_API_KEY) {
+            try {
+                logger.info(`[Fallback] Trying Groq as last resort for $${symbol}`);
+                const result = await this.callOpenAICompatible(
+                    'https://api.groq.com/openai/v1/chat/completions',
+                    config.GROQ_API_KEY,
+                    config.GROQ_MODEL,
+                    systemPrompt,
+                    userContent
+                );
+                if (result) return result;
+            } catch (e: any) {
+                logger.warn(`[Fallback] Groq failed: ${e.message}`);
+            }
         }
 
-        logger.error(`[AI Router] All Providers Failed for $${symbol}`);
-        return null; // All failed
+        return null;
     }
 
-    // Generic Helper for OpenAI-Compatible APIs (Groq, DeepSeek)
     private async callOpenAICompatible(endpoint: string, apiKey: string, model: string, system: string, user: string): Promise<any | null> {
         try {
             const response = await axios.post(
@@ -195,7 +342,7 @@ JSON formatında derinlemesine ve yapılandırılmış bir analiz sun. TÜM ÇIK
                         'Authorization': `Bearer ${apiKey}`,
                         'Content-Type': 'application/json'
                     },
-                    timeout: 15000 // 15s timeout
+                    timeout: 15000
                 }
             );
 
@@ -208,58 +355,9 @@ JSON formatında derinlemesine ve yapılandırılmış bir analiz sun. TÜM ÇIK
         }
     }
 
-    private async tryGeminiWithRotation(initialModel: string, systemPrompt: string, userContent: string, symbol: string): Promise<AIAnalysisResult | null> {
-        const fallbacks = ['gemini-2.0-flash-exp', 'gemini-2.5-flash', 'gemini-1.5-flash'];
-        const uniqueModels = [...new Set([initialModel, ...fallbacks])];
-
-        for (const currentModel of uniqueModels) {
-            const result = await this.callGeminiAutoRotate(currentModel, systemPrompt + "\n\n" + userContent, symbol);
-            if (result) {
-                return this.normalizeResult(result);
-            }
-        }
-        return null;
-    }
-
-    private async callGeminiAutoRotate(model: string, prompt: string, symbol: string): Promise<any | null> {
-        const maxRetries = 2;
-        let attempts = 0;
-
-        while (attempts < maxRetries) {
-            const keyInfo = this.keyManager.getNextKey();
-            if (!keyInfo) {
-                logger.warn(`[LLM] Gemini: No available keys for $${symbol} (all cooled down or missing).`);
-                return null;
-            }
-
-            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${keyInfo.key}`;
-            try {
-                const response = await axios.post(url, {
-                    contents: [{ parts: [{ text: prompt }] }],
-                    generationConfig: { responseMimeType: "application/json" }
-                }, { timeout: 15000 }); // 15s timeout
-                const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-                return text ? JSON.parse(text) : null;
-            } catch (error: any) {
-                const status = error.response?.status;
-                const errorMsg = error.response?.data?.error?.message || error.message;
-                if (status === 429) {
-                    logger.warn(`[LLM] Gemini Key #${keyInfo.index + 1} QUOTA EXCEEDED (429) for $${symbol}. Cooldown 60s.`);
-                    this.keyManager.markCooldown(keyInfo.key);
-                    attempts++;
-                    continue;
-                }
-                logger.warn(`[LLM] Gemini attempt (${model}) failed for $${symbol}: ${status} - ${errorMsg}`);
-                return null;
-            }
-        }
-        logger.warn(`[LLM] Gemini: Max retries exhausted for $${symbol} with model ${model}.`);
-        return null;
-    }
-
     private normalizeResult(result: any): AIAnalysisResult {
         return {
-            headline: result.headline || `🚨 ANALYZING: ${config.AI_MODEL}`,
+            headline: result.headline || `🚨 ANALYZING`,
             narrative: result.narrative || "Trend analizi yapılamadı.",
             analystSummary: result.analystSummary || "Özet yok.",
             technicalOutlook: result.technicalOutlook || "Teknik veri yok.",
@@ -279,34 +377,46 @@ JSON formatında derinlemesine ve yapılandırılmış bir analiz sun. TÜM ÇIK
     }
 }
 
+// KEY MANAGER: Handles Gemini API Key Rotation & Cooldown
 class GeminiKeyManager {
     private keys: string[];
     private currentIndex: number = 0;
-    private cooldowns: Map<string, number> = new Map(); // Key -> Cooldown Expiry Timestamp
+    private cooldowns: Map<string, number> = new Map(); // Key -> Expiry Timestamp
 
     constructor(keys: string[]) {
         this.keys = keys;
+        if (keys.length > 0) {
+            logger.info(`[KeyManager] Initialized with ${keys.length} Gemini API key(s)`);
+        }
     }
 
-    hasKeys(): boolean {
-        return this.keys.length > 0;
+    getTotalKeys(): number {
+        return this.keys.length;
     }
 
-    getNextKey(): { key: string, index: number } | null {
+    getNextKey(): { key: string; index: number } | null {
         if (this.keys.length === 0) return null;
+
         const now = Date.now();
+        // Try each key in round-robin order
         for (let i = 0; i < this.keys.length; i++) {
-            const ptr = (this.currentIndex + i) % this.keys.length;
-            const key = this.keys[ptr];
-            if (now > (this.cooldowns.get(key) || 0)) {
-                this.currentIndex = (ptr + 1) % this.keys.length;
-                return { key, index: ptr };
+            const idx = (this.currentIndex + i) % this.keys.length;
+            const key = this.keys[idx];
+            const cooldownExpiry = this.cooldowns.get(key) || 0;
+
+            if (now > cooldownExpiry) {
+                // Key is available
+                this.currentIndex = (idx + 1) % this.keys.length; // Move to next for next call
+                return { key, index: idx };
             }
         }
+
+        // All keys in cooldown
         return null;
     }
 
-    markCooldown(key: string) {
-        this.cooldowns.set(key, Date.now() + 60000);
+    markCooldown(key: string, durationMs: number = 60000) {
+        this.cooldowns.set(key, Date.now() + durationMs);
+        logger.info(`[KeyManager] Key marked in cooldown for ${durationMs / 1000}s`);
     }
 }
