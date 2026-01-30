@@ -19,7 +19,17 @@ export class ScandexBot {
         private dexScreener?: DexScreenerService
     ) {
         if (config.TELEGRAM_BOT_TOKEN) {
-            this.bot = new TelegramBot(config.TELEGRAM_BOT_TOKEN, { polling: true });
+            this.bot = new TelegramBot(config.TELEGRAM_BOT_TOKEN, { polling: false });
+
+            // Fix: Start polling manually to catch 409 Conflict
+            this.bot.startPolling().catch(err => {
+                if (err.code === 'ETELEGRAM' && err.message.includes('409')) {
+                    logger.error('[Telegram] 🚨 409 CONFLICT: Başka bir bot örneği çalışıyor! Lütfen diğer terminali kapatın.');
+                } else {
+                    logger.error(`[Telegram] Polling error: ${err.message}`);
+                }
+            });
+
             this.initCommands();
         } else {
             logger.warn('[Telegram] No Token provided, bot disabled.');

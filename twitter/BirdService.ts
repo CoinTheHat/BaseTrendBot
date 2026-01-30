@@ -90,7 +90,15 @@ export class BirdService {
             }
 
         } catch (err: any) {
-            logger.error(`[Bird] Command failed: ${err.message}`);
+            // Try to extract status code if embedded in message or props
+            const status = err.code || err.status || 'Unknown';
+            const msg = err.message || err.toString();
+
+            // Special handling for rate limits or auth errors
+            if (msg.includes('429')) logger.warn(`[Bird] ⚠️ RATE LIMIT (429).`);
+            else if (msg.includes('401')) logger.warn(`[Bird] ⚠️ UNAUTHORIZED (401). Check cookies.`);
+            else logger.error(`[Bird] Command failed: ${msg} (Code: ${status})`);
+
             return [];
         }
     }
