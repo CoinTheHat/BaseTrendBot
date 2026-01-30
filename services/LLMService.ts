@@ -1,11 +1,17 @@
 import axios from 'axios';
 import { config } from '../config/env';
 import { logger } from '../utils/Logger';
+import { TokenSnapshot } from '../models/types'; // Correct import path
 
 export interface AIAnalysisResult {
     headline: string;
-    narrative: string;
-    analysis: string[]; // Key insights
+    narrative: string; // Key snippet for compatibility
+    analystSummary: string; // 🧐 New: 2-3 sentences summary
+    technicalOutlook: string; // 📊 New: Liq/MC, Volume sustainability
+    socialVibe: string; // 🗣️ New: Bot vs Real community check
+    riskAnalysis: string; // 🚩 New: Dev, Liq Lock, Sell Pressure
+    strategy: string; // 🚀 New: Entry/Wait advice
+    analysis: string[]; // Key insights (Points)
     riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'DANGEROUS';
     riskReason: string;
     score: number; // 0-10
@@ -23,89 +29,101 @@ export class LLMService {
         this.keyManager = new GeminiKeyManager(config.GEMINI_KEYS);
     }
 
-    async analyzeToken(symbol: string, tweets: string[], tokenStats?: string): Promise<AIAnalysisResult | null> {
-        // Validation: Pre-check is done in NarrativeEngine usually, but we safeguard here too.
-        // If caller passed 0 tweets, we treat it as technical analysis or skip if strictly required.
-        // User requested: "Likiditesi $5,000 altı olan veya 0 tweeti olan tokenları bu modellerin hiçbirine gönderme"
-        // Since we only get 'tokenStats' string here, we rely on the caller (NarrativeEngine) to filter Liquidity.
-        // We CAN check tweets length here though.
-
+    async analyzeToken(token: TokenSnapshot, tweets: string[]): Promise<AIAnalysisResult | null> {
         const hasTweets = tweets.length > 0;
-
         let systemPrompt = '';
         let userContent = '';
 
-        // Standardized Prompt Construction
         if (hasTweets) {
             systemPrompt = `
-        You are an elite Crypto Degen Detective and Risk Analyst.
-        Your job is to analyze Twitter/X data for a new Solana token "$${symbol}" and determine if it's a hidden gem, a dangerous scam, or just noise.
-        
-        Analyze the provided tweets critically. Look for:
-        - **Organic Hype vs. Bot Spam:** Do the tweets look real or scripted?
-        - **Influencer Involvement:** Are big names calling it? Who?
-        - **Narrative Strength:** Is there a real meme/story or just a random coin?
-        - **Red Flags:** "Revoke authority", "Liquidity locked", "Pre-sale" mentions (if any).
+You are a Senior Crypto Degen Analyst. Your job is to analyze a Solana meme token based on market data and recent tweets.
+Be critical, skeptical, but open to high-potential plays. Do not be generic.
 
-        CRITICAL INSTRUCTION: 
-        If users mention 'scam', 'rug', 'honeypot', 'fake' or if tweets are clearly bot spam, 
-        IMMEDIATELY set score < 3 and recommend UZAK DUR. Do not be fooled by high volume.
+**Input Data:**
+- Symbol: ${token.symbol}
+- Price: $${token.priceUsd}
+- Liquidity: $${token.liquidityUsd}
+- Market Cap: $${token.marketCapUsd}
+- Volume (5m): $${token.volume5mUsd}
+- Twitter Context:
+(Attached in User Message)
 
-        Output Rules:
-        - ALL text must be in TURKISH
-        - Based on your score (0-10), provide specific recommendation:
-          * 8-10: "GÜÇLÜ ALINABİLİR" with optimistic comment
-          * 5-7: "DİKKATLİ İZLE" with cautious comment  
-          * 0-4: "UZAK DUR" with warning
+**Task:**
+Provide a deep, structured analysis in JSON format.
 
-        Output strictly these JSON fields:
-        {
-            "headline": "Short, punchy title (e.g. '🚨 GEM BULUNDU', '⚠️ RUG UYARISI')",
-            "narrative": "Token'ın ruhunu ve karakterini anlatan tek cümle.",
-            "analysis": [
-                "Neden yükseliyor - sosyal kanıt",
-                "Topluluk ve dev kontrolü"
-            ],
-            "riskLevel": "LOW" | "MEDIUM" | "HIGH" | "DANGEROUS",
-            "riskReason": "Spesifik uyarı veya güven nedeni.",
-            "score": 8, // 0-10 Integer
-            "recommendation": "GÜÇLÜ ALINABİLİR" | "DİKKATLİ İZLE" | "UZAK DUR",
-            "advice": "1 cümlelik kısa tavsiye (e.g. 'Sosyal medya patlıyor, trendin başındayız.')",
-            "vibe": "Token'ın ruh hali (e.g. 'Agresif', 'Eğlenceli')",
-            "displayEmoji": "🔥" | "💩" | "👀"
-        }
-        `;
-            userContent = `Tweets:\n${tweets.slice(0, 15).map(t => `- ${t.replace(/\n/g, ' ')}`).join('\n')}\n\nStats:\n${tokenStats || ''}`;
+**Analysis Requirements:**
+1. **Analyst Summary**: Why is this token on the radar? (2-3 sentences)
+2. **Technical Outlook**: Analyze Liq/MC ratio. Is the volume organic? Is the liquidity sufficient for the market cap?
+3. **Social Vibe**: Are tweets generic/bot-like or authentic/cult-like? Who is talking about it?
+4. **Risk Analysis**: Mention Dev wallet action (if known or general risk), Liquidity Safety, Holder distribution risk.
+5. **Strategy**: Suggest an action (e.g., "Wait for dip", "Ape small", "Fade").
+6. **Score (0-10)**:
+   - 0-4: Trash/Rug Risk
+   - 5-6: Watchlist (Good metrics but early/quiet)
+   - 7-8: Potential Gem (Good volume + active socials)
+   - 9-10: Strong Buy (Perfect storm of Hype + Liq + Trend)
+
+**JSON Output Format (Strict):**
+{
+    "headline": "Short Catchy Title (e.g. 'Elon Narrative Play')",
+    "narrative": "General description...",
+    "analystSummary": "...",
+    "technicalOutlook": "...",
+    "socialVibe": "...",
+    "riskAnalysis": "...",
+    "strategy": "...",
+    "analysis": ["Bullet 1", "Bullet 2", "Bullet 3"],
+    "riskLevel": "LOW" | "MEDIUM" | "HIGH" | "DANGEROUS",
+    "riskReason": "Short reason",
+    "score": number, 
+    "verdict": "APE" | "WATCH" | "FADE",
+    "displayEmoji": "Emoji",
+    "recommendation": "Turkish Action (e.g. 'DİKKATLİ İZLE', 'POTANSİYEL VAR', 'GÜÇLÜ SİNYAL')",
+    "advice": "Short tip",
+    "vibe": "Short vibe desc"
+}
+`;
+            userContent = `Tweets:\n${tweets.slice(0, 15).map(t => `- ${t.replace(/\n/g, ' ')}`).join('\n')}`;
 
         } else {
             // Technical Analysis Fallback
             systemPrompt = `
             You are a Risk Analyst for Memecoins. 
-            We have NO social data (Twitter) for the token "$${symbol}".
+            We have NO social data (Twitter) for the token "$${token.symbol}".
             Analyze risk based PURELY on technicals.
 
-            Statistics:
-            ${tokenStats || 'No technical data provided.'}
+            **Input Data:**
+            - Symbol: ${token.symbol}
+            - Liquidity: $${token.liquidityUsd}
+            - Market Cap: $${token.marketCapUsd}
+            - Volume (5m): $${token.volume5mUsd}
 
-            Output Strict JSON (Turkish):
+            Output Strict JSON (Turkish). Even without socials, provide a technical strategy and outlook.
+            
+            JSON Output Format:
             {
                 "headline": "⚠️ TUNNEL VISION (NO SOCIALS)",
                 "narrative": "Sadece teknik verilere dayalı analiz.",
+                "analystSummary": "Twitter verisi yok ancak teknik veriler inceleniyor.",
+                "technicalOutlook": "Hacim ve Likidite durumu analiz ediliyor.",
+                "socialVibe": "Veri Yok",
+                "riskAnalysis": "Sosyal veri eksikliği en büyük risk.",
+                "strategy": "Teknik trade veya bekle.",
                 "analysis": ["Hacim ve Likidite durumu"],
                 "riskLevel": "HIGH", 
                 "riskReason": "Sosyal veri yok.",
                 "score": 4, 
+                "verdict": "WATCH",
+                "displayEmoji": "🎲",
                 "recommendation": "DİKKATLİ İZLE",
                 "advice": "Sosyal kanıt yok, risk yüksek.",
-                "vibe": "Sessiz",
-                "displayEmoji": "🎲"
+                "vibe": "Sessiz"
             }
             `;
             userContent = "Analyze this technical data.";
         }
 
-        // ROUTING LOGIC
-        return await this.generateAnalysis(systemPrompt, userContent, symbol);
+        return await this.generateAnalysis(systemPrompt, userContent, token.symbol);
     }
 
     private async generateAnalysis(systemPrompt: string, userContent: string, symbol: string): Promise<AIAnalysisResult | null> {
@@ -147,7 +165,6 @@ export class LLMService {
         // 3. Try GEMINI (Last Resort)
         if (this.keyManager.hasKeys()) {
             logger.info(`[AI Router] Trying Last Resort: Gemini for $${symbol}`);
-            // Use the existing rotating logic, but simplified call
             const result = await this.tryGeminiWithRotation(config.AI_MODEL, systemPrompt, userContent, symbol);
             if (result) return result; // Already normalized
         }
@@ -184,20 +201,17 @@ export class LLMService {
             return JSON.parse(content);
 
         } catch (error: any) {
-            // Throw up to allow router to catch
             throw new Error(error.response?.data?.error?.message || error.message);
         }
     }
 
     private async tryGeminiWithRotation(initialModel: string, systemPrompt: string, userContent: string, symbol: string): Promise<AIAnalysisResult | null> {
-        // Reuse existing rotation logic but adapt to return normalized result
         const fallbacks = ['gemini-2.0-flash-exp', 'gemini-2.5-flash', 'gemini-1.5-flash'];
         const uniqueModels = [...new Set([initialModel, ...fallbacks])];
 
         for (const currentModel of uniqueModels) {
             const result = await this.callGeminiAutoRotate(currentModel, systemPrompt + "\n\n" + userContent, symbol);
             if (result) {
-                await new Promise(resolve => setTimeout(resolve, 2000));
                 return this.normalizeResult(result);
             }
         }
@@ -205,7 +219,7 @@ export class LLMService {
     }
 
     private async callGeminiAutoRotate(model: string, prompt: string, symbol: string): Promise<any | null> {
-        const maxRetries = 2; // Reduced retries for last resort to fail fast
+        const maxRetries = 2;
         let attempts = 0;
 
         while (attempts < maxRetries) {
@@ -214,8 +228,6 @@ export class LLMService {
                 logger.warn(`[LLM] Gemini: No available keys for $${symbol} (all cooled down or missing).`);
                 return null;
             }
-
-            // logger.info(`[LLM] Gemini Key #${keyInfo.index + 1} (${model})`);
 
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${keyInfo.key}`;
             try {
@@ -246,6 +258,11 @@ export class LLMService {
         return {
             headline: result.headline || `🚨 ANALYZING: ${config.AI_MODEL}`,
             narrative: result.narrative || "Trend analizi yapılamadı.",
+            analystSummary: result.analystSummary || "Özet yok.",
+            technicalOutlook: result.technicalOutlook || "Teknik veri yok.",
+            socialVibe: result.socialVibe || "Vibe verisi yok.",
+            riskAnalysis: result.riskAnalysis || "Risk analizi yok.",
+            strategy: result.strategy || "Strateji yok.",
             analysis: result.analysis || ["Veri yetersiz."],
             riskLevel: result.riskLevel || 'MEDIUM',
             riskReason: result.riskReason || '',

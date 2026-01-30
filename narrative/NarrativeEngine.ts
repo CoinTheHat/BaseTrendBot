@@ -64,50 +64,60 @@ export class NarrativeEngine {
             vibeCheck = "Ghost Town 👻";
 
         } else {
-            // RUN AI
-            let aiResult = await this.llm.analyzeToken(symbol, recentTweets, dataSection);
+            // 5. AI Analysis (with Pre-filtering logic)
+            let aiResult = await this.llm.analyzeToken(token, recentTweets);
 
             if (aiResult) {
-                // AI Override: Use AI's headline if provided, else keep intro
-                let header = intro;
-                if (aiResult.headline) {
-                    header = `**${aiResult.headline}**`;
-                }
+                // EXTRACT NEW DEEP ANALYSIS FIELDS
+                const analystSummary = aiResult.analystSummary || aiResult.narrative;
+                const riskAnalysis = aiResult.riskAnalysis || aiResult.riskReason;
+                const strategy = aiResult.strategy || (aiResult.advice || "Veri yok.");
 
-                // Turkish Recommendation
-                const recommendation = aiResult.recommendation || 'DİKKATLİ İZLE';
-                const advice = aiResult.advice || '';
                 finalAiScore = aiResult.score;
                 finalAiReason = aiResult.riskReason;
 
-                // HEADER INJECTION for High Score
-                if (finalAiScore >= 8) {
-                    header = `🔥 **GÜÇLÜ SİNYAL** 🔥\n${header}`;
+                // HEADER LOGIC (DISCIPLINE)
+                let headerPrefix = '';
+                let recEmoji = ''; // Initialize recEmoji here
+                if (finalAiScore >= 9) {
+                    headerPrefix = `🔥 **GÜÇLÜ SİNYAL** 🔥 (Score: ${finalAiScore})`;
+                    recEmoji = '🚀';
+                } else if (finalAiScore >= 7) {
+                    headerPrefix = `✨ **POTANSİYEL VAR** (Score: ${finalAiScore})`;
+                    recEmoji = '👀';
+                } else if (finalAiScore >= 5) {
+                    headerPrefix = `⚠️ **DİKKATLİ İZLE** (Score: ${finalAiScore})`;
+                    recEmoji = '⚖️';
+                } else {
+                    headerPrefix = `🚫 **ZAYIF / RİSKLİ** (Score: ${finalAiScore})`;
+                    recEmoji = '🛑';
                 }
 
-                // Assemble Text (CA is already in caLine)
-                narrativeText = `${caLine}${header}\n${aiResult.narrative}\n`;
-                narrativeText += `\n💡 **Neden Yükseliyor?**\n• ${aiResult.analysis.join('\n• ')}\n`;
+                let header = ''; // Declare header here
+                if (aiResult.headline) {
+                    header = `${headerPrefix}\n**${aiResult.headline}**`;
+                } else {
+                    header = headerPrefix;
+                }
 
-                // Vibe
-                const vibe = aiResult.vibe || 'Analiz yapılıyor...';
+                // ASSEMBLE NEW TEMPLATE
+                narrativeText = `${caLine}\n${header}\n\n`;
+                narrativeText += `🧐 **ANALİST ÖZETİ:**\n${analystSummary}\n\n`;
+
+                // Add specific insights if available (Technical / Social)
+                if (aiResult.technicalOutlook) narrativeText += `📊 **Teknik Görünüm:** ${aiResult.technicalOutlook}\n`;
+                if (aiResult.socialVibe) narrativeText += `🗣️ **Sosyal Vibe:** ${aiResult.socialVibe}\n`;
+
+                narrativeText += `\n🚩 **RİSK ANALİZİ:**\n${riskAnalysis}\n`;
+                narrativeText += `\n🚀 **STRATEJİ:**\n${strategy}\n`;
+
+                // Vibe Check (Bottom)
+                const vibe = aiResult.vibe || 'Nötr';
                 vibeCheck = `${aiResult.displayEmoji} ${vibe}`;
 
-                // Risk Analysis
-                if (aiResult.riskLevel === 'HIGH' || aiResult.riskLevel === 'DANGEROUS') {
-                    aiRisk = `\n⚠️ **RİSK FAKTÖRLERİ:**\n${aiResult.riskReason}`;
-                } else {
-                    aiRisk = `\n✅ **Risk Durumu:** ${aiResult.riskReason || 'Temiz görünüyor.'}`;
-                }
-
-                let recEmoji = '⚠️';
-                if (finalAiScore >= 8) recEmoji = '🚀';
-                else if (finalAiScore >= 5) recEmoji = '⚠️';
-                else recEmoji = '🚫';
-
+                // Add Score Line explicitly as requested (though it's in header now, better to keep the explicit line too)
                 narrativeText += `\n🎯 **AI PUANI:** ${finalAiScore}/10\n`;
-                narrativeText += `${recEmoji} **Karar:** ${recommendation}`;
-                if (advice) narrativeText += `\n💬 **AI Tavsiyesi:** ${advice}`;
+
             } else {
                 // AI Failed
                 narrativeText = `${caLine}${intro}\n\n⚠️ AI Analizi başarısız oldu (Servis yok).`;
