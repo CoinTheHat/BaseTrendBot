@@ -33,14 +33,56 @@ export class TwitterAccountManager {
     private loadAccounts() {
         const tokens = config.TWITTER_AUTH_TOKENS || [];
         const ct0s = config.TWITTER_CT0S || [];
+        const foundAccounts: TwitterAccount[] = [];
 
-        // Parallel arrays
-        logger.info(`[TwitterManager] Config Check: Found ${tokens.length} Auth Tokens and ${ct0s.length} CT0s.`);
-        const count = Math.min(tokens.length, ct0s.length);
+        // 1. Load Legacy List (Comma-Separated) - Priority 1
+        const legacyCount = Math.min(tokens.length, ct0s.length);
+        for (let i = 0; i < legacyCount; i++) {
+            foundAccounts.push({
+                authToken: tokens[i],
+                ct0: ct0s[i],
+                index: i,
+                userAgent: USER_AGENTS[i % USER_AGENTS.length],
+                isBusy: false,
+                lastBusyStart: 0,
+                cooldownUntil: 0
+            });
+        }
 
-        if (count === 0 && config.TWITTER_AUTH_TOKEN) {
-            // Fallback to legacy single
-            this.accounts.push({
+        // 2. Load Dynamic Env Vars (TWITTER_AUTH_TOKEN_1, _2, etc.)
+        // Scan keys for TWITTER_AUTH_TOKEN_X prefix
+        const envKeys = Object.keys(process.env);
+        let dynamicCount = 0;
+
+        envKeys.forEach(key => {
+            if (key.match(/^TWITTER_AUTH_TOKEN_\d+$/)) {
+                const suffix = key.split('_').pop(); // '1', '2'
+                const authToken = process.env[key];
+                const ct0Key = `TWITTER_CT0_${suffix}`;
+                const ct0 = process.env[ct0Key];
+
+                if (authToken && ct0) {
+                    // Check for duplicates (avoid loading same token twice if it's also in the list)
+                    const isDuplicate = foundAccounts.some(a => a.authToken === authToken);
+                    if (!isDuplicate) {
+                        foundAccounts.push({
+                            authToken: authToken,
+                            ct0: ct0,
+                            index: foundAccounts.length, // Append Index
+                            userAgent: USER_AGENTS[foundAccounts.length % USER_AGENTS.length],
+                            isBusy: false,
+                            lastBusyStart: 0,
+                            cooldownUntil: 0
+                        });
+                        dynamicCount++;
+                    }
+                }
+            }
+        });
+
+        // 3. Last Resort: Single Legacy Token
+        if (foundAccounts.length === 0 && config.TWITTER_AUTH_TOKEN) {
+            foundAccounts.push({
                 authToken: config.TWITTER_AUTH_TOKEN,
                 ct0: config.TWITTER_CT0,
                 index: 0,
@@ -49,25 +91,10 @@ export class TwitterAccountManager {
                 lastBusyStart: 0,
                 cooldownUntil: 0
             });
-        } else {
-            for (let i = 0; i < count; i++) {
-                this.accounts.push({
-                    authToken: tokens[i],
-                    ct0: ct0s[i],
-                    index: i,
-                    userAgent: USER_AGENTS[i % USER_AGENTS.length],
-                    isBusy: false,
-                    lastBusyStart: 0,
-                    cooldownUntil: 0
-                });
-            }
         }
 
-        if (this.accounts.length > 0) {
-            logger.info(`[TwitterManager] Loaded ${this.accounts.length} accounts with fingerprinting.`);
-        } else {
-            logger.warn(`[TwitterManager] No accounts found.`);
-        }
+        this.accounts = foundAccounts;
+        logger.info(`[TwitterManager] Loaded ${this.accounts.length} accounts (Legacy: ${legacyCount}, Dynamic: ${dynamicCount}).`);
     }
 
     /**
