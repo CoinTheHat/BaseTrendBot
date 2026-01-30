@@ -168,11 +168,11 @@ export class TokenScanJob {
             const alphaMap = new Map<string, any>();
 
             if (alphaCandidates.length > 0) {
-                const symbols = alphaCandidates.map(t => t.symbol);
-                // logger.info(`[Job] Batch Scanning ${symbols.length} tokens for Alpha Signals...`);
+                // logger.info(`[Job] Batch Scanning ${alphaCandidates.length} tokens for Alpha Signals...`);
 
                 // This triggers the Multi-Worker, Multi-Account, Sequential Batch Logic
-                const batchResults = await this.alphaSearch.scanBatch(symbols);
+                // NOW PASSING OBJECTS for Single Shot Logic
+                const batchResults = await this.alphaSearch.scanBatch(alphaCandidates.map(t => ({ symbol: t.symbol, name: t.name })));
                 // Copy to map
                 batchResults.forEach((val, key) => alphaMap.set(key, val));
             }

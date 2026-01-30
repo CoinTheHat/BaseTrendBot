@@ -64,17 +64,17 @@ export class AlphaSearchService {
      * Parallel Batch Scraper (Worker Pool Pattern)
      * Distributes tokens across available accounts.
      */
-    async scanBatch(symbols: string[]): Promise<Map<string, AlphaSearchResult>> {
+    async scanBatch(tokens: { symbol: string, name: string }[]): Promise<Map<string, AlphaSearchResult>> {
         const results = new Map<string, AlphaSearchResult>();
-        if (!config.ENABLE_TWITTER_SCRAPING || symbols.length === 0) return results;
+        if (!config.ENABLE_TWITTER_SCRAPING || tokens.length === 0) return results;
 
-        const queue = [...symbols];
+        const queue = [...tokens];
         const activeWorkers: Promise<void>[] = [];
 
         // Ensure browser is ready
         await this.ensureBrowser();
 
-        logger.info(`[AlphaHunter] Starting Batch Scan for ${symbols.length} tokens...`);
+        logger.info(`[AlphaHunter] Starting Batch Scan for ${tokens.length} tokens...`);
 
         // Dynamic Worker Loop
         while (queue.length > 0 || activeWorkers.length > 0) {
@@ -116,12 +116,12 @@ export class AlphaSearchService {
         return results;
     }
 
-    private async processBatchWorker(account: any, symbols: string[], results: Map<string, AlphaSearchResult>) {
+    private async processBatchWorker(account: any, tokens: { symbol: string, name: string }[], results: Map<string, AlphaSearchResult>) {
         let context: any = null;
         let page: any = null;
         let rateLimited = false;
 
-        logger.info(`[AlphaHunter] Worker #${account.index + 1} starting batch of ${symbols.length} tokens.`);
+        logger.info(`[AlphaHunter] Worker #${account.index + 1} starting batch of ${tokens.length} tokens.`);
 
         try {
             if (!this.browser) await this.ensureBrowser();
@@ -136,10 +136,10 @@ export class AlphaSearchService {
             );
 
             // Sequential processing within this worker
-            for (const symbol of symbols) {
+            for (const token of tokens) {
                 try {
-                    const result = await this.scrapeSingle(page, symbol);
-                    results.set(symbol, result);
+                    const result = await this.scrapeSingle(page, token);
+                    results.set(token.symbol, result);
 
                     // Small tactical delay between searches in same session
                     await new Promise(r => setTimeout(r, 2000 + Math.random() * 2000));
@@ -149,7 +149,7 @@ export class AlphaSearchService {
                         rateLimited = true;
                         break; // Stop this batch
                     }
-                    logger.error(`[AlphaHunter] Worker #${account.index + 1} failed on ${symbol}: ${e.message}`);
+                    logger.error(`[AlphaHunter] Worker #${account.index + 1} failed on ${token.symbol}: ${e.message}`);
                 }
             }
 
@@ -164,9 +164,18 @@ export class AlphaSearchService {
         }
     }
 
-    private async scrapeSingle(page: any, symbol: string): Promise<AlphaSearchResult> {
-        const cashtag = `$${symbol.toUpperCase()}`;
-        const query = `${cashtag}`;
+    private async scrapeSingle(page: any, token: { symbol: string, name: string }): Promise<AlphaSearchResult> {
+        let query: string;
+
+        // --- SINGLE SHOT LOGIC ---
+        // If Symbol > 3 chars (e.g. $BONK) -> Use Cashtag
+        if (token.symbol.length > 3) {
+            query = `$${token.symbol.toUpperCase()}`;
+        } else {
+            // Else (short/generic) -> Use "Name solana"
+            query = `"${token.name}" solana`;
+        }
+
         const searchUrl = `https://twitter.com/search?q=${encodeURIComponent(query)}&f=live`;
 
         try {
@@ -174,7 +183,7 @@ export class AlphaSearchService {
             await page.waitForSelector('article', { timeout: 5000 });
         } catch (e: any) {
             // Basic timeout / no results
-            // logger.debug(`[AlphaHunter] No results for ${cashtag}`);
+            // logger.debug(`[AlphaHunter] No results for ${query}`);
             return { velocity: 0, uniqueAuthors: 0, tweets: [], isEarlyAlpha: false, isSuperAlpha: false };
         }
 
@@ -182,7 +191,7 @@ export class AlphaSearchService {
         const hasRetry = await page.$('div[role="button"][aria-label="Retry"]');
         if (hasRetry) {
             // Treat as rate limit
-            logger.warn(`[AlphaHunter] 'Retry' button detected for ${symbol}. Marking as Rate Limited.`);
+            logger.warn(`[AlphaHunter] 'Retry' button detected for ${token.symbol}. Marking as Rate Limited.`);
             throw new Error('Rate limit detected (Retry Button)');
         }
 
@@ -222,7 +231,8 @@ export class AlphaSearchService {
 
     // Legacy wrapper
     async checkAlpha(symbol: string): Promise<AlphaSearchResult> {
-        const map = await this.scanBatch([symbol]);
+        // Mock name as symbol for legacy calls
+        const map = await this.scanBatch([{ symbol, name: symbol }]);
         return map.get(symbol) || { velocity: 0, uniqueAuthors: 0, tweets: [], isEarlyAlpha: false, isSuperAlpha: false };
     }
 }
