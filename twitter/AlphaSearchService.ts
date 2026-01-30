@@ -106,10 +106,10 @@ export class AlphaSearchService {
                 break;
             }
 
-            // If queue has items but no account, wait 30s as requested
+            // If queue has items but no account, wait 5s (Accounts cool down fast now)
             if (queue.length > 0 && !account) {
-                logger.info(`[AlphaQueue] ⏳ All accounts busy/cooling. Queue: ${queue.length}. Waiting 30s...`);
-                await new Promise(r => setTimeout(r, 30000));
+                logger.info(`[AlphaQueue] ⏳ All accounts busy/cooling. Queue: ${queue.length}. Waiting 5s...`);
+                await new Promise(r => setTimeout(r, 5000));
             }
         }
 
@@ -178,8 +178,13 @@ export class AlphaSearchService {
             return { velocity: 0, uniqueAuthors: 0, tweets: [], isEarlyAlpha: false, isSuperAlpha: false };
         }
 
-        // Check for "Retry" button or Rate Limit text?
-        // TODO: Implement precise rate limit detection from DOM if needed.
+        // Check for "Retry" button (Rate Limit Indicator)
+        const hasRetry = await page.$('div[role="button"][aria-label="Retry"]');
+        if (hasRetry) {
+            // Treat as rate limit
+            logger.warn(`[AlphaHunter] 'Retry' button detected for ${symbol}. Marking as Rate Limited.`);
+            throw new Error('Rate limit detected (Retry Button)');
+        }
 
         // Extraction
         const tweetData: any[] = await page.evaluate(() => {
