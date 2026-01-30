@@ -45,6 +45,7 @@ export class ScandexBot {
 
         // Current Trends
         this.bot.onText(/\/trends$/, async (msg) => {
+            if (!this.checkAuth(msg)) return; // Guard
             if (!this.trendCollector) return;
             await this.bot?.sendChatAction(msg.chat.id, 'typing');
             const trends = await this.trendCollector.refresh();
@@ -54,6 +55,7 @@ export class ScandexBot {
 
         // Trend -> Tokens (Alpha)
         this.bot.onText(/\/trendtokens|\/alpha/, async (msg) => {
+            if (!this.checkAuth(msg)) return; // Guard
             if (!this.trendCollector || !this.trendMatcher || !this.dexScreener) {
                 this.bot?.sendMessage(msg.chat.id, "❌ Trend modules not enabled.");
                 return;
@@ -94,12 +96,12 @@ export class ScandexBot {
         });
 
         this.bot.onText(/\/status/, (msg) => {
-            if (!this.isAdmin(msg.from?.id)) return;
+            if (!this.checkAuth(msg)) return; // Guard
             this.bot?.sendMessage(msg.chat.id, `**System Status**\nScanning every ${config.SCAN_INTERVAL_SECONDS}s\nNetwork: ${config.NETWORK}`, { parse_mode: 'Markdown' });
         });
 
         this.bot.onText(/\/test/, async (msg) => {
-            if (!this.isAdmin(msg.from?.id)) return;
+            if (!this.checkAuth(msg)) return; // Guard
             this.bot?.sendMessage(msg.chat.id, "🧪 **Test Alert**\nTesting connection to channel...", { parse_mode: 'Markdown' });
 
             // Simulate a fake alert to the Main Channel
@@ -110,8 +112,8 @@ export class ScandexBot {
                         this.bot?.sendMessage(msg.chat.id, `✅ Test message sent to config ID: \`${config.TELEGRAM_CHAT_ID}\``, { parse_mode: 'Markdown' });
                     } catch (e) {
                         // Fallback to Admin
-                        if (config.TELEGRAM_ADMIN_ID) {
-                            await this.bot?.sendMessage(config.TELEGRAM_ADMIN_ID, "🚨 **TEST ALERT (FALLBACK)**\nKanal ID hatası var, bu mesaj Admin ID'ye (Sana) gönderildi.", { parse_mode: 'Markdown' });
+                        if (config.TELEGRAM_ADMIN_IDS.length > 0) {
+                            await this.bot?.sendMessage(config.TELEGRAM_ADMIN_IDS[0], "🚨 **TEST ALERT (FALLBACK)**\nKanal ID hatası var, bu mesaj ilk Admin ID'ye (Sana) gönderildi.", { parse_mode: 'Markdown' });
                             this.bot?.sendMessage(msg.chat.id, `⚠️ Failed to send to Channel, but sent to Admin ID. Check Bot permissions in Channel.`);
                         }
                         throw e;
@@ -125,7 +127,7 @@ export class ScandexBot {
         });
 
         this.bot.onText(/\/watchlist/, (msg) => {
-            if (!this.isAdmin(msg.from?.id)) return;
+            if (!this.checkAuth(msg)) return; // Guard
             const items = this.watchlist.getWatchlist();
             if (items.length === 0) {
                 this.bot?.sendMessage(msg.chat.id, "📭 Watchlist is empty.");
@@ -137,7 +139,7 @@ export class ScandexBot {
 
         // Add: /add <phrase> [tags]
         this.bot.onText(/\/add (.+)/, async (msg, match) => {
-            if (!this.isAdmin(msg.from?.id)) return;
+            if (!this.checkAuth(msg)) return; // Guard
             const raw = match?.[1] || "";
             // Format: phrase | tag1, tag2
             const [phrasePart, tagsPart] = raw.split('|');
@@ -152,7 +154,7 @@ export class ScandexBot {
 
         // Remove: /remove <phrase>
         this.bot.onText(/\/remove (.+)/, async (msg, match) => {
-            if (!this.isAdmin(msg.from?.id)) return;
+            if (!this.checkAuth(msg)) return; // Guard
             const phrase = match?.[1]?.trim(); // Keep Case!
             if (!phrase) return;
 
@@ -165,7 +167,7 @@ export class ScandexBot {
         });
         // Analyze: /analyze <token_address>
         this.bot.onText(/\/analyze (.+)/, async (msg, match) => {
-            if (!this.isAdmin(msg.from?.id)) return;
+            if (!this.checkAuth(msg)) return; // Guard
             const ca = match?.[1]?.trim();
             if (!ca) return;
 
@@ -200,17 +202,34 @@ export class ScandexBot {
     }
 
     async notifyAdmin(message: string) {
-        if (!this.bot || !config.TELEGRAM_ADMIN_ID) return;
-        try {
-            await this.bot.sendMessage(config.TELEGRAM_ADMIN_ID, message, { parse_mode: 'Markdown' });
-        } catch (e) {
-            logger.error(`[Telegram] Failed to notify admin: ${e}`);
+        if (!this.bot || config.TELEGRAM_ADMIN_IDS.length === 0) return;
+
+        for (const adminId of config.TELEGRAM_ADMIN_IDS) {
+            try {
+                await this.bot.sendMessage(adminId, message, { parse_mode: 'Markdown' });
+            } catch (e) {
+                logger.error(`[Telegram] Failed to notify admin ${adminId}: ${e}`);
+            }
         }
     }
 
     private isAdmin(userId?: number): boolean {
         if (!userId) return false;
-        return userId.toString() === config.TELEGRAM_ADMIN_ID;
+        return config.TELEGRAM_ADMIN_IDS.includes(userId.toString());
+    }
+
+    /**
+     * Middleware-like guard.
+     * Returns true if authorized, false (and sends rejection) if not.
+     */
+    private checkAuth(msg: TelegramBot.Message): boolean {
+        const userId = msg.from?.id;
+        if (this.isAdmin(userId)) return true;
+
+        // Unauthorized
+        this.bot?.sendMessage(msg.chat.id, "⛔ **Yetkisiz Erişim:** Bu bot özeldir, komutlarınız reddedildi.", { parse_mode: 'Markdown' });
+        logger.warn(`[Security] Unauthorized access attempt from User ${userId} (${msg.from?.username || 'NoUser'}) in Chat ${msg.chat.id}`);
+        return false;
     }
 
     async sendAlert(narrative: Narrative, token: TokenSnapshot, score: ScoreResult) {

@@ -5,7 +5,7 @@ export const config = {
     // Telegram
     TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN || '',
     TELEGRAM_CHAT_ID: process.env.TELEGRAM_CHAT_ID || '',
-    TELEGRAM_ADMIN_ID: process.env.TELEGRAM_ADMIN_ID || '',
+    TELEGRAM_ADMIN_IDS: (process.env.TELEGRAM_ADMIN_ID || '').split(',').map(id => id.trim()).filter(id => id),
 
     // Twitter
     TWITTER_API_KEY: process.env.TWITTER_API_KEY || '',
