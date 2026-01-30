@@ -29,9 +29,9 @@ export const config = {
     XAI_API_KEY: process.env.XAI_API_KEY || process.env.GROK_API_KEY || '',
     XAI_MODEL: 'grok-4-1-fast-non-reasoning',
 
-    // Dashboard Security
+    // Dashboard Security (Simplified for Access)
     DASHBOARD_USER: process.env.DASHBOARD_USER || 'admin',
-    DASHBOARD_PASS: process.env.DASHBOARD_PASS || 'trendbot2026',
+    DASHBOARD_PASS: process.env.DASHBOARD_PASS || 'admin123',
 
     // Trends
     TREND_UPDATE_INTERVAL_MINUTES: Number(process.env.TREND_UPDATE_INTERVAL_MINUTES) || 30,
