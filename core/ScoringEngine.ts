@@ -53,12 +53,46 @@ export class ScoringEngine {
 
         // Momentum
         if (vol30 > 0 && vol5 > (vol30 / 6) * 2) {
-            // simple logic: if 5m vol is significantly higher than average 5m chunk of 30m vol
-            // logic in prompt: vol5m > vol30m / 2 (which implies huge spike)
             if (vol5 > vol30 / 2) {
                 totalScore += 1;
                 breakdown.push({ factor: 'Momentum', points: 1, details: 'Strong 5m volume spike' });
             }
+        }
+
+        // 6. Smart Momentum (Buy Pressure & Volatility)
+        if (token.txs5m) {
+            const { buys, sells } = token.txs5m;
+            const totalTx = buys + sells;
+
+            if (totalTx > 10) { // Min sample size
+                const buyRatio = buys / totalTx;
+
+                // A. Buying Pressure Reward
+                if (buyRatio > 0.6) { // > 60% Buys
+                    totalScore += 1;
+                    breakdown.push({ factor: 'Buy Pressure', points: 1, details: `🔥 Strong Buys (${(buyRatio * 100).toFixed(0)}%)` });
+                }
+
+                // B. Price Flight Check (Organic vs Fake)
+                const pChange = token.priceChange5m || 0;
+                if (pChange > 30) {
+                    if (buyRatio > 0.5) {
+                        // Organic FOMO -> Reward
+                        totalScore += 1;
+                        breakdown.push({ factor: 'Price Action', points: 1, details: `🚀 Organic Pump (+${pChange.toFixed(0)}% & Buys)` });
+                    } else {
+                        // Fake Pump (Sells dominate) -> PUNISH
+                        totalScore = Math.min(totalScore, 4); // Cap at 4 (Filters it out)
+                        breakdown.push({ factor: 'Risk', points: -5, details: `⚠️ Fake Pump (+${pChange.toFixed(0)}% but High Sells)` });
+                    }
+                }
+            }
+        }
+
+        // C. Liquidity Health (Volatility Check)
+        if (vol5 > liq * 3 && liq > 0) {
+            // specific warning tag logic could be handled here or in Narrative
+            breakdown.push({ factor: 'Volatility', points: 0, details: '⚠️ High Volatility (Vol > 3x Liq)' });
         }
 
         // 5. Buyers (if available)

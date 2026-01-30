@@ -93,6 +93,19 @@ export class NarrativeEngine {
                     headerPrefix = `🚫 **ZAYIF / RİSKLİ** • Puan: ${finalAiScore}/10`;
                 }
 
+                // SMART MOMENTUM TAGS
+                const momentumTags: string[] = [];
+                score.breakdown.forEach(b => {
+                    if (b.factor === 'Buy Pressure') momentumTags.push("🔥 GÜÇLÜ ALIM BASKISI");
+                    if (b.factor === 'Volatility') momentumTags.push("⚠️ YÜKSEK VOLATİLİTE");
+                    if (b.factor === 'Price Action') momentumTags.push("🚀 ORGANİK YÜKSELİŞ");
+                    if (b.factor === 'Risk') momentumTags.push("🛑 SAHTE PUMP RİSKİ");
+                });
+
+                if (momentumTags.length > 0) {
+                    headerPrefix += `\n${momentumTags.join(' • ')}`;
+                }
+
                 let fullHeader = headerPrefix;
                 if (aiResult.headline) {
                     // Append headline if exists

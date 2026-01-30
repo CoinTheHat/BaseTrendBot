@@ -12,6 +12,8 @@ export interface TokenSnapshot {
     volume30mUsd?: number;
     buyers5m?: number;
     buyers30m?: number;
+    priceChange5m?: number; // %
+    txs5m?: { buys: number; sells: number };
     createdAt?: Date; // Launch time
     updatedAt: Date;  // Last scan time
     devWalletConcentration?: number; // %
