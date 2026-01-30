@@ -9,6 +9,7 @@ export interface TwitterAccount {
     userAgent: string;
     proxy?: string;
     isBusy: boolean;
+    lastBusyStart: number; // For Deadlock Detection
     cooldownUntil: number;
 }
 
@@ -45,6 +46,7 @@ export class TwitterAccountManager {
                 index: 0,
                 userAgent: USER_AGENTS[0],
                 isBusy: false,
+                lastBusyStart: 0,
                 cooldownUntil: 0
             });
         } else {
@@ -55,6 +57,7 @@ export class TwitterAccountManager {
                     index: i,
                     userAgent: USER_AGENTS[i % USER_AGENTS.length],
                     isBusy: false,
+                    lastBusyStart: 0,
                     cooldownUntil: 0
                 });
             }
@@ -76,6 +79,19 @@ export class TwitterAccountManager {
 
         const now = Date.now();
 
+        // 🚨 DEADLOCK SAFETY CHECK 🚨
+        this.accounts.forEach(acc => {
+            if (acc.isBusy && acc.lastBusyStart > 0) {
+                const busyDuration = now - acc.lastBusyStart;
+                if (busyDuration > 180000) { // 3 Minutes
+                    logger.warn(`[TwitterManager] 🚨 DEADLOCK DETECTED on Account #${acc.index + 1}. Busy for ${(busyDuration / 1000).toFixed(1)}s. FORCE RELEASING.`);
+                    acc.isBusy = false;
+                    acc.lastBusyStart = 0;
+                    acc.cooldownUntil = now + 5000; // Small penalty
+                }
+            }
+        });
+
         // Try accounts starting from currentIndex
         for (let i = 0; i < this.accounts.length; i++) {
             const ptr = (this.currentIndex + i) % this.accounts.length;
@@ -84,11 +100,12 @@ export class TwitterAccountManager {
             if (!account.isBusy && now > account.cooldownUntil) {
                 this.currentIndex = (ptr + 1) % this.accounts.length;
                 account.isBusy = true; // CLAIM IT
+                account.lastBusyStart = Date.now();
                 return account;
             }
         }
 
-        return null;
+        return null; // All busy or cooled down
     }
 
     /**
@@ -100,6 +117,7 @@ export class TwitterAccountManager {
         const account = this.accounts.find(a => a.index === index);
         if (account) {
             account.isBusy = false;
+            account.lastBusyStart = 0;
 
             if (wasRateLimited) {
                 // 🛑 RATE LIMIT HIT: 5 Minute Penalty
