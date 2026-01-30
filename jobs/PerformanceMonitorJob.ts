@@ -58,6 +58,24 @@ export class PerformanceMonitorJob {
                 const currentMc = snap.marketCapUsd || 0;
                 if (currentMc === 0) continue;
 
+                // SELF-HEALING: Fix missing data from Backfilled items
+                let isRepairNeeded = false;
+                if (!perf.symbol || perf.alertMc === 0) {
+                    isRepairNeeded = true;
+                    // Fix Symbol
+                    if (snap.symbol) {
+                        perf.symbol = snap.symbol;
+                    }
+                    // Fix Alert MC (If 0, assume current is entry)
+                    if (perf.alertMc === 0) {
+                        perf.alertMc = currentMc;
+                        // If ATH is also 0, fix it too
+                        if (perf.athMc === 0) {
+                            perf.athMc = currentMc;
+                        }
+                    }
+                }
+
                 let newAth = perf.athMc;
                 if (currentMc > perf.athMc) {
                     newAth = currentMc;
@@ -90,7 +108,12 @@ export class PerformanceMonitorJob {
                 perf.status = newStatus;
                 perf.lastUpdated = new Date(); // handled by DB trigger/query usually, but we send it
 
-                await this.storage.updatePerformance(perf);
+                if (isRepairNeeded) {
+                    logger.info(`[PerformanceJob] repairing data for ${perf.symbol || perf.mint}`);
+                    await this.storage.updatePerformanceEnriched(perf);
+                } else {
+                    await this.storage.updatePerformance(perf);
+                }
             }
 
             logger.info(`[PerformanceJob] Updated ${snapshots.length} tokens.`);

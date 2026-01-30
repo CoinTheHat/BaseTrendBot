@@ -112,6 +112,26 @@ export class PostgresStorage {
         }
     }
 
+    // SELF-HEALING: Update missing details like Symbol and Alert MC using fresh API data
+    async updatePerformanceEnriched(perf: TokenPerformance) {
+        try {
+            await this.pool.query(
+                `UPDATE token_performance
+                 SET 
+                    symbol = COALESCE(NULLIF($2, ''), symbol),
+                    alert_mc = CASE WHEN alert_mc = 0 THEN $3 ELSE alert_mc END,
+                    ath_mc = $4,
+                    current_mc = $5,
+                    status = $6,
+                    last_updated = NOW()
+                 WHERE mint = $1`,
+                [perf.mint, perf.symbol, perf.alertMc, perf.athMc, perf.currentMc, perf.status]
+            );
+        } catch (err) {
+            logger.error('[Postgres] updatePerformanceEnriched failed', err);
+        }
+    }
+
     // BACKFILL: Sync missing tokens from seen_tokens to token_performance
     async backfillMissingTokens(): Promise<number> {
         try {
