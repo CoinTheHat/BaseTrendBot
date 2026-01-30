@@ -63,6 +63,9 @@ export class PostgresStorage {
             for (const q of queries) {
                 await this.pool.query(q);
             }
+            // Auto-Migration for new features
+            await this.pool.query(`ALTER TABLE seen_tokens ADD COLUMN IF NOT EXISTS last_price NUMERIC;`);
+
             logger.info('[Postgres] Schema initialized.');
         } catch (err) {
             logger.error('[Postgres] Schema init failed', err);
@@ -120,7 +123,8 @@ export class PostgresStorage {
                 firstSeenAt: Number(row.first_seen_at),
                 lastAlertAt: Number(row.last_alert_at),
                 lastScore: row.last_score,
-                lastPhase: row.last_phase
+                lastPhase: row.last_phase,
+                lastPrice: row.last_price ? Number(row.last_price) : undefined
             };
         } catch (err) {
             logger.error('[Postgres] getSeenToken failed', err);
@@ -131,13 +135,14 @@ export class PostgresStorage {
     async saveSeenToken(mint: string, data: SeenTokenData) {
         try {
             await this.pool.query(
-                `INSERT INTO seen_tokens (mint, first_seen_at, last_alert_at, last_score, last_phase)
-                 VALUES ($1, $2, $3, $4, $5)
+                `INSERT INTO seen_tokens (mint, first_seen_at, last_alert_at, last_score, last_phase, last_price)
+                 VALUES ($1, $2, $3, $4, $5, $6)
                  ON CONFLICT (mint) DO UPDATE SET
                     last_alert_at = EXCLUDED.last_alert_at,
                     last_score = EXCLUDED.last_score,
-                    last_phase = EXCLUDED.last_phase;`,
-                [mint, data.firstSeenAt, data.lastAlertAt, data.lastScore, data.lastPhase]
+                    last_phase = EXCLUDED.last_phase,
+                    last_price = EXCLUDED.last_price;`,
+                [mint, data.firstSeenAt, data.lastAlertAt, data.lastScore, data.lastPhase, data.lastPrice || 0]
             );
         } catch (err) {
             logger.error('[Postgres] saveSeenToken failed', err);

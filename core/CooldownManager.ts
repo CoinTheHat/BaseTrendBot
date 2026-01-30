@@ -25,21 +25,19 @@ export class CooldownManager {
         if (tokenData && tokenData.lastAlertAt) {
             const minutesSince = (now - tokenData.lastAlertAt) / 60000;
 
-            // SPECIAL RULE: "Alpha" or "Early Match" alerts should be ONCE per cycle/forever to avoid spamming the same discovery.
-            // If the last alert was < 24 hours ago, we block it for Alpha Hunters.
-            // Let's make it configurable or just hardcode a 'Strict Mode' for re-alerts.
-            // For now: Stick to config, but maybe increase it for 'Alpha' phases if passed in?
-            // Actually, let's treat 'Alerted' as done for at least 30m.
+            // STRICT RULE: 4 Hours Cooldown (240m)
+            // If the token has been alerted before, we MUST wait 4 hours before re-alerting.
+            const STRICT_COOLDOWN = 240;
 
-            if (minutesSince < config.ALERT_COOLDOWN_MINUTES) {
-                return { allowed: false, reason: `Token cooldown (${minutesSince.toFixed(1)}m < ${config.ALERT_COOLDOWN_MINUTES}m)` };
+            if (minutesSince < STRICT_COOLDOWN) {
+                return { allowed: false, reason: `Strict Cooldown (${minutesSince.toFixed(1)}m < 4h)` };
             }
         }
 
         return { allowed: true };
     }
 
-    async recordAlert(tokenMint: string, score: number, phase: string) {
+    async recordAlert(tokenMint: string, score: number, phase: string, price?: number) {
         this.alertTimestamps.push(Date.now());
 
         // Get existing to preserve firstSeen
@@ -50,7 +48,9 @@ export class CooldownManager {
             firstSeenAt: existing ? existing.firstSeenAt : Date.now(),
             lastAlertAt: Date.now(),
             lastScore: score,
-            lastPhase: phase
+            lastPhase: phase,
+            // Capture price at alert time for "Too Late" checks later
+            lastPrice: price || existing?.lastPrice || 0
         };
 
         await this.storage.saveSeenToken(tokenMint, tokenData);

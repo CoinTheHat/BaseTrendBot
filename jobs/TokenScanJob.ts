@@ -251,6 +251,17 @@ export class TokenScanJob {
                             const { allowed, reason } = await this.cooldown.canAlert(enrichedToken.mint, customCooldown);
 
                             if (allowed) {
+                                // 🛡️ TOO LATE CHECK (Price Flight Protection)
+                                const passedToken = await this.storage.getSeenToken(enrichedToken.mint);
+                                if (enrichedToken.priceUsd && passedToken && passedToken.lastPrice) {
+                                    const entry = passedToken.lastPrice;
+                                    // 50% Limit
+                                    if (enrichedToken.priceUsd > entry * 1.5) {
+                                        logger.warn(`[TooLate] Aborted ${enrichedToken.symbol}. Price ($${enrichedToken.priceUsd}) > 1.5x Entry ($${entry}). Flown.`);
+                                        return;
+                                    }
+                                }
+
                                 // 7. Twitter Scraping (Data Gathering)
                                 let tweets: string[] = [];
                                 if (config.ENABLE_TWITTER_SCRAPING) {
@@ -309,7 +320,7 @@ export class TokenScanJob {
                                     // PASSED: Score is valid and >= 7 (High Conviction)
                                     await this.bot.sendAlert(narrative, enrichedToken, scoreRes);
                                     if (aiScore >= 8) await this.twitter.postTweet(narrative, enrichedToken); // Only tweet absolute bangers
-                                    await this.cooldown.recordAlert(enrichedToken.mint, scoreRes.totalScore, phase);
+                                    await this.cooldown.recordAlert(enrichedToken.mint, scoreRes.totalScore, phase, enrichedToken.priceUsd);
 
                                     logger.info(`[PASSED] ${enrichedToken.symbol} SENT to Telegram. AI Score: ${aiScore} (Gourmet Mode)`);
                                 }

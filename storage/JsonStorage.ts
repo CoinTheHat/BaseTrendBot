@@ -12,6 +12,7 @@ export interface SeenTokenData {
     lastAlertAt: number;
     lastScore: number;
     lastPhase: string;
+    lastPrice?: number;
 }
 
 export class JsonStorage {
