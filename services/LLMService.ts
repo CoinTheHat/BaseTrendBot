@@ -149,7 +149,12 @@ export class LLMService {
                     }
                 }
 
-                if (result) return this.normalizeResult(result);
+                if (result) {
+                    // THROTTLE: Wait 3s after each request to avoid rate limits (20 requests/min = 3s interval)
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                    logger.info('[LLM] Throttle: Waited 3s to respect rate limits.');
+                    return this.normalizeResult(result);
+                }
                 return null;
 
             } else {

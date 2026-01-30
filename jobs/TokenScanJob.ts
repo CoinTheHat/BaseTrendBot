@@ -128,8 +128,8 @@ export class TokenScanJob {
 
             logger.info(`[Job] Processing ${freshCandidates.length} fresh tokens (Parallel Batches)...`);
 
-            // Creates chunks of 5
-            const chunks = this.chunkArray(freshCandidates, 5);
+            // Creates chunks of 2 (Reduced from 5 to avoid rate limits)
+            const chunks = this.chunkArray(freshCandidates, 2);
 
             for (const chunk of chunks) {
                 // logger.info(`[Job] Processing batch of ${chunk.length} tokens: ${chunk.map(t => t.symbol).join(', ')}`);
@@ -234,7 +234,16 @@ export class TokenScanJob {
 
                                 if (!tweets || tweets.length === 0) {
                                     logger.info(`[Job] No Twitter data for ${enrichedToken.symbol}. Proceeding with Volume/Trend scoring...`);
-                                    // Add a dummy tweet to signal "No Data" to AI if needed, or rely on empty array
+                                }
+
+                                // PRE-FILTER: Skip AI for low-quality tokens to save quota
+                                const tweetCount = tweets.length;
+                                const liquidity = enrichedToken.liquidityUsd || 0;
+
+                                if (tweetCount < 5 && liquidity < 5000) {
+                                    logger.warn(`[PRE-FILTERED] ${enrichedToken.symbol} skipped (Tweets: ${tweetCount}, Liq: $${liquidity}). Auto-score: 1`);
+                                    // Skip AI analysis completely for this token
+                                    return; // Skip this token in the map
                                 }
 
                                 // Generate Narrative (Async, with AI Analysis if tweets exist)
