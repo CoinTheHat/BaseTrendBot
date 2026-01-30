@@ -12,27 +12,41 @@ export class DexScreenerService {
      */
     async getLatestPairs(): Promise<TokenSnapshot[]> {
         try {
-            // V1 Strategy: Use search to find active Solana pairs since strict "latest" needs specific setup
-            const response = await axios.get(`${this.apiUrl}/search?q=solana`);
-            const pairs = response.data?.pairs || [];
+            // Strategy: Use Token Profiles endpoint to get truly NEW tokens
+            // Then filter for Solana and enrich with pair data.
+            const response = await axios.get(this.profilesUrl);
+            const profiles = response.data || [];
 
-            if (pairs.length > 0) {
-                console.log(`[DexScreener] DEBUG Raw ChainID: '${pairs[0].chainId}', First Pair:`, JSON.stringify(pairs[0], null, 2));
+            // 1. Strict Chain Filtering
+            const solanaProfiles = profiles.filter((p: any) => p.chainId === 'solana');
+
+            if (solanaProfiles.length === 0) {
+                console.log(`[DexScreener] 0 tokens found in profiles. (Total scanned: ${profiles.length}). Reason: None were on Solana chain. Switching to fallback search...`);
+
+                // Fallback 1: Search "solana"
+                const solanaFallback = await this.search("solana");
+                if (solanaFallback.length > 0) {
+                    console.log(`[DexScreener] Fallback 'solana' search found ${solanaFallback.length} pairs.`);
+                    return solanaFallback;
+                }
+
+                // Fallback 2: Search "pump.fun"
+                console.log(`[DexScreener] Fallback 'solana' yielded 0. Trying 'pump.fun'...`);
+                return await this.search("pump.fun");
             }
-            // Filter for Solana chain to be sure (Relaxed)
-            const solPairs = pairs.filter((p: any) => p.chainId?.toLowerCase() === 'solana' || p.url?.includes('/solana/'));
 
-            console.log(`[DexScreener] Raw pairs: ${pairs.length}, Solana pairs: ${solPairs.length}`);
+            console.log(`[DexScreener] Found ${solanaProfiles.length} new Solana profiles.`);
 
-            console.log(`[DexScreener] Fetched ${solPairs.length} active pairs.`);
+            // 2. Extract Mints to fetch full pair data
+            const mints = solanaProfiles.map((p: any) => p.tokenAddress);
 
-            if (solPairs.length > 0) {
-                console.log('[DexScreener] Sample Pair Data:', JSON.stringify(solPairs[0], null, 2));
-            }
-            return solPairs.map((p: any) => this.normalizePair(p));
+            // 3. Fetch Pair Details (Prices, Liq, Vol)
+            return await this.getTokens(mints);
+
         } catch (error) {
-            console.error('[DexScreener] Error fetching pairs:', error);
-            return [];
+            console.error('[DexScreener] Error fetching latest profiles:', error);
+            // Fallback on error
+            return await this.search("solana");
         }
     }
 
@@ -52,12 +66,12 @@ export class DexScreenerService {
                 const response = await axios.get(url);
                 const pairs = response.data?.pairs || [];
 
-                // Filter for Solana pairs specifically (Relaxed)
-                const solPairs = pairs.filter((p: any) => p.chainId?.toLowerCase() === 'solana' || p.url?.includes('/solana/'));
+                // Strict filtering is done inside normalizePair
+                const validPairs = pairs
+                    .map((p: any) => this.normalizePair(p))
+                    .filter((p: TokenSnapshot | null): p is TokenSnapshot => p !== null);
 
-                solPairs.forEach((p: any) => {
-                    results.push(this.normalizePair(p));
-                });
+                results.push(...validPairs);
 
             } catch (error) {
                 console.error(`[DexScreener] Error fetching tokens chunk:`, error);
@@ -74,24 +88,36 @@ export class DexScreenerService {
             const response = await axios.get(`${this.apiUrl}/search?q=${safeQuery}`);
             const pairs = response.data?.pairs || [];
 
-            // Filter for Solana (Relaxed)
-            const solPairs = pairs.filter((p: any) => p.chainId?.toLowerCase() === 'solana' || p.url?.includes('/solana/'));
-
-            return solPairs.map((p: any) => this.normalizePair(p));
+            // Strict filtering via normalizePair
+            return pairs
+                .map((p: any) => this.normalizePair(p))
+                .filter((p: TokenSnapshot | null): p is TokenSnapshot => p !== null);
         } catch (error) {
             console.error(`[DexScreener] Search failed for '${query}':`, error);
             return [];
         }
     }
 
-    private normalizePair(pair: any): TokenSnapshot {
+    private normalizePair(pair: any): TokenSnapshot | null {
+        // Strict Filtering: Chain ID must be 'solana'
+        if (pair?.chainId !== 'solana') {
+            return null;
+        }
+
+        // Strict Filtering: Block 0x... addresses (Base/ETH)
+        // Usually dexScreener returns token objects.
+        const tokenAddress = pair.baseToken?.address || '';
+        if (tokenAddress.startsWith('0x')) {
+            return null;
+        }
+
         return {
             source: 'dexscreener',
-            mint: pair.baseToken.address,
-            name: pair.baseToken.name,
-            symbol: pair.baseToken.symbol,
+            mint: tokenAddress,
+            name: pair.baseToken?.name || 'Unknown',
+            symbol: pair.baseToken?.symbol || 'Unknown',
             priceUsd: Number(pair.priceUsd) || 0,
-            marketCapUsd: pair.fdv || 0,
+            marketCapUsd: pair.marketCap || pair.fdv || 0, // Priority: marketCap -> fdv -> 0
             liquidityUsd: pair.liquidity?.usd || 0,
             volume5mUsd: pair.volume?.m5 || 0,
             volume30mUsd: (pair.volume?.m5 || 0) + (pair.volume?.h1 ? pair.volume.h1 / 2 : 0),
@@ -99,8 +125,8 @@ export class DexScreenerService {
             updatedAt: new Date(),
             links: {
                 dexScreener: pair.url,
-                pumpfun: pair.url.includes('pump') ? pair.url : `https://pump.fun/${pair.baseToken.address}`,
-                birdeye: `https://birdeye.so/token/${pair.baseToken.address}?chain=solana`
+                pumpfun: pair.url?.includes('pump') ? pair.url : `https://pump.fun/${tokenAddress}`,
+                birdeye: `https://birdeye.so/token/${tokenAddress}?chain=solana`
             }
         };
     }
