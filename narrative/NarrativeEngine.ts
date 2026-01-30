@@ -27,43 +27,40 @@ export class NarrativeEngine {
         let vibeCheck = "Analyzing...";
         let aiRisk = "";
 
-        let aiResult: any = null;
-
-        // 2. AI Analysis (Override if available)
-        if (recentTweets.length > 0) {
-            aiResult = await this.llm.analyzeToken(symbol, recentTweets);
-
-            if (aiResult) {
-                // AI Override: Use AI's headline if provided, else keep intro
-                if (aiResult.headline) {
-                    narrativeText = `**${aiResult.headline}**\n${intro}\n`;
-                }
-
-                narrativeText += `\n💡 **Neden Yükseliyor?**\n• ${aiResult.analysis.join('\n• ')}\n`;
-
-                vibeCheck = `${aiResult.displayEmoji} Score: ${aiResult.score}/10`;
-
-                // Risk Analysis
-                if (aiResult.riskLevel === 'HIGH' || aiResult.riskLevel === 'DANGEROUS') {
-                    aiRisk = `\n⚠️ **RİSK FAKTÖRLERİ:**\n${aiResult.riskReason}`;
-                } else {
-                    aiRisk = `\n✅ **Risk Durumu:** ${aiResult.riskReason || 'Temiz görünüyor.'}`;
-                }
-
-                // Verdict Tag
-                narrativeText += `\n🎯 **Karar:** #${aiResult.verdict}`;
-            }
-        }
-
-        if (aiRisk) narrativeText += aiRisk;
-
-
-        // 3. Data Section
+        // 3. Data Section (Moved up for AI Context)
         const dataSection =
             `• MC: $${(token.marketCapUsd || 0).toLocaleString()}\n` +
             `• Liq: $${(token.liquidityUsd ?? 0).toLocaleString()}\n` +
             `• Vol (5m): $${(token.volume5mUsd ?? 0).toLocaleString()}\n` +
             `• Buyers (5m): ${token.buyers5m ?? 'N/A'}`;
+
+        let aiResult: any = null;
+
+        // 2. AI Analysis (Always run - fallback implemented in LLMService)
+        // if (recentTweets.length > 0) { // Check removed
+        aiResult = await this.llm.analyzeToken(symbol, recentTweets, dataSection);
+
+        if (aiResult) {
+            // AI Override: Use AI's headline if provided, else keep intro
+            if (aiResult.headline) {
+                narrativeText = `**${aiResult.headline}**\n${intro}\n`;
+            }
+
+            narrativeText += `\n💡 **Neden Yükseliyor?**\n• ${aiResult.analysis.join('\n• ')}\n`;
+
+            vibeCheck = `${aiResult.displayEmoji} Score: ${aiResult.score}/10`;
+
+            // Risk Analysis
+            if (aiResult.riskLevel === 'HIGH' || aiResult.riskLevel === 'DANGEROUS') {
+                aiRisk = `\n⚠️ **RİSK FAKTÖRLERİ:**\n${aiResult.riskReason}`;
+            } else {
+                aiRisk = `\n✅ **Risk Durumu:** ${aiResult.riskReason || 'Temiz görünüyor.'}`;
+            }
+
+            // Verdict Tag
+            narrativeText += `\n🎯 **Karar:** #${aiResult.verdict}`;
+        }
+        // }
 
         // 4. Trade Lens
         let tradeLens = '';

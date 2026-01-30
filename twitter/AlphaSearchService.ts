@@ -26,8 +26,8 @@ export class AlphaSearchService {
         }
 
         const cashtag = `$${symbol.toUpperCase()}`;
-        // Refined Query: $SYMBOL (solana OR CA OR pump.fun) to reduce noise
-        const query = `${cashtag} (solana OR "CA" OR "pump.fun") -filter:links`;
+        // Emergency: Simplified Query to reduce timeouts
+        const query = `${cashtag}`;
         const searchUrl = `https://twitter.com/search?q=${encodeURIComponent(query)}&f=live`;
         let velocity = 0;
         let uniqueAuthors = 0;
@@ -132,8 +132,9 @@ export class AlphaSearchService {
 
             await page.close();
 
-        } catch (err) {
-            logger.error(`[AlphaHunter] Error scanning ${cashtag}: ${err}`);
+        } catch (err: any) {
+            const errorMsg = err.message || err.toString();
+            logger.error(`[AlphaHunter] Error scanning ${cashtag}: ${errorMsg}. (Status: ${err.response?.status || 'Unknown'})`);
             if (this.browser) {
                 await this.browser.close().catch(() => { });
                 this.browser = null; // Force restart next time

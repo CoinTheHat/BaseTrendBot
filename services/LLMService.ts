@@ -17,7 +17,7 @@ export class LLMService {
 
     constructor() { }
 
-    async analyzeToken(symbol: string, tweets: string[]): Promise<AIAnalysisResult | null> {
+    async analyzeToken(symbol: string, tweets: string[], tokenStats?: string): Promise<AIAnalysisResult | null> {
         // Prioritize Gemini if available (Free), else OpenAI
         const useGemini = !!config.GEMINI_API_KEY;
 
@@ -26,9 +26,13 @@ export class LLMService {
             return null;
         }
 
-        if (tweets.length === 0) return null;
+        const hasTweets = tweets.length > 0;
 
-        const systemPrompt = `
+        let systemPrompt = '';
+        let userContent = '';
+
+        if (hasTweets) {
+            systemPrompt = `
         You are an elite Crypto Degen Detective and Risk Analyst.
         Your job is to analyze Twitter/X data for a new Solana token "$${symbol}" and determine if it's a hidden gem, a dangerous scam, or just noise.
         
@@ -63,7 +67,43 @@ export class LLMService {
         }
         `;
 
-        const userContent = `Tweets:\n${tweets.slice(0, 15).map(t => `- ${t.replace(/\n/g, ' ')}`).join('\n')}`;
+            userContent = `Tweets:\n${tweets.slice(0, 15).map(t => `- ${t.replace(/\n/g, ' ')}`).join('\n')}`;
+
+        } else {
+            // FALLBACK: No Twitter Data - Technical Only Analysis
+            logger.info(`[LLM] No tweets for $${symbol}. using Technical Fallback Analysis.`);
+
+            systemPrompt = `
+            You are a Risk Analyst for Memecoins. 
+            We have NO social data (Twitter) for the token "$${symbol}".
+            You must analyze the risk based PURELY on the provided technical statistics (Market Cap, Liquidity, Volume, etc.).
+
+            Statistics:
+            ${tokenStats || 'No technical data provided.'}
+
+            Task:
+            1. Analyze the Volume/Liquidity ratio.
+            2. Identify if this looks like a "Dead Coin", "Silent Accumulation", or "High Risk Gamble".
+            3. Since there is no social proof, you must be skeptical.
+
+            Output strict JSON (in Turkish):
+            {
+                "headline": "Technical Analysis Title (e.g. '⚠️ NO SOCIALS - HIGH RISK', '📊 VOLUME SPIKE DETECTED')",
+                "narrative": "One sentence summary of the technical state.",
+                "analysis": [
+                    "Observation from Volume/Liq",
+                    "Risk assessment based on missing socials"
+                ],
+                "riskLevel": "HIGH", 
+                "riskReason": "No social data found.",
+                "score": 4, // Cap score at 5 for unknowns, unless metrics are insane.
+                "verdict": "WATCH",
+                "displayEmoji": "🎲"
+            }
+            `;
+
+            userContent = "Analyze this technical data.";
+        }
 
         try {
             if (useGemini) {
