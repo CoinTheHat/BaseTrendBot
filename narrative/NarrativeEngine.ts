@@ -74,7 +74,18 @@ export class NarrativeEngine {
                     header = `**${aiResult.headline}**`;
                 }
 
-                // Assemble Text
+                // Turkish Recommendation
+                const recommendation = aiResult.recommendation || 'DİKKATLİ İZLE';
+                const advice = aiResult.advice || '';
+                finalAiScore = aiResult.score;
+                finalAiReason = aiResult.riskReason;
+
+                // HEADER INJECTION for High Score
+                if (finalAiScore >= 8) {
+                    header = `🔥 **GÜÇLÜ SİNYAL** 🔥\n${header}`;
+                }
+
+                // Assemble Text (CA is already in caLine)
                 narrativeText = `${caLine}${header}\n${aiResult.narrative}\n`;
                 narrativeText += `\n💡 **Neden Yükseliyor?**\n• ${aiResult.analysis.join('\n• ')}\n`;
 
@@ -88,12 +99,6 @@ export class NarrativeEngine {
                 } else {
                     aiRisk = `\n✅ **Risk Durumu:** ${aiResult.riskReason || 'Temiz görünüyor.'}`;
                 }
-
-                // Turkish Recommendation
-                const recommendation = aiResult.recommendation || 'DİKKATLİ İZLE';
-                const advice = aiResult.advice || '';
-                finalAiScore = aiResult.score;
-                finalAiReason = aiResult.riskReason;
 
                 let recEmoji = '⚠️';
                 if (finalAiScore >= 8) recEmoji = '🚀';
