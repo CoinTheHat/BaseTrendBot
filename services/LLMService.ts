@@ -148,21 +148,25 @@ JSON formatında derinlemesine ve yapılandırılmış bir analiz sun. TÜM ÇIK
         };
     }
 
-    async analyzeTweetBatch(tweets: { id: string; text: string }[]): Promise<Array<{ symbol: string; sentiment: string; reason: string; source_id: string }>> {
+    async analyzeTweetBatch(tweets: { id: string; text: string; author?: string }[]): Promise<Array<{ symbol: string; sentiment: string; reason: string; source_id: string }>> {
         if (tweets.length === 0) return [];
 
-        // Tweetleri numaralandırarak birleştiriyoruz
-        const userContent = tweets.map(t => `ID_${t.id}: ${t.text.replace(/\n/g, ' ')}`).join('\n\n');
+        // Tweetleri numaralandırarak birleştiriyoruz, Author bilgisini ekliyoruz
+        const userContent = tweets.map(t => {
+            const authorPart = t.author ? ` (Author: @${t.author})` : '';
+            return `ID_${t.id}${authorPart}: ${t.text.replace(/\n/g, ' ')}`;
+        }).join('\n\n');
 
         const systemPrompt = `
 You are an expert Crypto Trend Hunter (Jeweler Mode).
-Analyze the provided tweets (Format: "ID_xxx: Content") regarding ERC-8004, Hybrid Tokens, or new tech trends.
+Analyze the provided tweets (Format: "ID_xxx (Author: @user): Content") regarding ERC-8004, Hybrid Tokens, or new tech trends.
 
 **STRICT RULES:**
 1. Ignore spam, airdrops, giveaways, and generic empty hype.
 2. Identify only HIGH POTENTIAL projects with real community interest or solid tech mentions.
 3. Look for Contract Addresses (CA) or Tickers ($SYM).
 4. OUTPUT MUST BE VALID JSON.
+5. **BOOST SCORE**: If tweet is from a known Alpha Account (e.g. 8004_scan, 8004tokens, DavideCrapis), give it higher sentiment and trust.
 
 **JSON OUTPUT FORMAT:**
 {

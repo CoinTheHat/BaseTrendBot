@@ -157,7 +157,7 @@ export class TwitterTrendsService {
             { id: 'fb_5', phrase: 'Crypto', source: ['fallback'], metrics: { twitterTweets: 150000 }, trendScore: 75, lastUpdated: new Date() }
         ];
     }
-    async searchRecentTweets(query: string, maxResults: number = 10): Promise<{ tweetId: string; text: string; metrics?: any }[]> {
+    async searchRecentTweets(query: string, maxResults: number = 10): Promise<{ tweetId: string; text: string; metrics?: any; authorUsername?: string }[]> {
         if (!this.client && !this.appClient) {
             logger.warn('[Twitter] No API client available for search.');
             return [];
@@ -165,20 +165,26 @@ export class TwitterTrendsService {
 
         try {
             const clientToUse = this.appClient || this.client;
-            // Use v2 search
+            // Use v2 search with expansions
             const result = await clientToUse!.v2.search(query, {
-                'tweet.fields': ['created_at', 'public_metrics', 'id', 'text'],
-                max_results: Math.min(maxResults, 100), // API limit check
+                'tweet.fields': ['created_at', 'public_metrics', 'id', 'text', 'author_id'],
+                'expansions': ['author_id'],
+                'user.fields': ['username'],
+                max_results: Math.min(maxResults, 100),
                 sort_order: 'recency'
             });
 
             const tweets = result.tweets;
+            // Create a lookup map for users
+            const users = result.includes?.users ? new Map(result.includes.users.map(u => [u.id, u.username])) : new Map();
+
             logger.info(`[Twitter] Search "${query}" found ${tweets.length} tweets.`);
 
             return tweets.map(t => ({
                 tweetId: t.id,
                 text: t.text,
-                metrics: t.public_metrics
+                metrics: t.public_metrics,
+                authorUsername: t.author_id ? users.get(t.author_id) : undefined
             }));
 
         } catch (error: any) {

@@ -7,8 +7,9 @@ import { LLMService } from '../services/LLMService';
 
 export class KeywordMonitorJob {
     private job: CronJob;
+    private readonly ALPHA_ACCOUNTS = ['8004_scan', '8004tokens', 'scattering_io', 'DavideCrapis'];
     // Updated Query: Filter retweets, replies, airdrops, enforce min likes
-    private readonly QUERY = '("ERC-8004" OR "ERC8004" OR "Hybrid Token") -is:retweet -is:reply -airdrop -giveaway min_faves:5';
+    private readonly QUERY_KEYWORDS = '("ERC-8004" OR "ERC8004" OR "Hybrid Token") -is:retweet -is:reply -airdrop -giveaway min_faves:5';
 
     constructor(
         private storage: PostgresStorage,
@@ -23,33 +24,48 @@ export class KeywordMonitorJob {
     }
 
     start() {
-        logger.info('[KeywordMonitor] Job started (Jeweler Mode). Watching: ERC-8004 & Hybrid Tokens');
+        logger.info('[KeywordMonitor] Job started (Jeweler Mode). Watching: Keywords & Alpha Accounts');
         this.job.start();
         this.run(); // Initial run
     }
 
     private async run() {
         try {
-            logger.info('[KeywordMonitor] Harvesting tweets...');
+            logger.info('[KeywordMonitor] Harvesting tweets (Keywords + Alpha Accounts)...');
 
-            // 1. HARVESTING (100 Tweets)
-            const tweets = await this.twitterService.searchRecentTweets(this.QUERY, 100);
-            if (tweets.length === 0) return;
+            // 1. HARVESTING
+            // A. Keywords
+            const tweetsKeywords = await this.twitterService.searchRecentTweets(this.QUERY_KEYWORDS, 60);
+
+            // B. Alpha Accounts
+            const alphaQuery = `(${this.ALPHA_ACCOUNTS.map(u => `from:${u}`).join(' OR ')}) -is:retweet -is:reply`;
+            const tweetsAlpha = await this.twitterService.searchRecentTweets(alphaQuery, 40);
+
+            // Merge
+            const allTweets = [...tweetsKeywords, ...tweetsAlpha];
+            if (allTweets.length === 0) return;
 
             // 2. PRE-FILTERING (The Sieve)
             const uniqueTweets = new Map<string, any>();
 
-            for (const t of tweets) {
+            for (const t of allTweets) {
                 // Dup check
                 if (uniqueTweets.has(t.text)) continue;
 
                 // Content Check: Must have Cashtag OR CA
-                // (High engagement check is already handled by API query min_faves:5)
+                // (High engagement check handled by API query for keywords. Alphas are trusted by author.)
                 const hasCashtag = /\$[a-zA-Z]{2,}/.test(t.text);
                 const hasCA = /0x[a-fA-F0-9]{40}/.test(t.text);
 
-                if (hasCashtag || hasCA) {
-                    uniqueTweets.set(t.text, { id: t.tweetId, text: t.text });
+                // Alpha Bypass: If tweet is from an Alpha Account, accept even without cashtag/CA (might be subtle hint)
+                const isAlpha = t.authorUsername && this.ALPHA_ACCOUNTS.some(a => a.toLowerCase() === t.authorUsername?.toLowerCase());
+
+                if (hasCashtag || hasCA || isAlpha) {
+                    uniqueTweets.set(t.text, {
+                        id: t.tweetId,
+                        text: t.text,
+                        author: t.authorUsername // Pass username to AI
+                    });
                 }
             }
 
@@ -66,16 +82,23 @@ export class KeywordMonitorJob {
 
             // 4. NOTIFICATION (The Gem)
             for (const gem of results) {
-                // Fallback if source_id missing (should not happen with new prompt)
+                // Fallback if source_id missing
                 const sourceId = gem.source_id || candidates[0].id;
+
+                // Find original candidate to check author
+                const original = candidates.find(c => c.id === sourceId);
+                const isAlphaSource = original?.author && this.ALPHA_ACCOUNTS.some(a => a.toLowerCase() === original.author?.toLowerCase());
 
                 // Check dup
                 const isProcessed = await this.storage.hasSeenKeywordTweet(sourceId);
                 if (isProcessed) continue;
 
-                const msg = `💎 **AI KUYUMCUSU: ERC-8004 FIRSATI**\n\n` +
+                let title = `💎 **AI KUYUMCUSU: ERC-8004 FIRSATI**`;
+                if (isAlphaSource) title = `👑 **ALPHA ALARMI: @${original?.author}**`;
+
+                const msg = `${title}\n\n` +
                     `🔹 **Token:** ${gem.symbol}\n` +
-                    `🧠 **Grok Puanı:** ${gem.sentiment}/10\n` +
+                    `🧠 **Grok Puanı:** ${gem.sentiment}/10 ${isAlphaSource ? '🔥' : ''}\n` +
                     `📝 **Analiz:** ${gem.reason}\n\n` +
                     `🔗 **Kaynak:** [Tweet Linki](https://x.com/i/web/status/${sourceId})\n` +
                     `⚠️ *Otomatik analizdir, DYOR.*`;
