@@ -11,6 +11,16 @@ export class DashboardServer {
         this.app = express();
         this.port = process.env.PORT ? parseInt(process.env.PORT) : port;
 
+        // AUTHENTICATION
+        const basicAuth = require('express-basic-auth');
+        const { config } = require('../config/env');
+
+        this.app.use(basicAuth({
+            users: { [config.DASHBOARD_USER]: config.DASHBOARD_PASS },
+            challenge: true,
+            realm: 'TrendBot Admin Area'
+        }));
+
         // Setup EJS
         this.app.set('view engine', 'ejs');
         // CRITICAL: Point to source directory since .ejs files aren't copied to dist by tsc

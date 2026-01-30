@@ -25,27 +25,13 @@ export const config = {
     TWITTER_AUTH_TOKENS: (process.env.TWITTER_AUTH_TOKENS || process.env.TWITTER_AUTH_TOKEN || '').split(',').map(t => t.trim()).filter(t => t),
     TWITTER_CT0S: (process.env.TWITTER_CT0S || process.env.TWITTER_CT0 || '').split(',').map(t => t.trim()).filter(t => t),
 
-    // AI / LLM
-    OPENAI_API_KEY: process.env.OPENAI_API_KEY || '', // Kept for fallback
-
-    // Primary & Secondary Engines
-    GROQ_API_KEY: process.env.GROQ_API_KEY || '',
-    GROQ_MODEL: process.env.GROQ_MODEL || 'llama3-70b-8192', // Fast & Capable
-
-    DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY || '',
-    DEEPSEEK_MODEL: process.env.DEEPSEEK_MODEL || 'deepseek-chat',
-
     // Primary Engine: xAI (Grok)
     XAI_API_KEY: process.env.XAI_API_KEY || process.env.GROK_API_KEY || '',
-    XAI_MODEL: 'grok-2-latest',
+    XAI_MODEL: 'grok-4-latest',
 
-    // Backup Engine (Gemini)
-    GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
-    GEMINI_KEYS: (process.env.GEMINI_API_KEY || '')
-        .split(',')
-        .map(k => k.trim())
-        .filter(k => k),
-    AI_MODEL: process.env.AI_MODEL || 'gemini-1.5-flash', // Changed default to flash
+    // Dashboard Security
+    DASHBOARD_USER: process.env.DASHBOARD_USER || 'admin',
+    DASHBOARD_PASS: process.env.DASHBOARD_PASS || 'trendbot2026',
 
     // Trends
     TREND_UPDATE_INTERVAL_MINUTES: Number(process.env.TREND_UPDATE_INTERVAL_MINUTES) || 30,

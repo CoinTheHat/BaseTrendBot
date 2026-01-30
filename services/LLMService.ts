@@ -28,10 +28,11 @@ export class LLMService {
 
     constructor() {
         if (!config.XAI_API_KEY) {
-            logger.error('[LLMService] XAI_API_KEY (Grok) is missing!');
+            logger.error('[LLMService] CRITICAL: XAI_API_KEY is missing! Bot cannot function.');
+            process.exit(1);
         }
         this.xai = new OpenAI({
-            apiKey: config.XAI_API_KEY || 'dummy', // Prevent crash if missing
+            apiKey: config.XAI_API_KEY,
             baseURL: "https://api.x.ai/v1",
         });
     }
@@ -41,15 +42,15 @@ export class LLMService {
         const { systemPrompt, userContent } = this.buildPrompt(token, tweets, hasTweets);
 
         try {
-            logger.info(`[xAI Grok] Analyzing $${token.symbol} with grok-4-latest...`);
+            logger.info(`[xAI Grok] Analyzing $${token.symbol} with ${config.XAI_MODEL}...`);
 
             const completion = await this.xai.chat.completions.create({
-                model: "grok-4-latest", // User requested specific model
+                model: config.XAI_MODEL,
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userContent }
                 ],
-                temperature: 0.2, // Low temperature for analytical precision
+                temperature: 0.2,
                 response_format: { type: "json_object" }
             });
 
@@ -63,27 +64,9 @@ export class LLMService {
             logger.error(`[xAI Grok] Analysis failed for $${token.symbol}: ${error.message}`);
 
             if (error.status === 401 || error.message.includes('API key')) {
-                logger.error('[xAI Grok] Invalid API Key. Please update XAI_API_KEY.');
-            } else if (error.status === 404) {
-                logger.warn('[xAI Grok] Model grok-4-latest not found? Falling back to grok-beta...');
-                // Quick fallback just in case 4-latest is not yet available to all keys
-                try {
-                    const fallback = await this.xai.chat.completions.create({
-                        model: "grok-beta",
-                        messages: [
-                            { role: "system", content: systemPrompt },
-                            { role: "user", content: userContent }
-                        ],
-                        temperature: 0.2,
-                        response_format: { type: "json_object" }
-                    });
-                    const fbContent = fallback.choices[0].message.content;
-                    if (fbContent) return this.normalizeResult(JSON.parse(fbContent));
-                } catch (e) {
-                    logger.error('[xAI Grok] Fallback failed too.');
-                }
+                logger.error('[xAI Grok] FATAL: Invalid API Key. Stopping bot.');
+                process.exit(1);
             }
-
             return null;
         }
     }

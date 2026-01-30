@@ -15,7 +15,6 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@google/generative-ai": "^0.24.1",
     "@types/node": "^25.0.10",
     "@types/pg": "^8.16.0",
     "axios": "^1.13.3",
@@ -24,6 +23,7 @@
     "dotenv": "^17.2.3",
     "ejs": "^4.0.1",
     "express": "^5.2.1",
+    "express-basic-auth": "^1.2.1",
     "node-telegram-bot-api": "^0.67.0",
     "openai": "^6.17.0",
     "pg": "^8.17.2",
