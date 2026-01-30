@@ -112,7 +112,24 @@ export class TwitterTrendsService {
                 return this.getFallbackTrends();
             }
 
-            return trends.slice(0, 15).map((t: { phrase: string, count: number }, idx: number) => ({
+            // CRYPTO FILTER: Only keep trends relevant to crypto/memecoins
+            const cryptoKeywords = ['crypto', 'bitcoin', 'btc', 'ethereum', 'eth', 'solana', 'sol', 'doge', 'pepe', 'shib', 'meme', 'coin', 'token', 'nft', 'defi', 'web3', 'blockchain', 'pump', 'moon', 'ape', 'rugpull', 'airdrop', 'whale', 'binance', 'coinbase'];
+
+            const filteredTrends = trends.filter((t: { phrase: string, count: number }) => {
+                const lowerPhrase = t.phrase.toLowerCase();
+                // Check if trend contains crypto-related keywords
+                return cryptoKeywords.some(keyword => lowerPhrase.includes(keyword)) ||
+                    lowerPhrase.startsWith('$'); // Include cashtags
+            });
+
+            if (filteredTrends.length === 0) {
+                logger.warn('[Trends] No crypto-relevant trends found after filtering. Using fallback.');
+                return this.getFallbackTrends();
+            }
+
+            logger.info(`[Trends] Filtered ${trends.length} → ${filteredTrends.length} crypto-relevant trends.`);
+
+            return filteredTrends.slice(0, 15).map((t: { phrase: string, count: number }, idx: number) => ({
                 id: `trend_${Date.now()}_${idx}`,
                 phrase: t.phrase,
                 source: ['twitter'],

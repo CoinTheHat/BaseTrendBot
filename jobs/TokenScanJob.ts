@@ -246,25 +246,28 @@ export class TokenScanJob {
                                 }
 
                                 // 🛡️ GATEKEEPER: AI Score Check
-                                const aiScore = narrative.aiScore || 0;
+                                const aiScore = narrative.aiScore;
+                                const vibeCheck = narrative.vibeCheck || '';
+
+                                // CRITICAL: Block if AI is still analyzing or score is invalid
+                                if (!aiScore || aiScore === 0 || vibeCheck.includes('Analyzing') || vibeCheck.includes('analiz')) {
+                                    logger.warn(`[BLOCKED] ${enrichedToken.symbol} - AI analysis incomplete. Vibe: ${vibeCheck}`);
+                                    return; // Skip this token completely
+                                }
 
                                 // Score Threshold: Only send to Telegram if >= 5
-                                if (aiScore > 0 && aiScore < 5) {
+                                if (aiScore < 5) {
                                     const reason = narrative.aiReason ? narrative.aiReason.substring(0, 50) + "..." : "Low conviction";
                                     logger.warn(`[BLOCKED] ${enrichedToken.symbol} rejected for Telegram. Score: ${aiScore} | Reason: ${reason}`);
                                     // Save to DB but don't alert
                                     // await this.storage.saveToken(enrichedToken, 'REJECTED', aiScore);
-                                } else if (aiScore >= 5 || aiScore === 0) {
-                                    // PASSED: Score is good (>= 5) OR no AI analysis (fallback to technical)
+                                } else {
+                                    // PASSED: Score is valid and >= 5
                                     await this.bot.sendAlert(narrative, enrichedToken, scoreRes);
                                     await this.twitter.postTweet(narrative, enrichedToken);
                                     await this.cooldown.recordAlert(enrichedToken.mint, scoreRes.totalScore, phase);
 
-                                    if (aiScore >= 5) {
-                                        logger.info(`[PASSED] ${enrichedToken.symbol} sent to Telegram. AI Score: ${aiScore}`);
-                                    } else {
-                                        logger.info(`[PASSED] ${enrichedToken.symbol} sent (No AI Score - Technical fallback).`);
-                                    }
+                                    logger.info(`[PASSED] ${enrichedToken.symbol} sent to Telegram. AI Score: ${aiScore}`);
                                 }
                             } else {
                                 logger.info(`[Job] Skipped alert for ${token.symbol}: ${reason}`);
