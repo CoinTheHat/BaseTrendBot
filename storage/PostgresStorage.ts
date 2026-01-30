@@ -112,22 +112,22 @@ export class PostgresStorage {
         }
     }
 
-    // BACKFILL: Sync missing tokens from processed_tokens to token_performance
+    // BACKFILL: Sync missing tokens from seen_tokens to token_performance
     async backfillMissingTokens(): Promise<number> {
         try {
             const query = `
                 INSERT INTO token_performance (mint, symbol, alert_mc, ath_mc, current_mc, status, alert_timestamp)
                 SELECT 
-                    pt.mint,
+                    st.mint,
                     '' as symbol,
-                    COALESCE(pt.market_cap, 0) as alert_mc,
-                    COALESCE(pt.market_cap, 0) as ath_mc,
+                    0 as alert_mc,
+                    0 as ath_mc,
                     0 as current_mc,
                     'TRACKING' as status,
-                    to_timestamp(pt.first_seen_at / 1000) as alert_timestamp
-                FROM processed_tokens pt
-                WHERE pt.last_alert_at > 0
-                AND pt.mint NOT IN (SELECT mint FROM token_performance)
+                    to_timestamp(st.first_seen_at / 1000) as alert_timestamp
+                FROM seen_tokens st
+                WHERE st.last_alert_at > 0
+                AND st.mint NOT IN (SELECT mint FROM token_performance)
                 ON CONFLICT (mint) DO NOTHING
             `;
             const res = await this.pool.query(query);
@@ -159,7 +159,7 @@ export class PostgresStorage {
 
     async getDashboardMetrics(): Promise<any> {
         try {
-            // UNION QUERY: Combine new system (token_performance) + historical (processed_tokens)
+            // UNION QUERY: Combine new system (token_performance) + historical (seen_tokens)
             const combinedView = `
                 SELECT 
                     mint, symbol, alert_mc, ath_mc, current_mc, status, alert_timestamp
@@ -175,7 +175,7 @@ export class PostgresStorage {
                     0 as current_mc,
                     'HISTORIC' as status,
                     to_timestamp(first_seen_at / 1000) as alert_timestamp
-                FROM processed_tokens
+                FROM seen_tokens
                 WHERE last_alert_at > 0
                 AND mint NOT IN (SELECT mint FROM token_performance)
             `;
