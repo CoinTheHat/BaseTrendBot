@@ -41,16 +41,16 @@ export class LLMService {
         const { systemPrompt, userContent } = this.buildPrompt(token, tweets, hasTweets);
 
         try {
-            logger.info(`[xAI Grok] Analyzing $${token.symbol} with ${config.XAI_MODEL}...`);
+            logger.info(`[xAI Grok] Analyzing $${token.symbol} with grok-4-latest...`);
 
             const completion = await this.xai.chat.completions.create({
-                model: config.XAI_MODEL || "grok-2-latest",
+                model: "grok-4-latest", // User requested specific model
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userContent }
                 ],
-                temperature: 0.7, // Creative but accurate
-                response_format: { type: "json_object" } // Grok supports JSON mode
+                temperature: 0.2, // Low temperature for analytical precision
+                response_format: { type: "json_object" }
             });
 
             const content = completion.choices[0].message.content;
@@ -62,10 +62,28 @@ export class LLMService {
         } catch (error: any) {
             logger.error(`[xAI Grok] Analysis failed for $${token.symbol}: ${error.message}`);
 
-            // Temporary Fallback to mocked response if API fails (to keep bot running)
             if (error.status === 401 || error.message.includes('API key')) {
                 logger.error('[xAI Grok] Invalid API Key. Please update XAI_API_KEY.');
+            } else if (error.status === 404) {
+                logger.warn('[xAI Grok] Model grok-4-latest not found? Falling back to grok-beta...');
+                // Quick fallback just in case 4-latest is not yet available to all keys
+                try {
+                    const fallback = await this.xai.chat.completions.create({
+                        model: "grok-beta",
+                        messages: [
+                            { role: "system", content: systemPrompt },
+                            { role: "user", content: userContent }
+                        ],
+                        temperature: 0.2,
+                        response_format: { type: "json_object" }
+                    });
+                    const fbContent = fallback.choices[0].message.content;
+                    if (fbContent) return this.normalizeResult(JSON.parse(fbContent));
+                } catch (e) {
+                    logger.error('[xAI Grok] Fallback failed too.');
+                }
             }
+
             return null;
         }
     }
