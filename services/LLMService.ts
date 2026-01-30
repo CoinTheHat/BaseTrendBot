@@ -180,7 +180,7 @@ Sosyal veri olmasa bile teknik bir strateji ve görünüm sun.
 
     // PRIMARY: Gemini-1.5-Flash with Key Rotation
     private async callGeminiFlash(systemPrompt: string, userContent: string, symbol: string): Promise<any | null> {
-        const model = 'gemini-1.5-flash-latest'; // Fixed for v1beta API compatibility
+        const model = 'gemini-1.5-flash'; // Simple version (no -latest suffix)
         const prompt = systemPrompt + "\n\n" + userContent;
         const maxAttempts = Math.min(this.keyManager.getTotalKeys(), 3); // Try up to 3 keys
 

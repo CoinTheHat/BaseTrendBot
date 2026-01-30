@@ -42,9 +42,10 @@ export class DashboardServer {
     }
 
     start() {
+        const PORT = process.env.PORT || 8080; // Railway's dynamic port takes priority
         const host = '0.0.0.0'; // CRITICAL: Railway requires binding to 0.0.0.0, not localhost
-        this.app.listen(this.port, host, () => {
-            logger.info(`[Dashboard] Server running on port ${this.port} (accessible via Railway domain)`);
+        this.app.listen(Number(PORT), host, () => {
+            logger.info(`[Dashboard] Server running on port ${PORT} (accessible via Railway domain)`);
         });
     }
 }
