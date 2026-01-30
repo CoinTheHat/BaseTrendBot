@@ -34,6 +34,7 @@ export class TwitterAccountManager {
         const ct0s = config.TWITTER_CT0S || [];
 
         // Parallel arrays
+        logger.info(`[TwitterManager] Config Check: Found ${tokens.length} Auth Tokens and ${ct0s.length} CT0s.`);
         const count = Math.min(tokens.length, ct0s.length);
 
         if (count === 0 && config.TWITTER_AUTH_TOKEN) {
@@ -99,11 +100,15 @@ export class TwitterAccountManager {
         const account = this.accounts.find(a => a.index === index);
         if (account) {
             account.isBusy = false;
+
             if (wasRateLimited) {
-                account.cooldownUntil = Date.now() + (2 * 60 * 1000); // 2 mins
-                logger.warn(`[TwitterManager] Account #${index + 1} hit Rate Limit. Cooldown until ${new Date(account.cooldownUntil).toTimeString().substring(0, 8)}`);
+                // 🛑 RATE LIMIT HIT: 5 Minute Penalty
+                account.cooldownUntil = Date.now() + (5 * 60 * 1000);
+                logger.warn(`[TwitterManager] Account #${index + 1} hit Rate Limit. Cooldown 5m until ${new Date(account.cooldownUntil).toTimeString().substring(0, 8)}`);
             } else {
-                account.cooldownUntil = 0; // Ready immediately
+                // ✅ STANDARD CYCLE: 30 Second Rest (Requested)
+                account.cooldownUntil = Date.now() + (30 * 1000);
+                logger.debug(`[TwitterManager] Account #${index + 1} released. Resting 30s.`);
             }
         }
     }

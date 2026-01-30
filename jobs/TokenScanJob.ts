@@ -130,10 +130,16 @@ export class TokenScanJob {
 
             // ⚠️ PRE-FETCH ALPHA (BATCH MODE) ⚠️
             // Identify tokens that need Twitter Scan (Stricter Filters)
+            // Identify tokens that need Twitter Scan (Smart Resource Management)
             const alphaCandidates = freshCandidates.filter(t => {
-                const vol = t.volume30mUsd || 0;
+                const vol5m = t.volume5mUsd || 0;
                 const liq = t.liquidityUsd || 0;
-                return vol > 15000 && liq > 5000;
+
+                // User Request: Liq > $10k OR 1m Vol > $2k (Proxy: 5m Vol > $10k)
+                const isHighLiq = liq > 10000;
+                const isHighVelocity = vol5m > 10000;
+
+                return isHighLiq || isHighVelocity;
             });
 
             const alphaMap = new Map<string, any>();
