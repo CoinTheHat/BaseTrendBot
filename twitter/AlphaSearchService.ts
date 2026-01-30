@@ -73,14 +73,14 @@ export class AlphaSearchService {
             logger.info(`[AlphaHunter] Scanning ${cashtag} on Twitter...`);
 
             // Fix: Wait Condition
-            await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+            await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
 
-            // Fix: Manual Wait
-            await new Promise(r => setTimeout(r, 5000));
+            // Fix: Manual Wait (Shortened)
+            await new Promise(r => setTimeout(r, 2000));
 
             // Fix: Selector Check
             try {
-                await page.waitForSelector('article', { timeout: 10000 });
+                await page.waitForSelector('article', { timeout: 5000 });
             } catch (e) {
                 logger.warn(`[AlphaHunter] No tweets found for ${cashtag} (Timeout)`);
                 if (!page.isClosed()) await page.close();

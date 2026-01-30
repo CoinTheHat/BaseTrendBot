@@ -44,7 +44,7 @@ export class BirdService {
 
         try {
             logger.info(`[Bird] Searching: ${query}`);
-            const { stdout } = await execAsync(cmd, { env, timeout: 30000 });
+            const { stdout } = await execAsync(cmd, { env, timeout: 10000 });
 
             try {
                 // Parse JSON output

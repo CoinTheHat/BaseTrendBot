@@ -21,8 +21,11 @@ import { AlphaSearchService } from '../twitter/AlphaSearchService';
 
 export class TokenScanJob {
     private isRunning = false;
+    private isScanning = false;
     private scraper = new TwitterScraper();
     private storyEngine = new TwitterStoryEngine();
+    private processedCache = new Map<string, number>(); // Cache to store processed tokens (Mint -> Timestamp)
+
 
     constructor(
         private pumpFun: PumpFunService,
@@ -53,6 +56,13 @@ export class TokenScanJob {
     }
 
     private async runCycle() {
+        if (this.isScanning) {
+            logger.warn(`[Job] ⚠️ Cycle skipped - Previous cycle still running.`);
+            return;
+        }
+
+        this.isScanning = true;
+
         try {
             logger.info('[Job] Starting scan cycle...');
             // const state = this.storage.load(); // JSON Storage removed
@@ -97,130 +107,178 @@ export class TokenScanJob {
             const trendMatchMap = new Set<string>();
             trendMatches.forEach((tm: any) => tm.tokens.forEach((t: any) => trendMatchMap.add(t.snapshot.mint)));
 
+            // Filter out recently processed tokens
+            const now = Date.now();
+            const freshCandidates: TokenSnapshot[] = [];
+
             for (const token of candidates) {
-                // 2. Meme Match
-                let matchResult = this.matcher.match(token);
-                let alphaResult = null;
-
-                // Auto-Trend Match Fallback
-                if (!matchResult.memeMatch && trendMatchMap.has(token.mint)) {
-                    // Find which trend it matched
-                    const matchingTrend = trendMatches.find((tm: any) => tm.tokens.some((t: any) => t.snapshot.mint === token.mint))?.trend;
-                    if (matchingTrend) {
-                        matchResult = {
-                            memeMatch: true,
-                            matchedMeme: { id: matchingTrend.id, phrase: matchingTrend.phrase, tags: ['TRENDING'], createdAt: new Date() },
-                            matchScore: 0.9
-                        };
-                        logger.info(`[Discovery] 🛸 AUTO-TREND DETECTED: ${token.symbol} matches social trend '${matchingTrend.phrase}'`);
-                    }
+                const lastProcessed = this.processedCache.get(token.mint);
+                // 10 minutes cache
+                if (lastProcessed && (now - lastProcessed < 10 * 60 * 1000)) {
+                    // logger.info(`[Job] Skipping ${token.symbol} - Already processed recently.`);
+                    continue;
                 }
+                freshCandidates.push(token);
+            }
 
-                // 3. Alpha Hunter Trigger (Early Momentum)
-                if (!matchResult.memeMatch) {
-                    const vol = token.volume30mUsd || 0;
-                    const liq = token.liquidityUsd || 0;
+            if (freshCandidates.length === 0) {
+                logger.info(`[Job] No fresh tokens to process (All cached).`);
+                return;
+            }
 
-                    // Stricter Threads: >$15k Volume, >$5k Liquidity (Avoid Rugs)
-                    if (vol > 15000 && liq > 5000) {
-                        alphaResult = await this.alphaSearch.checkAlpha(token.symbol);
+            logger.info(`[Job] Processing ${freshCandidates.length} fresh tokens (Parallel Batches)...`);
 
-                        if (alphaResult.isEarlyAlpha) {
-                            const isSuper = alphaResult.isSuperAlpha;
-                            matchResult = {
-                                memeMatch: true,
-                                matchedMeme: { id: 'alpha', phrase: isSuper ? 'High Momentum' : 'Rising Velocity', tags: ['ALPHA'], createdAt: new Date() },
-                                matchScore: isSuper ? 0.95 : 0.85
-                            };
-                            logger.info(`[Discovery] 🔥 ${isSuper ? 'SUPER' : 'EARLY'} ALPHA DETECTED: ${token.symbol} (Unique: ${alphaResult.uniqueAuthors}, Velocity: ${alphaResult.velocity})`);
+            // Creates chunks of 5
+            const chunks = this.chunkArray(freshCandidates, 5);
+
+            for (const chunk of chunks) {
+                logger.info(`[Job] Processing batch of ${chunk.length} tokens: ${chunk.map(t => t.symbol).join(', ')}`);
+
+                await Promise.all(chunk.map(async (token) => {
+                    try {
+                        // Mark as processed immediately to prevent re-entry in race conditions
+                        this.processedCache.set(token.mint, Date.now());
+
+                        // 2. Meme Match
+                        let matchResult = this.matcher.match(token);
+                        let alphaResult = null;
+
+                        // Auto-Trend Match Fallback
+                        if (!matchResult.memeMatch && trendMatchMap.has(token.mint)) {
+                            // Find which trend it matched
+                            const matchingTrend = trendMatches.find((tm: any) => tm.tokens.some((t: any) => t.snapshot.mint === token.mint))?.trend;
+                            if (matchingTrend) {
+                                matchResult = {
+                                    memeMatch: true,
+                                    matchedMeme: { id: matchingTrend.id, phrase: matchingTrend.phrase, tags: ['TRENDING'], createdAt: new Date() },
+                                    matchScore: 0.9
+                                };
+                                logger.info(`[Discovery] 🛸 AUTO-TREND DETECTED: ${token.symbol} matches social trend '${matchingTrend.phrase}'`);
+                            }
                         }
-                    }
-                }
 
-                // Strategy: Only deeper process if meme matches OR is Alpha
-                if (!matchResult.memeMatch) continue;
+                        // 3. Alpha Hunter Trigger (Early Momentum)
+                        if (!matchResult.memeMatch) {
+                            const vol = token.volume30mUsd || 0;
+                            const liq = token.liquidityUsd || 0;
 
-                logger.info(`[Discovery] MATCH: ${token.symbol} matches '${matchResult.matchedMeme?.phrase}'`);
+                            // Stricter Threads: >$15k Volume, >$5k Liquidity (Avoid Rugs)
+                            if (vol > 15000 && liq > 5000) {
+                                alphaResult = await this.alphaSearch.checkAlpha(token.symbol);
 
-                // 3. Enrich (Birdeye) - selectively
-                const [enrichedToken] = await this.birdeye.enrichTokens([token]);
-
-                // 4. Score
-                const scoreRes = this.scorer.score(enrichedToken, matchResult);
-
-                // 5. Phase
-                const phase = this.phaseDetector.detect(enrichedToken, scoreRes);
-                scoreRes.phase = phase; // Update score result with final phase
-
-                // 6. Alert Check
-                if (scoreRes.totalScore >= config.ALERT_SCORE_THRESHOLD) {
-                    // Check Cooldown
-                    // VIP Rule: If it's a specific Contract Address match (Watchlist), significantly reduce cooldown for testing/tracking.
-                    let customCooldown = undefined;
-                    if (matchResult.memeMatch && matchResult.matchedMeme?.phrase === enrichedToken.mint) {
-                        customCooldown = 0.5; // 30 seconds for specific CA matches
-                    }
-
-                    const { allowed, reason } = await this.cooldown.canAlert(enrichedToken.mint, customCooldown);
-
-                    if (allowed) {
-                        // 7. Twitter Scraping (Data Gathering)
-                        let tweets: string[] = [];
-                        if (config.ENABLE_TWITTER_SCRAPING) {
-                            try {
-                                if (alphaResult && alphaResult.isEarlyAlpha) {
-                                    tweets = alphaResult.tweets;
-                                    logger.info(`[Job] Using ${tweets.length} Alpha tweets for analysis.`);
-                                } else {
-                                    logger.info(`[Job] Scraping Twitter for ${enrichedToken.symbol}...`);
-                                    const queries = QueryBuilder.build(enrichedToken.name, enrichedToken.symbol);
-                                    tweets = await this.scraper.fetchTokenTweets(queries);
+                                if (alphaResult.isEarlyAlpha) {
+                                    const isSuper = alphaResult.isSuperAlpha;
+                                    matchResult = {
+                                        memeMatch: true,
+                                        matchedMeme: { id: 'alpha', phrase: isSuper ? 'High Momentum' : 'Rising Velocity', tags: ['ALPHA'], createdAt: new Date() },
+                                        matchScore: isSuper ? 0.95 : 0.85
+                                    };
+                                    logger.info(`[Discovery] 🔥 ${isSuper ? 'SUPER' : 'EARLY'} ALPHA DETECTED: ${token.symbol} (Unique: ${alphaResult.uniqueAuthors}, Velocity: ${alphaResult.velocity})`);
                                 }
-                            } catch (err) {
-                                logger.error(`[Job] Scraping failed for ${enrichedToken.symbol}: ${err}`);
                             }
                         }
 
-                        if (!tweets || tweets.length === 0) {
-                            logger.warn(`[SKIPPED] No Twitter data for ${enrichedToken.symbol}. AI Analysis skipped.`);
-                        }
+                        // Strategy: Only deeper process if meme matches OR is Alpha
+                        if (!matchResult.memeMatch) return;
 
-                        // Generate Narrative (Async, with AI Analysis if tweets exist)
-                        const narrative = await this.narrative.generate(enrichedToken, matchResult, scoreRes, tweets);
+                        logger.info(`[Discovery] MATCH: ${token.symbol} matches '${matchResult.matchedMeme?.phrase}'`);
 
-                        // Attach specific flags if needed (Alpha, etc.)
-                        if (alphaResult && alphaResult.isEarlyAlpha) {
-                            if (alphaResult.isSuperAlpha) narrative.narrativeText = "🚀 **SUPER ALPHA — HIGH MOMENTUM** 🚀\n" + narrative.narrativeText;
-                        }
+                        // 3. Enrich (Birdeye) - selectively
+                        const [enrichedToken] = await this.birdeye.enrichTokens([token]);
 
-                        // 🛡️ GATEKEEPER: AI Score Check
-                        const aiScore = narrative.aiScore || 0;
+                        // 4. Score
+                        const scoreRes = this.scorer.score(enrichedToken, matchResult);
 
-                        // Strict Check: If we have an AI Score and it is low (< 4), BLOCK IT.
-                        if (aiScore > 0 && aiScore < 4) {
-                            const reason = narrative.aiReason ? narrative.aiReason.substring(0, 50) + "..." : "Low conviction";
-                            logger.warn(`[BLOCKED] ${enrichedToken.symbol} elendi. Puan: ${aiScore} | Sebep: ${reason}`);
-                            // Optionally save to DB as "Rejected"
-                        } else {
-                            // PASSED (Or No AI Score - Default allow if technical, but maybe strict later)
-                            await this.bot.sendAlert(narrative, enrichedToken, scoreRes);
-                            await this.twitter.postTweet(narrative, enrichedToken);
-                            await this.cooldown.recordAlert(enrichedToken.mint, scoreRes.totalScore, phase);
+                        // 5. Phase
+                        const phase = this.phaseDetector.detect(enrichedToken, scoreRes);
+                        scoreRes.phase = phase; // Update score result with final phase
 
-                            if (aiScore > 0) {
-                                logger.info(`[PASSED] ${enrichedToken.symbol} Telegram'a gönderildi. Puan: ${aiScore}`);
+                        // 6. Alert Check
+                        if (scoreRes.totalScore >= config.ALERT_SCORE_THRESHOLD) {
+                            // Check Cooldown
+                            // VIP Rule: If it's a specific Contract Address match (Watchlist), significantly reduce cooldown for testing/tracking.
+                            let customCooldown = undefined;
+                            if (matchResult.memeMatch && matchResult.matchedMeme?.phrase === enrichedToken.mint) {
+                                customCooldown = 0.5; // 30 seconds for specific CA matches
+                            }
+
+                            const { allowed, reason } = await this.cooldown.canAlert(enrichedToken.mint, customCooldown);
+
+                            if (allowed) {
+                                // 7. Twitter Scraping (Data Gathering)
+                                let tweets: string[] = [];
+                                if (config.ENABLE_TWITTER_SCRAPING) {
+                                    try {
+                                        if (alphaResult && alphaResult.isEarlyAlpha) {
+                                            tweets = alphaResult.tweets;
+                                            logger.info(`[Job] Using ${tweets.length} Alpha tweets for analysis.`);
+                                        } else {
+                                            logger.info(`[Job] Scraping Twitter for ${enrichedToken.symbol}...`);
+                                            const queries = QueryBuilder.build(enrichedToken.name, enrichedToken.symbol);
+                                            tweets = await this.scraper.fetchTokenTweets(queries);
+                                        }
+                                    } catch (err) {
+                                        logger.error(`[Job] Scraping failed for ${enrichedToken.symbol}: ${err}`);
+                                    }
+                                }
+
+                                if (!tweets || tweets.length === 0) {
+                                    logger.warn(`[SKIPPED] No Twitter data for ${enrichedToken.symbol}. AI Analysis skipped.`);
+                                }
+
+                                // Generate Narrative (Async, with AI Analysis if tweets exist)
+                                const narrative = await this.narrative.generate(enrichedToken, matchResult, scoreRes, tweets);
+
+                                // Attach specific flags if needed (Alpha, etc.)
+                                if (alphaResult && alphaResult.isEarlyAlpha) {
+                                    if (alphaResult.isSuperAlpha) narrative.narrativeText = "🚀 **SUPER ALPHA — HIGH MOMENTUM** 🚀\n" + narrative.narrativeText;
+                                }
+
+                                // 🛡️ GATEKEEPER: AI Score Check
+                                const aiScore = narrative.aiScore || 0;
+
+                                // Strict Check: If we have an AI Score and it is low (< 4), BLOCK IT.
+                                if (aiScore > 0 && aiScore < 4) {
+                                    const reason = narrative.aiReason ? narrative.aiReason.substring(0, 50) + "..." : "Low conviction";
+                                    logger.warn(`[BLOCKED] ${enrichedToken.symbol} elendi. Puan: ${aiScore} | Sebep: ${reason}`);
+                                    // Optionally save to DB as "Rejected"
+                                } else {
+                                    // PASSED (Or No AI Score - Default allow if technical, but maybe strict later)
+                                    await this.bot.sendAlert(narrative, enrichedToken, scoreRes);
+                                    await this.twitter.postTweet(narrative, enrichedToken);
+                                    await this.cooldown.recordAlert(enrichedToken.mint, scoreRes.totalScore, phase);
+
+                                    if (aiScore > 0) {
+                                        logger.info(`[PASSED] ${enrichedToken.symbol} Telegram'a gönderildi. Puan: ${aiScore}`);
+                                    } else {
+                                        logger.info(`[PASSED] ${enrichedToken.symbol} Alert sent (No AI Analysis available).`);
+                                    }
+                                }
                             } else {
-                                logger.info(`[PASSED] ${enrichedToken.symbol} Alert sent (No AI Analysis available).`);
+                                logger.info(`[Job] Skipped alert for ${token.symbol}: ${reason}`);
                             }
                         }
-                    } else {
-                        logger.info(`[Job] Skipped alert for ${token.symbol}: ${reason}`);
+                    } catch (tokenErr) {
+                        logger.error(`[Job] Error processing token ${token.symbol}: ${tokenErr}`);
                     }
-                }
+                }));
+
+                // Optional: Tiny delay between chunks to be nice to APIs (100ms)
+                await new Promise(r => setTimeout(r, 100));
             }
 
         } catch (err) {
             logger.error(`[Job] Cycle failed: ${err}`);
+        } finally {
+            this.isScanning = false;
         }
+    }
+
+    private chunkArray<T>(arr: T[], size: number): T[][] {
+        const res: T[][] = [];
+        for (let i = 0; i < arr.length; i += size) {
+            res.push(arr.slice(i, i + size));
+        }
+        return res;
     }
 }
