@@ -157,7 +157,7 @@ export class TwitterTrendsService {
             { id: 'fb_5', phrase: 'Crypto', source: ['fallback'], metrics: { twitterTweets: 150000 }, trendScore: 75, lastUpdated: new Date() }
         ];
     }
-    async searchRecentTweets(query: string, maxResults: number = 10): Promise<{ tweetId: string; text: string }[]> {
+    async searchRecentTweets(query: string, maxResults: number = 10): Promise<{ tweetId: string; text: string; metrics?: any }[]> {
         if (!this.client && !this.appClient) {
             logger.warn('[Twitter] No API client available for search.');
             return [];
@@ -177,7 +177,8 @@ export class TwitterTrendsService {
 
             return tweets.map(t => ({
                 tweetId: t.id,
-                text: t.text
+                text: t.text,
+                metrics: t.public_metrics
             }));
 
         } catch (error: any) {

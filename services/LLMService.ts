@@ -147,4 +147,66 @@ JSON formatında derinlemesine ve yapılandırılmış bir analiz sun. TÜM ÇIK
             vibe: result.vibe || ''
         };
     }
+
+    async analyzeTrendBatch(tweetsInput: string[], sourceIds: string[]): Promise<any[]> {
+        if (tweetsInput.length === 0) return [];
+
+        const systemPrompt = `
+Sen Uzman Bir Kripto Trend Avcısısın. Görevin, sana verilen tweet yığınını tarayıp, aralarındaki "ELMAS" (Gem) projeleri bulmak.
+Konu: ERC-8004 ve Yeni Hibrit Token Standartları.
+
+**Elmek İstediklerin (ÇÖP):**
+- Spam, Airdrop, Giveaway postları.
+- Anlamsız hype, sadece "$TK ticker" yazıp geçen botlar.
+- Tekrar eden içerikler.
+
+**Aramak İstediklerin (ELMAS):**
+- Somut bir teknoloji veya proje anlatanlar.
+- Yeni bir kontrat adresi (CA) paylaşıp teknik detay verenler.
+- Topluluk tarafından ciddi ilgi gören (Like/RT yüksek) ve organik duranlar.
+
+Sana verilen metin formatı: "[ID] Tweet İçeriği"
+
+**Çıktı Formatı (JSON Array):**
+Eğer kayda değer hiçbir şey yoksa BOŞ ARRAY [] dön.
+Eğer varsa:
+[
+  {
+    "projectName": "Proje Adı veya Ticker",
+    "summary": "Neden bu proje önemli? (Tek cümle, Türkçe)",
+    "sourceTweetId": "İlgili tweetin ID'si (Metinden al)",
+    "confidenceScore": 85
+  }
+]
+`;
+
+        // Combine tweets into a single text block
+        const userContent = tweetsInput.map((text, idx) => `[${sourceIds[idx]}] ${text.replace(/\n/g, ' ')}`).join('\n\n');
+
+        try {
+            logger.info(`[xAI Grok] Batch analyzing ${tweetsInput.length} tweets...`);
+
+            const completion = await this.xai.chat.completions.create({
+                model: config.XAI_MODEL || "grok-2-latest",
+                messages: [
+                    { role: "system", content: systemPrompt },
+                    { role: "user", content: userContent }
+                ],
+                temperature: 0.1, // Very strict
+                response_format: { type: "json_object" }
+            });
+
+            const content = completion.choices[0].message.content;
+            if (!content) return [];
+
+            const parsed = JSON.parse(content);
+            // Handle wrapper object if any (e.g. { "projects": [...] }) or direct array
+            const projects = Array.isArray(parsed) ? parsed : (parsed.projects || parsed.gems || []);
+
+            return projects;
+        } catch (err) {
+            logger.error(`[xAI Batch] Analysis failed: ${err}`);
+            return [];
+        }
+    }
 }
