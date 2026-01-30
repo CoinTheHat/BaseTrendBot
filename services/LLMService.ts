@@ -151,42 +151,43 @@ JSON formatında derinlemesine ve yapılandırılmış bir analiz sun. TÜM ÇIK
     async analyzeTweetBatch(tweets: { id: string; text: string }[]): Promise<Array<{ symbol: string; sentiment: string; reason: string; source_id: string }>> {
         if (tweets.length === 0) return [];
 
-        // Combine tweets with IDs to track source
+        // Tweetleri numaralandırarak birleştiriyoruz
         const userContent = tweets.map(t => `ID_${t.id}: ${t.text.replace(/\n/g, ' ')}`).join('\n\n');
 
         const systemPrompt = `
 You are an expert Crypto Trend Hunter (Jeweler Mode).
-Analyze the provided tweets (ID_xxx: Content) regarding ERC-8004, Hybrid Tokens, or new tech trends.
+Analyze the provided tweets (Format: "ID_xxx: Content") regarding ERC-8004, Hybrid Tokens, or new tech trends.
 
-**Rules:**
+**STRICT RULES:**
 1. Ignore spam, airdrops, giveaways, and generic empty hype.
 2. Identify only HIGH POTENTIAL projects with real community interest or solid tech mentions.
 3. Look for Contract Addresses (CA) or Tickers ($SYM).
+4. OUTPUT MUST BE VALID JSON.
 
-**Output:**
-Return a JSON array of objects. If no gems found, return [].
-Include the 'source_id' (without 'ID_' prefix) in the output.
-Format:
-[
-  { 
-    "symbol": "$SYMBOL", 
-    "sentiment": "Score 1-10", 
-    "reason": "Short summary explaining why it is a gem (IN TURKISH LANGUAGE)",
-    "source_id": "12345..."
-  }
-]
+**JSON OUTPUT FORMAT:**
+{
+  "gems": [
+    { 
+      "symbol": "$SYMBOL", 
+      "sentiment": "Score 1-10", 
+      "reason": "Short summary explaining why it is a gem (IN TURKISH LANGUAGE)",
+      "source_id": "Extract the numeric ID from the input (e.g. if input is ID_12345, output '12345')"
+    }
+  ]
+}
+If no gems found, return: { "gems": [] }
 `;
 
         try {
             logger.info(`[xAI Grok] Batch analyzing ${tweets.length} tweets...`);
 
             const completion = await this.xai.chat.completions.create({
-                model: config.XAI_MODEL || "grok-2-latest",
+                model: config.XAI_MODEL || "grok-2-latest", // Tasarruflu model
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userContent }
                 ],
-                temperature: 0.1, // Strict
+                temperature: 0.1, // Düşük sıcaklık = Daha tutarlı JSON
                 response_format: { type: "json_object" }
             });
 
@@ -194,10 +195,9 @@ Format:
             if (!content) return [];
 
             const parsed = JSON.parse(content);
-            // Support wrapper objects like {"gems": [...]} or direct array
-            const results = Array.isArray(parsed) ? parsed : (parsed.gems || parsed.projects || []);
+            // Artık "gems" anahtarının geleceğinden eminiz
+            return parsed.gems || [];
 
-            return results;
         } catch (err) {
             logger.error(`[xAI Batch] Analysis failed: ${err}`);
             return [];
