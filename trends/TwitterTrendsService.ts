@@ -157,4 +157,32 @@ export class TwitterTrendsService {
             { id: 'fb_5', phrase: 'Crypto', source: ['fallback'], metrics: { twitterTweets: 150000 }, trendScore: 75, lastUpdated: new Date() }
         ];
     }
+    async searchRecentTweets(query: string, maxResults: number = 10): Promise<{ tweetId: string; text: string }[]> {
+        if (!this.client && !this.appClient) {
+            logger.warn('[Twitter] No API client available for search.');
+            return [];
+        }
+
+        try {
+            const clientToUse = this.appClient || this.client;
+            // Use v2 search
+            const result = await clientToUse!.v2.search(query, {
+                'tweet.fields': ['created_at', 'public_metrics', 'id', 'text'],
+                max_results: Math.min(maxResults, 100), // API limit check
+                sort_order: 'recency'
+            });
+
+            const tweets = result.tweets;
+            logger.info(`[Twitter] Search "${query}" found ${tweets.length} tweets.`);
+
+            return tweets.map(t => ({
+                tweetId: t.id,
+                text: t.text
+            }));
+
+        } catch (error: any) {
+            logger.error(`[Twitter] Search failed for "${query}": ${error.message}`);
+            return [];
+        }
+    }
 }

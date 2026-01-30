@@ -66,7 +66,13 @@ export class PostgresStorage {
                 status TEXT DEFAULT 'TRACKING',
                 alert_timestamp TIMESTAMP DEFAULT NOW(),
                 last_updated TIMESTAMP DEFAULT NOW()
-            ); `
+            );`,
+            `CREATE TABLE IF NOT EXISTS keyword_alerts (
+                tweet_id TEXT PRIMARY KEY,
+                keyword TEXT,
+                content TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
+            );`
         ];
 
         try {
@@ -366,6 +372,30 @@ export class PostgresStorage {
         } catch (err) {
             logger.error('[Postgres] getTrends failed', err);
             return [];
+        }
+    }
+    // --- Keyword Sniper ---
+
+    async hasSeenKeywordTweet(tweetId: string): Promise<boolean> {
+        try {
+            const res = await this.pool.query('SELECT 1 FROM keyword_alerts WHERE tweet_id = $1', [tweetId]);
+            return res.rowCount !== null && res.rowCount > 0;
+        } catch (err) {
+            logger.error('[Postgres] hasSeenKeywordTweet failed', err);
+            return false;
+        }
+    }
+
+    async saveKeywordTweet(tweetId: string, keyword: string, content: string) {
+        try {
+            await this.pool.query(
+                `INSERT INTO keyword_alerts (tweet_id, keyword, content)
+                 VALUES ($1, $2, $3)
+                 ON CONFLICT (tweet_id) DO NOTHING`,
+                [tweetId, keyword, content]
+            );
+        } catch (err) {
+            logger.error('[Postgres] saveKeywordTweet failed', err);
         }
     }
 }

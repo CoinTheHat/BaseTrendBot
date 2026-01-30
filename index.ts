@@ -4,6 +4,7 @@ import { PumpFunService } from './services/PumpFunService';
 import { DexScreenerService } from './services/DexScreenerService';
 import { BirdeyeService } from './services/BirdeyeService';
 import { PerformanceMonitorJob } from './jobs/PerformanceMonitorJob';
+import { KeywordMonitorJob } from './jobs/KeywordMonitorJob';
 import { DashboardServer } from './web/DashboardServer';
 import { Matcher } from './core/Matcher';
 import { ScoringEngine } from './core/ScoringEngine';
@@ -85,9 +86,11 @@ async function main() {
 
     // 6. Performance & Dashboard
     const performanceJob = new PerformanceMonitorJob(storage, dexScreener);
+    const keywordJob = new KeywordMonitorJob(storage, bot, twitterService); // New Sniper
     const dashboard = new DashboardServer(storage); // Railway auto-sets PORT env var
 
     performanceJob.start();
+    keywordJob.start();
     dashboard.start();
 
     // Start
