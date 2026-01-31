@@ -95,10 +95,15 @@ export class PerformanceMonitorJob {
                 // Note: We are using MC. Multiplier = Current / Alert.
                 const multiplier = currentMc / (perf.alertMc || 1); // Avoid div0
 
+                const currentLiq = update.liquidity || 0;
+
                 if (multiplier >= 2) {
                     newStatus = 'MOONED';
+                } else if (currentLiq < 1000) {
+                    // Liquidity Rug Check: < $1k
+                    newStatus = 'RUGGED';
                 } else if (multiplier <= 0.2) {
-                    // Rug Check: < 0.2x (80% drop)
+                    // Price Rug Check: < 0.2x (80% drop)
                     // Only mark rug if it's been > 30 mins since alert (give it room to breathe/volatility)
                     const timeDiff = Date.now() - new Date(perf.alertTimestamp).getTime();
                     if (timeDiff > 30 * 60 * 1000) {
