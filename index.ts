@@ -4,6 +4,7 @@ import { PumpFunService } from './services/PumpFunService';
 import { BirdeyeService } from './services/BirdeyeService';
 import { GoPlusService } from './services/GoPlusService';
 import { PerformanceMonitorJob } from './jobs/PerformanceMonitorJob';
+import { DexScreenerService } from './services/DexScreenerService';
 import { KeywordMonitorJob } from './jobs/KeywordMonitorJob';
 import { DashboardServer } from './web/DashboardServer';
 import { Matcher } from './core/Matcher';
@@ -49,6 +50,7 @@ async function main() {
     // 2. Services
     const pumpFun = new PumpFunService();
     const birdeye = new BirdeyeService();
+    const dexScreener = new DexScreenerService();
     const twitterService = new TwitterTrendsService();
     const alphaSearchService = new AlphaSearchService(); // Instantiated
     const goPlusService = new GoPlusService();
@@ -90,7 +92,7 @@ async function main() {
     );
 
     // 6. Performance & Dashboard
-    const performanceJob = new PerformanceMonitorJob(storage, birdeye);
+    const performanceJob = new PerformanceMonitorJob(storage, dexScreener);
     const keywordJob = new KeywordMonitorJob(storage, bot, twitterService, llmService); // New Sniper with AI
     const dashboard = new DashboardServer(storage); // Railway auto-sets PORT env var
 

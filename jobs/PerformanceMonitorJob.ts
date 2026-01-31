@@ -1,7 +1,7 @@
 import { CronJob } from 'cron';
 import { logger } from '../utils/Logger';
 import { PostgresStorage } from '../storage/PostgresStorage';
-import { BirdeyeService } from '../services/BirdeyeService';
+import { DexScreenerService } from '../services/DexScreenerService';
 import { config } from '../config/env';
 
 export class PerformanceMonitorJob {
@@ -10,7 +10,7 @@ export class PerformanceMonitorJob {
 
     constructor(
         private storage: PostgresStorage,
-        private birdeye: BirdeyeService
+        private dexScreener: DexScreenerService
     ) {
         // Run every 1 minutes: "0 */1 * * * *" to capture ATH better
         this.job = new CronJob('0 */1 * * * *', () => {
@@ -43,42 +43,25 @@ export class PerformanceMonitorJob {
             logger.info(`[PerformanceJob] Checking ${tokens.length} tokens...`);
 
             // 2. Fetch current prices via BirdEye (Bulk)
+            // 2. Fetch current prices via DexScreener (Updated for Eco-Mode)
             const mints = tokens.map(t => t.mint);
-            // NOTE: Assuming all on same chain for simplicity in this batch job, or we iterate.
-            // But mints can be mixed chains. We should split them?
-            // Simplified: Fetch 'solana' batch and 'base' batch separately.
 
-            // Partition mints
-            const solMints = mints.filter(m => !m.startsWith('0x'));
-            const baseMints = mints.filter(m => m.startsWith('0x'));
+            // DexScreener handles mixed chains automatically
+            const updates = await this.dexScreener.getTokens(mints); // Returns array of TokenSnapshot
 
-            let solUpdates = new Map<string, any>();
-            let baseUpdates = new Map<string, any>();
-
-            if (solMints.length > 0 || baseMints.length > 0) {
-                logger.info(`[PerformanceJob] Split: ${solMints.length} SOL | ${baseMints.length} BASE`);
-            }
-
-            if (solMints.length > 0) {
-                try {
-                    solUpdates = await this.birdeye.getTokensOverview(solMints, 'solana');
-                } catch (e) {
-                    logger.error(`[PerformanceJob] Failed to update Solana tokens: ${e}`);
-                }
-            }
-
-            if (baseMints.length > 0) {
-                try {
-                    baseUpdates = await this.birdeye.getTokensOverview(baseMints, 'base');
-                } catch (e) {
-                    logger.error(`[PerformanceJob] Failed to update Base tokens: ${e}`);
-                }
-            }
-            const updates = new Map([...solUpdates, ...baseUpdates]);
+            // Create a Map for quick lookup
+            const updatesMap = new Map<string, any>();
+            updates.forEach((t: any) => {
+                updatesMap.set(t.mint, {
+                    price: t.priceUsd,
+                    mc: t.marketCapUsd,
+                    liquidity: t.liquidityUsd
+                });
+            });
 
             // 3. Compare & Update
             for (const perf of tokens) {
-                const update = updates.get(perf.mint);
+                const update = updatesMap.get(perf.mint);
                 if (!update) continue;
 
                 const currentMc = update.mc || 0;
@@ -88,10 +71,6 @@ export class PerformanceMonitorJob {
                 let isRepairNeeded = false;
                 if (!perf.symbol || perf.alertMc === 0) {
                     isRepairNeeded = true;
-                    // Fix Symbol - NOT NEEDED AS MUCH, BUT KEEP LOGIC IF AVAILABLE
-                    // BirdEye overview doesn't guarantee symbol in bulk map unless we map it differently.
-                    // perf.symbol = ... (Skip for now, updates focus on price)
-                    // Fix Alert MC (If 0, assume current is entry)
                     if (perf.alertMc === 0) {
                         perf.alertMc = currentMc;
                         // If ATH is also 0, fix it too
@@ -130,9 +109,6 @@ export class PerformanceMonitorJob {
                 }
 
                 // Update DB only if changed significantly (ATH or Status)
-                // Or update `current_mc` always to keep dashboard fresh? 
-                // Updating always is better for the "Recent Calls" table.
-
                 perf.athMc = newAth;
                 perf.currentMc = currentMc;
                 perf.status = newStatus;
@@ -146,7 +122,7 @@ export class PerformanceMonitorJob {
                 }
             }
 
-            logger.info(`[PerformanceJob] Updated ${updates.size} tokens.`);
+            logger.info(`[PerformanceJob] Updated ${updates.length} tokens via DexScreener.`);
 
         } catch (error) {
             logger.error('[PerformanceJob] Failed:', error);
