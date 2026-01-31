@@ -42,10 +42,8 @@ export class LLMService {
         const { systemPrompt, userContent } = this.buildPrompt(token, tweets, hasTweets);
 
         try {
-            logger.info(`[xAI Grok] Analyzing $${token.symbol} with ${config.XAI_MODEL || 'grok-4-1-fast-non-reasoning'}...`);
-
             const completion = await this.xai.chat.completions.create({
-                model: config.XAI_MODEL || "grok-4-1-fast-non-reasoning", // Ultra Low Cost Model
+                model: config.XAI_MODEL || "grok-4-1-fast-non-reasoning",
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userContent }
@@ -56,84 +54,87 @@ export class LLMService {
 
             const content = completion.choices[0].message.content;
             if (!content) throw new Error('Empty response from xAI');
-
-            const result = JSON.parse(content);
-            return this.normalizeResult(result);
+            return this.normalizeResult(JSON.parse(content));
 
         } catch (error: any) {
             logger.error(`[xAI Grok] Analysis failed for $${token.symbol}: ${error.message}`);
-
-            if (error.status === 401 || error.message.includes('API key')) {
-                logger.error('[xAI Grok] FATAL: Invalid API Key. Please check config.');
-                // Don't exit process, just stop analysis
-            }
             return null;
         }
     }
 
     private buildPrompt(token: TokenSnapshot, tweets: string[], hasTweets: boolean): { systemPrompt: string; userContent: string } {
-        // ... (Prompt logic remains mostly same, just optimized for Grok)
-        // PARANOID, RUTHLESS CRYPTO AUDITOR PROMPT
+        // SNIPER MATH: Pre-calculate Ratios
+        const mc = token.marketCapUsd || 0;
+        const liq = token.liquidityUsd || 1;
+        const vol = token.volume5mUsd || 0;
+
+        const volLiqRatio = (vol / liq).toFixed(2); // Critical Sniper Metric
+        const liqMcRatio = mc > 0 ? (liq / mc).toFixed(4) : "0";
+
+        // GHOST PROTOCOL INSTRUCTION
+        const ghostInstruction = !hasTweets
+            ? "\n🚨 **GHOST PROTOCOL:** NO TWEETS FOUND. SCORE MUST BE MAX 4. REJECT IMMEDIATELY."
+            : "";
+
+        // WOLF SYSTEM PROMPT
         const systemPrompt = `
-YOU ARE A PARANOID, RUTHLESS CRYPTO AUDITOR.
-Your job is to protect the user from RUG PULLS and SCAMS on Solana & Base.
+YOU ARE "THE WOLF" (Crypto Sniper & Narrative Interpreter).
+Your job is to find 100x GEMS and ruthlessly filter out TRASH.
+You analyze Technical Impulse + Social Quality.
 
-SCORING RULES (BE EXTREMELY HARSH):
-- NO Website? -> MAX SCORE 2/10. (Automatic FAIL).
-- NO Twitter/Socials? -> MAX SCORE 3/10.
-- Liquidity < $5k? -> MAX SCORE 1/10.
-- Honeypot/Mint Authority Warning? -> INSTANT 0/10.
-- Generic/AI Generated Art? -> MAX SCORE 5/10.
+**INPUT DATA CONTEXT:**
+- Liquidity: $${liq.toLocaleString()}
+- 5m Volume: $${vol.toLocaleString()}
+- **Vol/Liq Ratio:** ${volLiqRatio}x (If > 1.5x, this is a BREAKOUT/SNIPER signal).
 
-NEVER give "safe" scores like 7/10. Either it is GARBAGE (0-4) or a GEM (8-10).
-If you have any doubt, REJECT IT.
+**INTERPRETATION RULES (QUALITY OVER QUANTITY):**
 
-**Analiz Gereksinimleri:**
-1. **Analist Özeti**: Bu token neden radarımızda? (2-3 cümle ile özetle)
-2. **Teknik Görünüm**: Likidite/MC oranını analiz et. (SAFE CHECK FAIL EDERSE PUAN 0)
-3. **Sosyal Vibe**: Tweetler bot mu gerçek mi? (BOTSA PUAN 0)
-4. **Risk Analizi**: En küçük risk belirtisinde "DANGEROUS" ver.
-5. **Strateji**: Net bir aksiyon öner (Örn: "Düşüşü bekle", "Ufak bir miktar gir", "Uzak dur").
-6. **Puan (0-10)**:
-   - 0-4: RUG / SCAM / ÇÖP
-   - 5-7: Kullanma (Yasaklı Bölge)
-   - 8-10: GEM (Mükemmel metrikler + Güçlü Topluluk)
+1. **BOT CHECK (Spam Filter):**
+   - Read the tweets. Are they identical "CA: ..." spam?
+   - If YES -> **SCORE: 1 (REJECT)**. Do not pass go.
 
-**JSON Çıktı Formatı (KESİN - %100 TÜRKÇE):**
+2. **NARRATIVE CHECK:**
+   - Is there a specific story? (e.g. "AI Agent", "TikTok Trend", "Founder History").
+   - If YES -> **+3 POINTS**.
+
+3. **ORGANIC VIBE:**
+   - Do tweets use slang, memes, or show genuine excitement?
+   - If YES -> **+2 POINTS**.
+
+**SCORING RUBRIC (STRICT):**
+- **1-4 (REJECT):** Bot Spam OR Ghost Protocol OR Low Momentum.
+- **5-6 (MID):** Metrics okay but boring community. (User does NOT want these).
+- **7-8 (BUY):** Breakout Momentum (>1.5x) + Real Human Tweets.
+- **9-10 (GEM):** "God Candle" Metrics + Viral Narrative.
+
+**FINAL DECISION:**
+- If Score < 7, Verdict MUST be "FADE".
+- If Score >= 7, Verdict MUST be "APE" or "WATCH".
+
+${ghostInstruction}
+
+**JSON OUTPUT FORMAT:**
 {
-    "headline": "Kısa ve Çarpıcı Başlık",
-    "narrative": "Tokenin ruhunu anlatan genel açıklama.",
-    "analystSummary": "Analistin Türkçe özeti...",
-    "technicalOutlook": "Teknik görünüm yorumu...",
-    "socialVibe": "Sosyal ortam yorumu...",
-    "riskAnalysis": "Risk analizi detayları...",
-    "strategy": "Strateji önerisi...",
-    "analysis": ["Madde 1", "Madde 2"],
-    "riskLevel": "LOW" | "MEDIUM" | "HIGH" | "DANGEROUS",
-    "riskReason": "Kısa risk nedeni",
+    "headline": "Punchy Headline (e.g. SNIPER ALERT: ORGANIC HYPE)",
+    "narrative": "What is the story?",
+    "analystSummary": "Ruthless summary of pros/cons.",
+    "technicalOutlook": "Comment on Vol/Liq Ratio (${volLiqRatio}x).",
+    "socialVibe": "Is it Bots or Humans?",
+    "riskAnalysis": "Rug/Dump risks.",
+    "strategy": "APE / WATCH / FADE",
     "score": number, 
     "verdict": "APE" | "WATCH" | "FADE",
-    "displayEmoji": "Emoji",
-    "recommendation": "Tavsiye",
-    "advice": "Kısa tavsiye",
-    "vibe": "Kısa vibe"
+    "displayEmoji": "💎",
+    "recommendation": "BUY / PASS"
 }
 `;
         const userContent = `
-TOKEN METROLOJİSİ:
-- Sembol: $${token.symbol}
-- İsim: ${token.name}
-- Contract: ${token.mint}
-- Market Cap: $${(token.marketCapUsd || 0).toLocaleString()}
-- Likidite: $${(token.liquidityUsd || 0).toLocaleString()}
-- 5dk Hacim: $${(token.volume5mUsd || 0).toLocaleString()}
-- 1s Hacim: $${((token.volume30mUsd || 0) * 2).toLocaleString()} (Tahmini)
-- Token Yaşı: ${Math.floor((Date.now() - new Date(token.createdAt || Date.now()).getTime()) / 60000)} dakika
+TOKEN: $${token.symbol} (${token.name})
+CA: ${token.mint}
+Stats: Liq $${liq.toLocaleString()} | MC $${mc.toLocaleString()} | 5m Vol $${vol.toLocaleString()}
 
-SOSYAL VERİLER:
-${hasTweets
-                ? `Tweets:\n${tweets.slice(0, 20).map(t => `- ${t.replace(/\n/g, ' ')}`).join('\n')}`
-                : `Twitter verisi yok. SADECE yukarıdaki teknik verileri ve risk metriklerini analiz et.`}
+TWEETS (${tweets.length}):
+${hasTweets ? tweets.slice(0, 30).join('\n') : "NO DATA"}
 `;
 
         return { systemPrompt, userContent };
@@ -142,19 +143,19 @@ ${hasTweets
     private normalizeResult(result: any): AIAnalysisResult {
         return {
             headline: result.headline || `🚨 ANALYZING`,
-            narrative: result.narrative || "Trend analizi yapılamadı.",
-            analystSummary: result.analystSummary || "Özet yok.",
-            technicalOutlook: result.technicalOutlook || "Teknik veri yok.",
-            socialVibe: result.socialVibe || "Vibe verisi yok.",
-            riskAnalysis: result.riskAnalysis || "Risk analizi yok.",
-            strategy: result.strategy || "Strateji yok.",
-            analysis: result.analysis || ["Veri yetersiz."],
+            narrative: result.narrative || "No narrative.",
+            analystSummary: result.analystSummary || "No summary.",
+            technicalOutlook: result.technicalOutlook || "No tech data.",
+            socialVibe: result.socialVibe || "No vibe data.",
+            riskAnalysis: result.riskAnalysis || "No risk data.",
+            strategy: result.strategy || "WATCH",
+            analysis: result.analysis || [],
             riskLevel: result.riskLevel || 'MEDIUM',
             riskReason: result.riskReason || '',
-            score: typeof result.score === 'number' ? result.score : 5,
-            verdict: result.verdict || 'WATCH',
+            score: typeof result.score === 'number' ? result.score : 4,
+            verdict: result.verdict || 'FADE',
             displayEmoji: result.displayEmoji || '🤖',
-            recommendation: result.recommendation || 'DİKKATLİ İZLE',
+            recommendation: result.recommendation || 'PASS',
             advice: result.advice || '',
             vibe: result.vibe || ''
         };

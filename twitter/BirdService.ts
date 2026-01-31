@@ -25,8 +25,8 @@ export class BirdService {
     /**
      * Executes bird CLI search command
      */
-    async search(query: string, limit: number = 20): Promise<BirdTweet[]> {
-        const account = twitterAccountManager.getNextAccount();
+    async search(query: string, limit: number = 20, explicitAccount?: any): Promise<BirdTweet[]> {
+        const account = explicitAccount || twitterAccountManager.getAvailableAccount();
 
         if (!account) {
             logger.warn('[Bird] No Twitter accounts available active in pool. Skipping.');
