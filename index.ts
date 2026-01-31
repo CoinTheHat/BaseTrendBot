@@ -92,7 +92,7 @@ async function main() {
     );
 
     // 6. Performance & Dashboard
-    const performanceJob = new PerformanceMonitorJob(storage, dexScreener);
+    const performanceJob = new PerformanceMonitorJob(storage, dexScreener, birdeye);
     const keywordJob = new KeywordMonitorJob(storage, bot, twitterService, llmService); // New Sniper with AI
     const dashboard = new DashboardServer(storage); // Railway auto-sets PORT env var
 

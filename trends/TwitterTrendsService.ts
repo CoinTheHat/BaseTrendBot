@@ -1,29 +1,18 @@
-import { TwitterApi } from 'twitter-api-v2';
 import { config } from '../config/env';
 import { TrendItem } from '../models/types';
 import { logger } from '../utils/Logger';
+import { BirdService } from '../twitter/BirdService';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 
 puppeteer.use(StealthPlugin());
 
 export class TwitterTrendsService {
-    private client: TwitterApi | null = null;
-    private appClient: TwitterApi | null = null;
+    private bird: BirdService;
 
     constructor() {
-        if (config.TWITTER_API_KEY && config.TWITTER_API_SECRET) {
-            this.client = new TwitterApi({
-                appKey: config.TWITTER_API_KEY,
-                appSecret: config.TWITTER_API_SECRET,
-                accessToken: config.TWITTER_ACCESS_TOKEN,
-                accessSecret: config.TWITTER_ACCESS_SECRET,
-            });
-
-            if (config.TWITTER_BEARER_TOKEN) {
-                this.appClient = new TwitterApi(config.TWITTER_BEARER_TOKEN);
-            }
-        }
+        this.bird = new BirdService();
+        logger.info('[Trends] Initialized in SCRAPER MODE (BirdService).');
     }
 
     async fetchTrends(): Promise<TrendItem[]> {
@@ -157,38 +146,26 @@ export class TwitterTrendsService {
             { id: 'fb_5', phrase: 'Crypto', source: ['fallback'], metrics: { twitterTweets: 150000 }, trendScore: 75, lastUpdated: new Date() }
         ];
     }
+
     async searchRecentTweets(query: string, maxResults: number = 10): Promise<{ tweetId: string; text: string; metrics?: any; authorUsername?: string }[]> {
-        if (!this.client && !this.appClient) {
-            logger.warn('[Twitter] No API client available for search.');
-            return [];
-        }
-
+        // STRICT SCRAPER MODE: Use BirdService Directly
         try {
-            const clientToUse = this.appClient || this.client;
-            // Use v2 search with expansions
-            const result = await clientToUse!.v2.search(query, {
-                'tweet.fields': ['created_at', 'public_metrics', 'id', 'text', 'author_id'],
-                'expansions': ['author_id'],
-                'user.fields': ['username'],
-                max_results: Math.min(maxResults, 100),
-                sort_order: 'recency'
-            });
+            logger.info(`[Twitter Scraper] Searching "${query}" via BirdService...`);
+            const birdTweets = await this.bird.search(query, maxResults);
 
-            const tweets = result.tweets;
-            // Create a lookup map for users
-            const users = result.includes?.users ? new Map(result.includes.users.map(u => [u.id, u.username])) : new Map();
-
-            logger.info(`[Twitter] Search "${query}" found ${tweets.length} tweets.`);
-
-            return tweets.map(t => ({
+            return birdTweets.map(t => ({
                 tweetId: t.id,
                 text: t.text,
-                metrics: t.public_metrics,
-                authorUsername: t.author_id ? users.get(t.author_id) : undefined
+                authorUsername: t.author.screen_name,
+                metrics: {
+                    like_count: t.likes || 0,
+                    retweet_count: t.retweets || 0,
+                    reply_count: 0
+                }
             }));
 
-        } catch (error: any) {
-            logger.error(`[Twitter] Search failed for "${query}": ${error.message}`);
+        } catch (err: any) {
+            logger.error(`[Twitter Scraper] Panic - Search failed: ${err.message}`);
             return [];
         }
     }

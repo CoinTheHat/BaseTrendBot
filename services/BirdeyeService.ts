@@ -43,8 +43,33 @@ export class BirdeyeService {
 
 
     /**
-     * Get Token ATH via OHLCV
+     * Get Historical Candles (OHLCV)
      * Endpoint: /defi/ohlcv
+     */
+    async getHistoricalCandles(address: string, type: '1m' | '15m', timeFrom: number, timeTo: number): Promise<{ h: number, l: number, o: number, c: number, v: number, u: number }[]> {
+        // Defaults: 'solana' only for now, unless address starts with 0x
+        const chain = address.startsWith('0x') ? 'base' : 'solana';
+
+        try {
+            const response = await axios.get(`${this.baseUrl}/defi/ohlcv`, {
+                headers: { ...this.headers, 'x-chain': chain },
+                params: {
+                    address,
+                    type,
+                    time_from: timeFrom,
+                    time_to: timeTo
+                }
+            });
+
+            return response.data?.data?.items || [];
+        } catch (error: any) {
+            logger.error(`[Birdeye] Fetch OHLCV Failed for ${address}: ${error.message}`);
+            return [];
+        }
+    }
+
+    /**
+     * Get Token ATH via OHLCV (Legacy - can use getHistoricalCandles internally if needed)
      */
     async getTokenATH(address: string, chain: 'solana' | 'base'): Promise<number> {
         try {

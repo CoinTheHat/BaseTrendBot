@@ -10,17 +10,18 @@ export class PerformanceMonitorJob {
 
     constructor(
         private storage: PostgresStorage,
-        private dexScreener: DexScreenerService
+        private dexScreener: DexScreenerService,
+        private birdeye: any // Injected dynamically or updated in index.ts
     ) {
-        // Run every 1 minutes: "0 */1 * * * *" to capture ATH better
-        this.job = new CronJob('0 */1 * * * *', () => {
+        // Run every 10 minutes: "*/10 * * * *"
+        this.job = new CronJob('*/10 * * * *', () => {
             this.run();
         });
     }
 
     start() {
         this.job.start();
-        logger.info('[PerformanceJob] Started (Every 10m).');
+        logger.info('[AutopsyJob] Started One-Shot Monitor (Every 10m).');
     }
 
     async run() {
@@ -28,103 +29,86 @@ export class PerformanceMonitorJob {
         this.isRunning = true;
 
         try {
-            // STEP 0: BACKFILL - Sync missing tokens from processed_tokens
+            // STEP 0: BACKFILL (Ensure seen_tokens -> token_performance)
             await this.storage.backfillMissingTokens();
 
-            // STEP 1: Get tokens to check
-            // Only checking 'TRACKING' tokens alerted in last 48h
+            // STEP 1: Get Targets (Older than 60 mins, TRACKING only)
             const tokens = await this.storage.getTrackingTokens();
+            if (tokens.length === 0) return;
 
-            if (tokens.length === 0) {
-                // logger.debug('[PerformanceJob] No active tokens to track.');
+            const now = Date.now();
+            const ONE_HOUR = 60 * 60 * 1000;
+
+            // Filter for targets ready for Autopsy (Age > 60 mins)
+            const targets = tokens.filter(t => {
+                const age = now - new Date(t.alertTimestamp).getTime();
+                return age >= ONE_HOUR;
+            });
+
+            if (targets.length === 0) {
+                // logger.info('[Autopsy] No tokens ready for autopsy yet.');
                 return;
             }
 
-            logger.info(`[PerformanceJob] Checking ${tokens.length} tokens...`);
+            logger.info(`[Autopsy] 💀 Performing post-mortem on ${targets.length} tokens...`);
 
-            // 2. Fetch current prices via DexScreener (Eco-Mode)
-            const mints = tokens.map(t => t.mint);
+            // STEP 2: The Autopsy
+            for (const token of targets) {
+                try {
+                    const alertTime = new Date(token.alertTimestamp).getTime() / 1000;
+                    const endTime = alertTime + 3600; // +1 Hour
 
-            // DexScreener handles mixed chains automatically
-            const updates = await this.dexScreener.getTokens(mints); // Returns array of TokenSnapshot
+                    // Fetch 15m Candles for that specific hour
+                    const candles = await this.birdeye.getHistoricalCandles(token.mint, '15m', alertTime, endTime);
 
-            // Create a Map for quick lookup
-            const updatesMap = new Map<string, any>();
-            updates.forEach((t: any) => {
-                updatesMap.set(t.mint, {
-                    price: t.priceUsd,
-                    mc: t.marketCapUsd,
-                    liquidity: t.liquidityUsd
-                });
-            });
-
-            // 3. Compare & Update
-            for (const perf of tokens) {
-                const update = updatesMap.get(perf.mint);
-                if (!update) continue;
-
-                const currentMc = update.mc || 0;
-                if (currentMc === 0) continue;
-
-                // SELF-HEALING: Fix missing data from Backfilled items
-                let isRepairNeeded = false;
-                if (!perf.symbol || perf.alertMc === 0) {
-                    isRepairNeeded = true;
-                    if (perf.alertMc === 0) {
-                        perf.alertMc = currentMc;
-                        // If ATH is also 0, fix it too
-                        if (perf.athMc === 0) {
-                            perf.athMc = currentMc;
+                    if (!candles || candles.length === 0) {
+                        logger.warn(`[Autopsy] No candle data for ${token.symbol}. Marking FAILED (No Data).`);
+                        token.status = 'FAILED_NO_DATA';
+                        await this.storage.updatePerformance(token);
+                    } else {
+                        // Find True Wick High
+                        let maxPrice = 0;
+                        for (const c of candles) {
+                            if (c.h > maxPrice) maxPrice = c.h;
                         }
+
+                        // Calculate ATH Market Cap
+                        // ATH_MC = (MaxPrice / EntryPrice) * AlertMc.
+                        // EntryPrice: Use first candle open
+                        const entryPrice = candles[0]?.o || 1;
+                        const multiplier = maxPrice / entryPrice;
+                        const athMc = multiplier * (token.alertMc || 1);
+
+                        token.athMc = athMc;
+                        token.currentMc = candles[candles.length - 1].c * (token.alertMc / entryPrice); // Approx current
+
+                        // VERDICT
+                        const entryMc = token.alertMc || 1;
+                        let outcome: 'MOONED' | 'FAILED' = 'FAILED';
+
+                        if (athMc >= entryMc * 2) {
+                            outcome = 'MOONED';
+                        }
+
+                        logger.info(`🏁 [Autopsy] ${token.symbol}: Entry $${Math.floor(entryMc)} -> ATH $${Math.floor(athMc)} (${multiplier.toFixed(2)}x). Result: ${outcome}`);
+
+                        // FINALIZATION
+                        let finalStatus: 'FINALIZED' | 'FINALIZED_MOONED' | 'FINALIZED_FAILED' = 'FINALIZED';
+
+                        if (outcome === 'MOONED') finalStatus = 'FINALIZED_MOONED';
+                        else if (outcome === 'FAILED') finalStatus = 'FINALIZED_FAILED';
+
+                        token.status = finalStatus;
+                        await this.storage.updatePerformance(token);
                     }
-                }
 
-                let newAth = perf.athMc;
-                if (currentMc > perf.athMc) {
-                    newAth = currentMc;
-                }
-
-                // Check Status Logic
-                let newStatus = perf.status;
-
-                // Moon Check: > 2x Alert Price
-                // Note: We are using MC. Multiplier = Current / Alert.
-                const multiplier = currentMc / (perf.alertMc || 1); // Avoid div0
-
-                const currentLiq = update.liquidity || 0;
-
-                if (multiplier >= 2) {
-                    newStatus = 'MOONED';
-                } else if (currentLiq < 1000) {
-                    // Liquidity Rug Check: < $1k
-                    newStatus = 'RUGGED';
-                } else if (multiplier <= 0.2) {
-                    // Price Rug Check: < 0.2x (80% drop)
-                    // Only mark rug if it's been > 30 mins since alert (give it room to breathe/volatility)
-                    const timeDiff = Date.now() - new Date(perf.alertTimestamp).getTime();
-                    if (timeDiff > 30 * 60 * 1000) {
-                        newStatus = 'RUGGED';
-                    }
-                }
-
-                // Update DB only if changed significantly (ATH or Status)
-                perf.athMc = newAth;
-                perf.currentMc = currentMc;
-                perf.status = newStatus;
-                perf.lastUpdated = new Date(); // handled by DB trigger/query usually, but we send it
-
-                if (isRepairNeeded) {
-                    logger.info(`[PerformanceJob] repairing data for ${perf.symbol || perf.mint}`);
-                    await this.storage.updatePerformanceEnriched(perf);
-                } else {
-                    await this.storage.updatePerformance(perf);
+                } catch (err) {
+                    logger.error(`[Autopsy] Error for ${token.symbol}: ${err}`);
                 }
             }
 
-            logger.info(`[PerformanceJob] Updated ${updates.length} tokens via DexScreener.`);
-
         } catch (error) {
-            logger.error('[PerformanceJob] Failed:', error);
+            logger.error('[AutopsyJob] Failed:', error);
         } finally {
             this.isRunning = false;
         }

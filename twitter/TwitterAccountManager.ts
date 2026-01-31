@@ -132,7 +132,52 @@ export class TwitterAccountManager {
             }
         }
 
-        return null; // All busy or cooled down
+        // 🚨 FALLBACK: FORCE RELEASE OLDEST BUSY ACCOUNT 🚨
+        // If we reached here, ALL accounts are busy or on cooldown.
+        // We cannot return null (user requirement). We must pick the "least busy" or "oldest busy" account.
+
+        // Find the account that started being busy longest ago
+        let oldestBusyParams = { index: -1, time: Infinity };
+
+        this.accounts.forEach(acc => {
+            // Only consider busy ones, or if none busy (all cooldown), pick anyone?
+            // If all are on cooldown, we should probably pick the one with earliest cooldown expiry.
+            if (acc.isBusy) {
+                if (acc.lastBusyStart < oldestBusyParams.time) {
+                    oldestBusyParams = { index: acc.index, time: acc.lastBusyStart };
+                }
+            }
+        });
+
+        if (oldestBusyParams.index !== -1) {
+            const acc = this.accounts[oldestBusyParams.index];
+            logger.warn(`[TwitterManager] ⚠️ POOL EXHAUSTED (${this.accounts.length} accs). Forcing turnover of Account #${acc.index + 1}.`);
+
+            // Force reset stats for this new usage
+            acc.isBusy = true;
+            acc.lastBusyStart = Date.now();
+            return acc;
+        }
+
+        // If NO accounts are busy (meaning all are on cooldown), pick the one with nearest cooldown expiry.
+        let nearestCooldownParams = { index: -1, time: Infinity };
+        this.accounts.forEach(acc => {
+            if (acc.cooldownUntil < nearestCooldownParams.time) {
+                nearestCooldownParams = { index: acc.index, time: acc.cooldownUntil };
+            }
+        });
+
+        if (nearestCooldownParams.index !== -1) {
+            const acc = this.accounts[nearestCooldownParams.index];
+            logger.warn(`[TwitterManager] 🧊 ALL POOL COOLED DOWN. Early releasing Account #${acc.index + 1}.`);
+            acc.isBusy = true;
+            acc.lastBusyStart = Date.now();
+            return acc;
+        }
+
+        // If we have 0 accounts loaded at all
+        logger.error('[TwitterManager] CRITICAL: No accounts loaded in pool!');
+        return null;
     }
 
     /**

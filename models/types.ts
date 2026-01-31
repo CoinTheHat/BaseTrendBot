@@ -107,7 +107,7 @@ export interface TokenPerformance {
     alertMc: number;
     athMc: number;
     currentMc: number;
-    status: 'TRACKING' | 'MOONED' | 'RUGGED' | 'STABLE';
+    status: 'TRACKING' | 'MOONED' | 'RUGGED' | 'STABLE' | 'FAILED' | 'FAILED_NO_DATA' | 'FINALIZED' | 'FINALIZED_MOONED' | 'FINALIZED_FAILED';
     alertTimestamp: Date;
     lastUpdated: Date;
 }
