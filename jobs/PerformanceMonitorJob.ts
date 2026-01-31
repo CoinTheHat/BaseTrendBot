@@ -12,8 +12,8 @@ export class PerformanceMonitorJob {
         private storage: PostgresStorage,
         private dexScreener: DexScreenerService
     ) {
-        // Run every 10 minutes: "0 */10 * * * *"
-        this.job = new CronJob('0 */10 * * * *', () => {
+        // Run every 1 minutes: "0 */1 * * * *" to capture ATH better
+        this.job = new CronJob('0 */1 * * * *', () => {
             this.run();
         });
     }
