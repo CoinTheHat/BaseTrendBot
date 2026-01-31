@@ -36,12 +36,12 @@ export class PerformanceMonitorJob {
             if (tokens.length === 0) return;
 
             const now = Date.now();
-            const ONE_HOUR = 60 * 60 * 1000;
+            const FIFTEEN_MINS = 15 * 60 * 1000;
 
-            // Filter for targets ready for Autopsy (Age > 60 mins)
+            // Filter for targets ready for Autopsy (Age > 15 mins)
             const targets = tokens.filter(t => {
                 const age = now - new Date(t.alertTimestamp).getTime();
-                return age >= ONE_HOUR;
+                return age >= FIFTEEN_MINS;
             });
 
             if (targets.length === 0) {
@@ -49,15 +49,16 @@ export class PerformanceMonitorJob {
                 return;
             }
 
-            logger.info(`[Autopsy] 💀 Performing post-mortem on ${targets.length} tokens...`);
+            logger.info(`[Autopsy] 💀 Performing 15-min post-mortem on ${targets.length} tokens...`);
 
             // STEP 2: The Autopsy
             for (const token of targets) {
                 try {
                     const alertTime = new Date(token.alertTimestamp).getTime() / 1000;
-                    const endTime = alertTime + 3600; // +1 Hour
+                    const endTime = alertTime + 900; // +15 Minutes (900s)
 
-                    // Fetch 15m Candles for that specific hour
+                    // Fetch 15m Candles (We only need 1 or 2 candles max)
+                    // Note: If 15m candle hasn't closed, we might get partial. 
                     const candles = await this.birdeye.getHistoricalCandles(token.mint, '15m', alertTime, endTime);
 
                     if (!candles || candles.length === 0) {
