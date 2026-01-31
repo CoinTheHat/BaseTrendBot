@@ -86,16 +86,17 @@ export class TokenScanJob {
             const freshCandidates: TokenSnapshot[] = [];
             for (const token of candidates) {
                 const lastProcessed = this.processedCache.get(token.mint);
-                if (lastProcessed && (now - lastProcessed < 10 * 60 * 1000)) continue;
+                // ANTI-SPAM: Ignore if seen in last 15 mins (900,000ms)
+                if (lastProcessed && (now - lastProcessed < 15 * 60 * 1000)) continue;
                 freshCandidates.push(token);
             }
 
             if (freshCandidates.length === 0) {
-                logger.info(`[Job] No fresh tokens to process.`);
+                // logger.info(`[Job] No fresh tokens to process.`); // Silence "No tokens" spam too
                 return;
             }
 
-            logger.info(`[Job] Processing ${freshCandidates.length} fresh tokens...`);
+            logger.info(`[Job] Processing ${freshCandidates.length} potential trending tokens...`);
 
             // Process in chunks
             const chunks = this.chunkArray(freshCandidates, 2);
@@ -103,13 +104,14 @@ export class TokenScanJob {
             for (const chunk of chunks) {
                 await Promise.all(chunk.map(async (token) => {
                     try {
+                        // Mark as seen immediately to prevent re-processing in next cycle
                         this.processedCache.set(token.mint, Date.now());
 
                         // --- STEP 1: HONEYPOT CHECK ---
                         const chain = token.mint.startsWith('0x') ? 'base' : 'solana';
                         const isSafe = await this.goPlus.checkToken(token.mint, chain);
                         if (!isSafe) {
-                            logger.warn(`[Security] 🚨 HONEYPOT DETECTED: ${token.symbol}. SKIP.`);
+                            // logger.warn(`[Security] 🚨 HONEYPOT DETECTED: ${token.symbol}. SKIP.`);
                             return;
                         }
 
@@ -121,17 +123,22 @@ export class TokenScanJob {
                         const v5m = token.volume5mUsd || ((token.volume24hUsd || 0) / 100);
 
                         // RULE A: Liquidity Floor ($5,000) - HANDLED BY API NOW
-                        // if (liq < 5000) { ... } -> Removed for optimization
+                        // Doubling check just in case API allows slight variance
+                        if (liq < 5000) return;
 
-                        // RULE B: MOMENTUM IMPULSE (The 1.5x Rule)
-                        // Volume in last 5m MUST be > 1.5x Liquidity to prove breakout.
-                        const impulseRatio = v5m / (liq || 1);
-                        if (impulseRatio < 1.5) {
-                            logger.info(`[Filter] 💤 Weak Momentum: ${token.symbol} (Vol/Liq: ${impulseRatio.toFixed(2)}x). Needs > 1.5x. Skip.`);
+                        // RULE B: MOMENTUM (5m Volume > $5k)
+                        // This ensures the token is MOVING NOW.
+                        if (v5m < 5000) {
+                            // logger.debug(`[Filter] Low 5m Vol: ${token.symbol} ($${Math.floor(v5m)}). Skip.`);
                             return;
                         }
 
-                        logger.info(`[Sniper] 🎯 BREAKOUT DETECTED: ${token.symbol} | Liq: $${Math.floor(liq)} | 5m Vol: $${Math.floor(v5m)} (Ratio: ${impulseRatio.toFixed(2)}x)`);
+                        const impulseRatio = v5m / (liq || 1);
+                        if (impulseRatio < 0.1) { // Relaxed ratio since we have hard volume floor
+                            return;
+                        }
+
+                        logger.info(`[Sniper] 🎯 TRENDING DETECTED: ${token.symbol} | Liq: $${Math.floor(liq)} | 5m Vol: $${Math.floor(v5m)}`);
 
                         // --- STEP 3: TWITTER SCAN (Safe Mode) ---
                         let tweets: string[] = [];

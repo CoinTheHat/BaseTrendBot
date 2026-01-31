@@ -11,8 +11,9 @@ export class BirdeyeService {
     };
 
     /**
-     * Fetch newly listed tokens (Discovery)
-     * Endpoint: /defi/v2/tokens/new_listing
+     * Fetch Trending Tokens (Volume Based)
+     * Endpoint: /defi/token_list
+     * Replaces "New Listings" to avoid low-quality spam.
      */
     async fetchNewListings(chain: 'solana' | 'base', limit: number = 20): Promise<TokenSnapshot[]> {
         if (!config.BIRDEYE_API_KEY) {
@@ -21,11 +22,15 @@ export class BirdeyeService {
         }
 
         try {
-            const response = await axios.get(`${this.baseUrl}/defi/v2/tokens/new_listing`, {
+            // UPDATED: Use 'token_list' instead of 'new_listing'
+            // Sort by 24h Volume to find active tokens
+            const response = await axios.get(`${this.baseUrl}/defi/token_list`, {
                 headers: { ...this.headers, 'x-chain': chain },
                 params: {
-                    limit,
-                    meme_platform_enabled: true, // Focus on meme tokens
+                    sort_by: 'v24hUSD',
+                    sort_type: 'desc',
+                    offset: 0,
+                    limit: 50, // Fetch more to filter down
                     min_liquidity: 5000 // Server-side pre-filtering
                 }
             });
@@ -33,22 +38,11 @@ export class BirdeyeService {
             const items = response.data?.data?.items || [];
             if (!Array.isArray(items)) return [];
 
-            // FILTER: RAYDIUM ONLY (Raydium Liquidity check)
-            // We want tokens that have 'Raydium' in their sources or simply exclude pump fun 'bonding curve' state.
-            // Best proxy: Check if it has significant liquidity (already enforced >5k) AND ensure it's not tagged purely as pump.
-            // Items from this endpoint usually have 'source' or similar. 
-            // For now, we rely on min_liquidity=5000 which filters out 99% of bonding curves (usually <$30k but volatile).
-            // But to be STRICT, we can check if data includes AMM info.
-
-            // Note: Since we can't easily see the 'source' DEX in the simple 'new_listing' object without diving deep, 
-            // we will assumme min_liquidity > 5000 AND removal of 'meme_platform_enabled' might help, 
-            // BUT user explicitly wanted check.
-            // Let's filter by checking if it looks like a graduated token (e.g. valid price/liq).
-
+            // Map and return
             return items.map((item: any) => this.mapListingToSnapshot(item, chain));
 
         } catch (error: any) {
-            logger.error(`[Birdeye] Fetch New Listings (${chain}) Failed: ${error.message}`);
+            logger.error(`[Birdeye] Fetch Trending (${chain}) Failed: ${error.message}`);
             return [];
         }
     }
