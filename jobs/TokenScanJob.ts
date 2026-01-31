@@ -3,6 +3,7 @@ import { logger } from '../utils/Logger';
 import { PumpFunService } from '../services/PumpFunService';
 import { DexScreenerService } from '../services/DexScreenerService';
 import { BirdeyeService } from '../services/BirdeyeService';
+import { MinoService } from '../services/MinoService';
 import { Matcher } from '../core/Matcher';
 import { ScoringEngine } from '../core/ScoringEngine';
 import { PhaseDetector } from '../core/PhaseDetector';
@@ -41,7 +42,8 @@ export class TokenScanJob {
         private storage: PostgresStorage, // Updated type
         private trendCollector: TrendCollector,
         private trendMatcher: TrendTokenMatcher,
-        private alphaSearch: AlphaSearchService
+        private alphaSearch: AlphaSearchService,
+        private minoService: MinoService
     ) { }
 
     start() {
@@ -94,15 +96,16 @@ export class TokenScanJob {
             }
 
             // b. Execute fetches in parallel
-            const [pumpTokens, dexTokens, birdTokens, watchlistTokens] = await Promise.all([
+            const [pumpTokens, dexTokens, birdTokens, watchlistTokens, minoTokens] = await Promise.all([
                 this.pumpFun.getNewTokens(),
                 this.dexScreener.getLatestPairs(),
                 this.birdeye.getNewTokens(10),
-                watchlistMints.length > 0 ? this.dexScreener.getTokens(watchlistMints) : Promise.resolve([])
+                watchlistMints.length > 0 ? this.dexScreener.getTokens(watchlistMints) : Promise.resolve([]),
+                this.minoService.fetchNewPairsFromDexScreener()
             ]);
 
             // Deduplicate by mint
-            const allTokens = [...pumpTokens, ...dexTokens, ...birdTokens, ...watchlistTokens];
+            const allTokens = [...pumpTokens, ...dexTokens, ...birdTokens, ...watchlistTokens, ...minoTokens];
             const uniqueTokens: Record<string, TokenSnapshot> = {};
             allTokens.forEach(t => uniqueTokens[t.mint] = t);
             const candidates = Object.values(uniqueTokens);
