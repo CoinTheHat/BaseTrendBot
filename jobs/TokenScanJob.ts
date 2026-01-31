@@ -201,10 +201,10 @@ export class TokenScanJob {
                         const narrative = await this.narrative.generate(enrichedToken, matchResult, scoreRes, tweets);
                         const aiScore = narrative.aiScore || 0;
 
-                        // --- STEP 6: THE GATEKEEPER (Strict < 7 Reject) ---
-                        if (aiScore < 7) {
+                        // --- STEP 6: THE GATEKEEPER (Strict Approval) ---
+                        if (!narrative.aiApproved) {
                             lowScoreCount++;
-                            const reason = narrative.aiReason || "Score < 7";
+                            const reason = narrative.aiReason || "AI Approval: NO";
                             logger.info(`❌ [AI Reject] ${token.symbol} - Score: ${aiScore}/10 - Reason: ${reason}`);
 
                             await this.storage.saveSeenToken(token.mint, {

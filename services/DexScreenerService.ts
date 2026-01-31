@@ -55,7 +55,8 @@ export class DexScreenerService {
                     if (clean.endsWith('K')) mult = 1000;
                     else if (clean.endsWith('M')) mult = 1000000;
                     else if (clean.endsWith('B')) mult = 1000000000;
-                    const val = parseFloat(clean.replace(/[KMB]/g, ''));
+                    else if (clean.endsWith('T')) mult = 1000000000000;
+                    const val = parseFloat(clean.replace(/[KMBT]/g, ''));
                     return isNaN(val) ? 0 : val * mult;
                 };
 
@@ -95,42 +96,40 @@ export class DexScreenerService {
                             row.querySelector('[class*="symbol"]') ||
                             item.link.querySelector('span');
 
+                        // 1. COLLECT ALL TEXTS
                         const cells = Array.from(row.querySelectorAll('td, div.ds-dex-table-row-col, [class*="cell"]'));
-                        const texts = cells.map(c => c.textContent?.trim() || '');
+                        const texts = cells.map(c => c.textContent?.trim() || '').filter(t => t.length > 0);
 
+                        // 2. LOGIC-BASED PARSING
                         let price = 0;
                         let ageStr = '';
                         let moneyValues: number[] = [];
                         let txns = 0;
 
                         for (const t of texts) {
-                            // Price: $0.00... or $1.23 (Start with $, has dot, usually small or first)
-                            if (t.startsWith('$') && t.includes('.') && t.length < 20 && price === 0) {
-                                price = parseFloat(t.replace(/[$,]/g, ''));
+                            // Price: Starts with $ AND includes . 
+                            if (t.startsWith('$')) {
+                                if (/[KMBT]$/.test(t.toUpperCase())) {
+                                    moneyValues.push(parseVal(t));
+                                } else {
+                                    const val = parseFloat(t.replace(/[$,]/g, ''));
+                                    if (!isNaN(val) && price === 0) price = val;
+                                }
                             }
-                            // Age: 12m, 4h, 1d
-                            if (t.match(/^\d+[mhd]$/)) {
+
+                            // Txns: Integer, no $, no dots
+                            if (/^[\d,]+$/.test(t) && !t.includes('.')) {
+                                const val = parseInt(t.replace(/,/g, ''));
+                                if (val > 0) txns = val;
+                            }
+
+                            // Age: "5m", "1h", "24h"
+                            if (/^\d+[mhd]$/.test(t)) {
                                 ageStr = t;
                             }
-                            // Money (Big): $12K, $5M, $1.2B
-                            if (t.includes('$') && (t.includes('K') || t.includes('M') || t.includes('B'))) {
-                                moneyValues.push(parseVal(t));
-                            }
                         }
 
-                        // Sanity Check: If price was also caught in moneyValues, remove it (usually it's index 0)
-                        if (price > 0 && moneyValues.length > 0) {
-                            // If first value is identical to price (or very close), remove it
-                            if (Math.abs(moneyValues[0] - price) < 0.000001) {
-                                moneyValues.shift();
-                            }
-                        }
-
-                        // Robust Right-to-Left Mapping
-                        // DexScreener Table commonly: ... | Vol | Liq | MC
-                        // Sometimes Vol is split (5m/1h/24h). We usually want the "biggest" or "Last" ones.
-                        // We will assume the LAST 3 money values are [Volume, Liquidity, MC]
-
+                        // 3. MAPPING STRATEGY (Right-to-Left)
                         const mc = moneyValues.length >= 1 ? moneyValues[moneyValues.length - 1] : 0;
                         const liq = moneyValues.length >= 2 ? moneyValues[moneyValues.length - 2] : 0;
                         const vol = moneyValues.length >= 3 ? moneyValues[moneyValues.length - 3] : 0;

@@ -16,6 +16,7 @@ export interface AIAnalysisResult {
     riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'DANGEROUS';
     riskReason: string;
     score: number; // 0-10
+    isApproved: boolean; // Computed from score >= 7
     verdict: 'APE' | 'WATCH' | 'FADE';
     displayEmoji: string;
     recommendation?: string;
@@ -43,7 +44,7 @@ export class LLMService {
 
         try {
             const completion = await this.xai.chat.completions.create({
-                model: config.XAI_MODEL || "grok-4-1-fast-non-reasoning",
+                model: config.XAI_MODEL || "grok-beta",
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userContent }
@@ -146,6 +147,7 @@ ${hasTweets ? tweets.slice(0, 30).join('\n') : "VERİ YOK"}
     }
 
     private normalizeResult(result: any): AIAnalysisResult {
+        const score = typeof result.score === 'number' ? result.score : 4;
         return {
             headline: result.headline || `🚨 ANALYZING`,
             narrative: result.narrative || "No narrative.",
@@ -157,7 +159,8 @@ ${hasTweets ? tweets.slice(0, 30).join('\n') : "VERİ YOK"}
             analysis: result.analysis || [],
             riskLevel: result.riskLevel || 'MEDIUM',
             riskReason: result.riskReason || '',
-            score: typeof result.score === 'number' ? result.score : 4,
+            score: score,
+            isApproved: score >= 7,
             verdict: result.verdict || 'FADE',
             displayEmoji: result.displayEmoji || '🤖',
             recommendation: result.recommendation || 'PASS',

@@ -64,6 +64,7 @@ export interface Narrative {
     tradeLens: string;
     vibeCheck: string;
     aiScore?: number; // Added for Gatekeeper
+    aiApproved?: boolean; // Explicit approval flag
     aiReason?: string; // Added for Logging
     twitterStory?: {
         summary: string;

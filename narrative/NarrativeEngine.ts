@@ -29,6 +29,7 @@ export class NarrativeEngine {
         let vibeCheck = "Analyzing...";
         let aiRisk = "";
         let finalAiScore: number | undefined = undefined;
+        let finalAiApproved = false;
         let finalAiReason: string | undefined = undefined;
 
         // 3. Data Section
@@ -63,6 +64,7 @@ export class NarrativeEngine {
 
             narrativeText += `\n🚫 **Karar:** UZAK DUR (Otomatik)`;
             finalAiScore = 2; // Low score
+            finalAiApproved = false;
             finalAiReason = isLowLiquidity ? "Low Liquidity" : "No Socials & Low Liq";
             vibeCheck = "Ghost Town 👻";
 
@@ -77,6 +79,7 @@ export class NarrativeEngine {
                 const strategy = aiResult.strategy || (aiResult.advice || "Veri yok.");
 
                 finalAiScore = aiResult.score;
+                finalAiApproved = aiResult.isApproved;
                 finalAiReason = aiResult.riskReason;
 
                 // HEADER LOGIC (DISCIPLINE)
@@ -142,6 +145,7 @@ export class NarrativeEngine {
                 narrativeText += `🚨 **TOKEN:** $${symbol}\n`;
                 narrativeText += `📋 **CA:** \`${token.mint}\`\n\n`;
                 narrativeText += `⚠️ AI Analizi başarısız oldu (Servis yok).`;
+                finalAiApproved = false;
             }
         }
 
@@ -163,6 +167,7 @@ export class NarrativeEngine {
             tradeLens,
             vibeCheck,
             aiScore: finalAiScore,
+            aiApproved: finalAiApproved,
             aiReason: finalAiReason
         };
     }
