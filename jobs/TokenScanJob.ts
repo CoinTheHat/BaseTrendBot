@@ -124,6 +124,7 @@ export class TokenScanJob {
                         // Volume 5m > 5k
 
                         const liq = token.liquidityUsd || 0;
+                        const v1h = token.volume1hUsd || ((token.volume24hUsd || 0) / 24); // 1h volume (more reliable)
 
                         // Double check Liq
                         if (liq < 5000) {
@@ -132,31 +133,32 @@ export class TokenScanJob {
                             return;
                         }
 
-                        // --- STEP 2.5: REAL-TIME MOMENTUM CHECK ---
-                        // Instead of estimating 5m volume, GET REAL DATA from last 5 minutes
-                        // User Insight: "Token 10 saat önce uçtu, şimdi ölü olabilir"
-                        const momentum = await this.birdeye.getTokenMomentum(token.mint, 'solana');
-
-                        // VOLUME FILTER: Real 5m volume must be > $2k
-                        if (momentum.volume < 2000) {
+                        // VOLUME FILTER: 1h volume must be > $3k (realistic threshold)
+                        if (v1h < 3000) {
                             lowVolCount++;
-                            logger.debug(`[Filter] 📊 Low 5m Volume (Real): ${token.symbol} ($${Math.floor(momentum.volume)})`);
+                            logger.debug(`[Filter] 📊 Low 1h Volume: ${token.symbol} ($${Math.floor(v1h)})`);
                             return;
                         }
 
-                        // IMPULSE CHECK: Volume / Liquidity > 1.2x (relaxed from 1.5x)
-                        const impulseRatio = momentum.volume / (liq || 1);
-                        if (impulseRatio < 1.2) {
+                        // IMPULSE CHECK: 1h Volume / Liquidity > 0.5x
+                        // Lower ratio since we're using hourly data (not 5m)
+                        const impulseRatio = v1h / (liq || 1);
+                        if (impulseRatio < 0.5) {
                             weakMomentumCount++;
-                            logger.debug(`[Filter] 💤 Weak Momentum: ${token.symbol} (${impulseRatio.toFixed(2)}x, needs >1.2x)`);
+                            logger.debug(`[Filter] 💤 Weak Momentum: ${token.symbol} (${impulseRatio.toFixed(2)}x, needs >0.5x)`);
                             return;
                         }
 
-                        logger.info(`[Sniper] 💎 GEM DETECTED (V3): ${token.symbol} | Liq: $${Math.floor(liq)} | 5m Vol (Real): $${Math.floor(momentum.volume)} (Ratio: ${impulseRatio.toFixed(2)}x)`);
+                        logger.info(`[Sniper] 💎 GEM DETECTED: ${token.symbol} | Liq: $${Math.floor(liq)} | 1h Vol: $${Math.floor(v1h)} (Ratio: ${impulseRatio.toFixed(2)}x)`);
 
-                        // FAST ALERT if Ultra-Hot (>$5k vol, >5 swaps)
-                        if (momentum.isHot) {
-                            await this.bot.sendFastAlert(token, momentum);
+                        // Check for ultra-hot tokens (optional fast alert)
+                        if (v1h > 10000 && impulseRatio > 1.0) {
+                            const mockMomentum = {
+                                volume: v1h,
+                                swapCount: Math.floor(v1h / 1000),
+                                isHot: true
+                            };
+                            await this.bot.sendFastAlert(token, mockMomentum);
                         }
 
                         // --- STEP 3: TWITTER SCAN (Safe Mode) ---
@@ -257,8 +259,8 @@ export class TokenScanJob {
 
 🚫 REJECTED (${totalRejected}):
   💧 Low Liquidity (<$5k): ${lowLiqCount}
-  📊 Low Volume (<$2k real): ${lowVolCount}
-  💤 Weak Momentum (<1.2x): ${weakMomentumCount}
+  📊 Low 1h Volume (<$3k): ${lowVolCount}
+  💤 Weak Momentum (<0.5x): ${weakMomentumCount}
   👻 Ghost Protocol: ${ghostCount}
   ❌ AI Score <7: ${lowScoreCount}
 
