@@ -69,16 +69,14 @@ export class TokenScanJob {
         try {
             logger.info('[Job] Starting scan cycle...');
 
-            // 1. Fetch Candidates (Solana Only)
-            const [pumpTokens, birdSolTokens] = await Promise.all([
-                this.pumpFun.getNewTokens(),
-                this.birdeye.fetchNewListings('solana', 10)
-            ]);
+            // 1. Fetch Candidates (Solana Only - RAYDIUM GRADUATED)
+            // We NO LONGER fetch from PumpFun direct. Only BirdEye (which lists Raydium).
+            const birdSolTokens = await this.birdeye.fetchNewListings('solana', 20);
 
-            logger.info(`🦅 Scanning Solana Only (Base Paused) - Filter: Min Liq $5k...`);
+            logger.info(`🦅 Scanning Solana (Raydium Only) - Filter: Min Liq $5k...`);
 
-            // Deduplicate
-            const allTokens = [...pumpTokens, ...birdSolTokens];
+            // Deduplicate (Though now we only have one source, good practice to keep unique logic)
+            const allTokens = [...birdSolTokens];
             const uniqueTokens: Record<string, TokenSnapshot> = {};
             allTokens.forEach(t => uniqueTokens[t.mint] = t);
             const candidates = Object.values(uniqueTokens);

@@ -28,79 +28,62 @@ export class PerformanceMonitorJob {
         this.isRunning = true;
 
         try {
-            // STEP 0: BACKFILL (Ensure seen_tokens -> token_performance)
             await this.storage.backfillMissingTokens();
-
-            // STEP 1: Get Targets (Older than 60 mins, TRACKING only)
             const tokens = await this.storage.getTrackingTokens();
             if (tokens.length === 0) return;
 
             const now = Date.now();
             const FIFTEEN_MINS = 15 * 60 * 1000;
 
-            // Filter for targets ready for Autopsy (Age > 15 mins)
             const targets = tokens.filter(t => {
                 const age = now - new Date(t.alertTimestamp).getTime();
                 return age >= FIFTEEN_MINS;
             });
 
-            if (targets.length === 0) {
-                // logger.info('[Autopsy] No tokens ready for autopsy yet.');
-                return;
-            }
+            if (targets.length === 0) return;
 
             logger.info(`[Autopsy] 💀 Performing 15-min post-mortem on ${targets.length} tokens...`);
 
-            // STEP 2: The Autopsy
             for (const token of targets) {
                 try {
                     const alertTime = new Date(token.alertTimestamp).getTime() / 1000;
-                    const endTime = alertTime + 900; // +15 Minutes (900s)
+                    const endTime = alertTime + 900; // +15 Minutes
 
-                    // Fetch 15m Candles (We only need 1 or 2 candles max)
-                    // Note: If 15m candle hasn't closed, we might get partial. 
-                    const candles = await this.birdeye.getHistoricalCandles(token.mint, '15m', alertTime, endTime);
+                    // Fetch 1m Candles
+                    const candles = await this.birdeye.getHistoricalCandles(token.mint, '1m', alertTime, endTime);
 
                     if (!candles || candles.length === 0) {
-                        logger.warn(`[Autopsy] No candle data for ${token.symbol}. Marking FAILED (No Data).`);
-                        token.status = 'FAILED_NO_DATA';
-                        await this.storage.updatePerformance(token);
-                    } else {
-                        // Find True Wick High
-                        let maxPrice = 0;
-                        for (const c of candles) {
-                            if (c.h > maxPrice) maxPrice = c.h;
-                        }
-
-                        // Calculate ATH Market Cap
-                        // ATH_MC = (MaxPrice / EntryPrice) * AlertMc.
-                        // EntryPrice: Use first candle open
-                        const entryPrice = candles[0]?.o || 1;
-                        const multiplier = maxPrice / entryPrice;
-                        const athMc = multiplier * (token.alertMc || 1);
-
-                        token.athMc = athMc;
-                        token.currentMc = candles[candles.length - 1].c * (token.alertMc / entryPrice); // Approx current
-
-                        // VERDICT
-                        const entryMc = token.alertMc || 1;
-                        let outcome: 'MOONED' | 'FAILED' = 'FAILED';
-
-                        if (athMc >= entryMc * 2) {
-                            outcome = 'MOONED';
-                        }
-
-                        logger.info(`🏁 [Autopsy] ${token.symbol}: Entry $${Math.floor(entryMc)} -> ATH $${Math.floor(athMc)} (${multiplier.toFixed(2)}x). Result: ${outcome}`);
-
-                        // FINALIZATION
-                        let finalStatus: 'FINALIZED' | 'FINALIZED_MOONED' | 'FINALIZED_FAILED' = 'FINALIZED';
-
-                        if (outcome === 'MOONED') finalStatus = 'FINALIZED_MOONED';
-                        else if (outcome === 'FAILED') finalStatus = 'FINALIZED_FAILED';
-
-                        token.status = finalStatus;
-                        await this.storage.updatePerformance(token);
+                        logger.warn(`[Autopsy] No candle data for ${token.symbol}. Finalizing as FAILED.`);
+                        await this.finalizeToken(token, 'FAILED', 0, 0);
+                        continue;
                     }
+
+                    // Find ATH & Entry
+                    let autopsyHigh = 0;
+
+                    for (const c of candles) {
+                        // Birdeye returns 'u' for unix timestamp
+                        if (c.u >= alertTime) {
+                            if (c.h > autopsyHigh) autopsyHigh = c.h;
+                        }
+                    }
+
+                    // Fallback
+                    if (autopsyHigh === 0) {
+                        const maxC = Math.max(...candles.map(c => c.h));
+                        autopsyHigh = maxC > 0 ? maxC : token.alertMc;
+                    }
+
+                    const entryPrice = candles[0]?.o || 1;
+                    const multiplier = autopsyHigh / entryPrice;
+                    const athMc = multiplier * (token.alertMc || 1);
+                    const currentMc = candles[candles.length - 1].c * (token.alertMc / entryPrice);
+
+                    const outcome = (athMc >= (token.alertMc || 1) * 2) ? 'MOONED' : 'FAILED';
+
+                    logger.info(`🏁 [Autopsy] ${token.symbol}: ${multiplier.toFixed(2)}x (ATH $${Math.floor(athMc)}). Result: ${outcome}`);
+
+                    await this.finalizeToken(token, outcome, athMc, currentMc);
 
                 } catch (err) {
                     logger.error(`[Autopsy] Error for ${token.symbol}: ${err}`);
@@ -112,5 +95,19 @@ export class PerformanceMonitorJob {
         } finally {
             this.isRunning = false;
         }
+    }
+
+    private async finalizeToken(token: any, outcome: string, athMc: number, currentMc: number) {
+        let finalStatus = 'FINALIZED';
+        if (outcome === 'MOONED') finalStatus = 'FINALIZED_MOONED';
+        else if (outcome === 'FAILED') finalStatus = 'FINALIZED_FAILED';
+
+        token.status = finalStatus;
+        token.athMc = athMc;
+        token.currentMc = currentMc;
+        token.lastUpdated = new Date();
+
+        await this.storage.updatePerformance(token);
+        logger.info(`[Autopsy] 🏁 ${token.symbol} Finalized: ${finalStatus}`);
     }
 }
