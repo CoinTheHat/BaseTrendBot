@@ -128,8 +128,8 @@ export class BirdeyeService {
                 swapCount++;
             }
 
-            // CRITERIA: >20 Swaps AND >$5k Volume in last 5m
-            const isHot = swapCount > 20 && totalVolume > 5000;
+            // CRITERIA: >15 Swaps AND >$5k Volume in last 5m (User Request: 15)
+            const isHot = swapCount > 15 && totalVolume > 5000;
 
             if (isHot) {
                 logger.info(`[Momentum] 🔥 Ultra-Hot: ${address} (${swapCount} Swaps, $${Math.floor(totalVolume)})`);
