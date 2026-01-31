@@ -101,23 +101,36 @@ export class DexScreenerService {
                         let price = 0;
                         let ageStr = '';
                         let moneyValues: number[] = [];
+                        let txns = 0;
 
                         for (const t of texts) {
+                            // Price: $0.00... or $1.23 (Start with $, has dot, usually small or first)
                             if (t.startsWith('$') && t.includes('.') && t.length < 20 && price === 0) {
                                 price = parseFloat(t.replace(/[$,]/g, ''));
                             }
-                            if (t.match(/^\d+[mhd]$/)) ageStr = t;
+                            // Age: 12m, 4h, 1d
+                            if (t.match(/^\d+[mhd]$/)) {
+                                ageStr = t;
+                            }
+                            // Money (Big): $12K, $5M, $1.2B
                             if (t.includes('$') && (t.includes('K') || t.includes('M') || t.includes('B'))) {
                                 moneyValues.push(parseVal(t));
                             }
                         }
 
-                        // Remove price from moneyValues (usually first entry)
-                        if (price > 0 && moneyValues.length > 0 && Math.abs(moneyValues[0] - price) < 0.0001) {
-                            moneyValues.shift();
+                        // Sanity Check: If price was also caught in moneyValues, remove it (usually it's index 0)
+                        if (price > 0 && moneyValues.length > 0) {
+                            // If first value is identical to price (or very close), remove it
+                            if (Math.abs(moneyValues[0] - price) < 0.000001) {
+                                moneyValues.shift();
+                            }
                         }
 
-                        // Heuristic: Last 3 money values are Vol, Liq, MC
+                        // Robust Right-to-Left Mapping
+                        // DexScreener Table commonly: ... | Vol | Liq | MC
+                        // Sometimes Vol is split (5m/1h/24h). We usually want the "biggest" or "Last" ones.
+                        // We will assume the LAST 3 money values are [Volume, Liquidity, MC]
+
                         const mc = moneyValues.length >= 1 ? moneyValues[moneyValues.length - 1] : 0;
                         const liq = moneyValues.length >= 2 ? moneyValues[moneyValues.length - 2] : 0;
                         const vol = moneyValues.length >= 3 ? moneyValues[moneyValues.length - 3] : 0;

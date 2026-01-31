@@ -222,14 +222,14 @@ export class TokenScanJob {
                             alertCount++;
                             logger.info(`✅ [GEM SPOTTED] ${token.symbol} Score: ${aiScore}/10 -> Sending Alert!`);
 
-                            // FAST ALERT: For ultra-hot momentum tokens (AFTER AI passed)
-                            if (v1h > 10000 && impulseRatio > 1.0) {
-                                const mockMomentum = {
-                                    volume: v1h,
-                                    swaps: Math.floor(v1h / 1000)
-                                };
-                                await this.bot.sendFastAlert(token, mockMomentum);
-                            }
+                            // FAST ALERT REMOVED: User wants only one AI-verified alert
+                            // if (v1h > 10000 && impulseRatio > 1.0) {
+                            //     const mockMomentum = {
+                            //         volume: v1h,
+                            //         swaps: Math.floor(v1h / 1000)
+                            //     };
+                            //     await this.bot.sendFastAlert(token, mockMomentum);
+                            // }
 
                             await this.bot.sendAlert(narrative, enrichedToken, scoreRes);
                             if (aiScore >= 8) await this.twitter.postTweet(narrative, enrichedToken);
