@@ -12,15 +12,15 @@ export class PerformanceMonitorJob {
         private storage: PostgresStorage,
         private birdeye: BirdeyeService
     ) {
-        // Run every 10 minutes: "*/10 * * * *"
-        this.job = new CronJob('*/10 * * * *', () => {
+        // Run every 5 minutes: "*/5 * * * *" (more frequent for 15m window)
+        this.job = new CronJob('*/5 * * * *', () => {
             this.run();
         });
     }
 
     start() {
         this.job.start();
-        logger.info('[AutopsyJob] Started One-Shot Monitor (Every 10m).');
+        logger.info('[AutopsyJob] Started 15-Minute Monitor (Every 5m).');
     }
 
     async run() {
@@ -30,78 +30,90 @@ export class PerformanceMonitorJob {
         try {
             await this.storage.backfillMissingTokens();
 
-            // CONTINUOUS TRACKING: Get ALL tokens currently in 'TRACKING' status
-            // We do NOT filter by 15 mins. We check them forever (until Moon or Die).
+            // SHORT-TERM TRACKING: Get ALL tokens currently in 'TRACKING' status
+            // But we'll timeout tokens older than 15 minutes
             const tokens = await this.storage.getTrackingTokens();
 
             if (tokens.length === 0) return;
 
-            const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+            const FIFTEEN_MINUTES = 15 * 60 * 1000;
             const now = Date.now();
 
             logger.info(`[Autopsy] 🩺 Vital Check on ${tokens.length} active tokens...`);
 
             for (const token of tokens) {
                 try {
-                    // 0. Timeout Check (24 Hours)
-                    // If a token does nothing for 24 hours, we drop it to save resources.
-                    const age = now - new Date(token.alertTimestamp).getTime();
-                    if (age > TWENTY_FOUR_HOURS) {
-                        logger.info(`[Autopsy] 💤 Token ${token.symbol} is stale (>24h). Finalizing as STALE.`);
-                        await this.finalizeToken(token, 'FINALIZED', token.currentMc, token.currentMc); // Or a new status like 'STALE'
+                    // 1. Get Current Price from BirdEye
+                    // Note: Birdeye V3 Price endpoint requires normalized address
+                    const currentPrice = await this.birdeye.getTokenPrice(String(token.mint), 'solana');
+                    if (currentPrice === 0) {
+                        // BirdEye might not have data, skip for now
                         continue;
                     }
 
-                    // 1. Get Current Price
-                    // Note: Birdeye V3 Price endpoint is cheap (CUs).
-                    const currentPrice = await this.birdeye.getTokenPrice(token.mint, 'solana');
-
-                    if (!currentPrice || currentPrice === 0) {
-                        // logger.warn(`[Autopsy] No price for ${token.symbol}. Skipping.`);
+                    // 2. Calculate Multiplier
+                    const entry = token.entryPrice || 0;
+                    if (entry === 0) {
+                        logger.warn(`[Autopsy] ${token.symbol} has no entry price. Skipping.`);
                         continue;
                     }
 
-                    // 2. Determine Entry Price
-                    const entryPrice = token.entryPrice || (token.alertMc > 0 ? (token.alertMc / 1000000000) : 0);
+                    const multiplier = currentPrice / entry;
 
-                    if (entryPrice === 0) {
-                        // Impossible to calc multiplier without entry. 
-                        // If we have alertMc, we can try to compare MC if we fetch "Token Overview".
-                        // But for now, we skip or assume failed if very old.
-                        continue;
-                    }
+                    // 3. Track ATH
+                    const currentMc = currentPrice * (token.alertMc / (token.entryPrice || 1)); // Estimate MC
+                    const athMc = Math.max(token.athMc, currentMc);
 
-                    // 3. Calculate Multiplier
-                    const multiplier = currentPrice / entryPrice;
-                    const approxCurrentMc = multiplier * (token.alertMc || 0);
-
-                    // 4. Decision Logic (User: 2x Moon / -90% Death)
-                    let outcome = 'TRACKING';
-
+                    // 4. MOON CHECK (2x)
                     if (multiplier >= 2.0) {
-                        outcome = 'MOONED';
-                    } else if (multiplier <= 0.1) {
-                        outcome = 'FAILED';
+                        logger.info(`[Autopsy] 🌝 ${token.symbol} MOONED! ${multiplier.toFixed(2)}x (Entry: $${entry.toFixed(6)}, Current: $${currentPrice.toFixed(6)})`);
+                        await this.storage.updatePerformance({
+                            ...token,
+                            athMc,
+                            currentMc,
+                            status: 'MOONED'
+                        });
+                        continue;
                     }
 
-                    // Log only significant updates to avoid spam
-                    // logger.info(`[Autopsy] ${token.symbol}: ${multiplier.toFixed(2)}x ($${currentPrice}). Status: ${outcome}`);
-
-                    if (outcome !== 'TRACKING') {
-                        logger.info(`🏁 [Autopsy] ${token.symbol} Finalized: ${outcome} (${multiplier.toFixed(2)}x)`);
-                        await this.finalizeToken(token, outcome, approxCurrentMc, approxCurrentMc);
-                    } else {
-                        // Just update Last Seen / Current MC for dashboard
-                        token.currentMc = approxCurrentMc;
-                        token.lastUpdated = new Date();
-                        // Special method to just update current stats without finalizing? 
-                        // existing updatePerformance updates status too. 
-                        await this.storage.updatePerformance(token);
+                    // 5. DEATH CHECK (-90%)
+                    if (multiplier <= 0.1) {
+                        logger.warn(`[Autopsy] 💀 ${token.symbol} FAILED! ${multiplier.toFixed(2)}x (Entry: $${entry.toFixed(6)}, Current: $${currentPrice.toFixed(6)})`);
+                        await this.storage.updatePerformance({
+                            ...token,
+                            athMc,
+                            currentMc,
+                            status: 'FAILED'
+                        });
+                        continue;
                     }
 
-                } catch (err: any) {
-                    // Enhanced Error Logging for diagnosis
-                    const errorDetail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+                    // 6. TIMEOUT CHECK (15 minutes since alert)
+                    const alertTime = token.alertTimestamp.getTime();
+                    const timeElapsed = now - alertTime;
+                    if (timeElapsed > FIFTEEN_MINUTES) {
+                        logger.info(`[Autopsy] ⏱️  ${token.symbol} STALE (15m timeout). ${multiplier.toFixed(2)}x. Finalizing.`);
+                        await this.storage.updatePerformance({
+                            ...token,
+                            athMc,
+                            currentMc,
+                            status: 'FINALIZED'
+                        });
+                        continue;
+                    }
+
+                    // 7. STILL TRACKING - Update ATH
+                    await this.storage.updatePerformance({
+                        ...token,
+                        athMc,
+                        currentMc
+                    });
+
+                    logger.debug(`[Autopsy] 📊 ${token.symbol}: ${multiplier.toFixed(2)}x (elapsed: ${Math.floor(timeElapsed / 1000 / 60)}m)`);
+
+                } catch (err) {
+                    // Enhanced error logging per user request
+                    const errorDetail = (err as any).response?.data ? JSON.stringify((err as any).response.data) : (err as Error).message;
                     logger.error(`[Autopsy] Error for ${token.symbol}: ${errorDetail}`);
                 }
             }

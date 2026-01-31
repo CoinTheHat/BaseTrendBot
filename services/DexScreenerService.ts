@@ -1,16 +1,22 @@
 import axios from 'axios';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { logger } from '../utils/Logger';
 import { TokenSnapshot } from '../models/types';
 
+// Add stealth plugin to avoid Cloudflare detection
+puppeteer.use(StealthPlugin());
+
 export class DexScreenerService {
     private baseUrl = 'https://api.dexscreener.com/latest/dex/tokens';
-    private trendingUrl = 'https://api.dexscreener.com/token-profiles/latest/v1';
+    private trendingPageUrl = 'https://dexscreener.com/solana?rankBy=trendingScoreM5&order=desc';
     private lastScanTime = 0;
     private readonly COOLDOWN_MS = 60000; // 60 seconds
 
     /**
-     * Fetch trending tokens from DexScreener (5-minute momentum)
-     * CRITICAL: Returns normalized addresses (.toString()) for BirdEye compatibility
+     * Scrape trending tokens from DexScreener UI (Trending M5)
+     * CRITICAL: Scrapes the actual website to get real-time trending data
+     * Returns normalized addresses (.toString()) for BirdEye compatibility
      * Includes 60-second cooldown to prevent rate limiting
      */
     async fetchTrendingM5(): Promise<TokenSnapshot[]> {
@@ -23,54 +29,122 @@ export class DexScreenerService {
             return [];
         }
 
+        let browser;
         try {
-            const response = await axios.get(this.trendingUrl, { timeout: 10000 });
-            this.lastScanTime = Date.now();
+            logger.info('[DexScreener] 🌐 Launching browser for UI scraping...');
 
-            if (!response.data || !Array.isArray(response.data)) {
-                logger.error('[DexScreener] Invalid response format from M5 trending');
-                return [];
-            }
-
-            // Filter for Solana tokens with good metrics
-            const candidates = response.data.filter((item: any) => {
-                return (
-                    item.chainId === 'solana' &&
-                    item.trendingScoreM5 && item.trendingScoreM5 > 0 &&
-                    item.volume?.m5 && item.volume.m5 > 5000 &&
-                    item.liquidity?.usd && item.liquidity.usd > 5000
-                );
+            browser = await puppeteer.launch({
+                headless: true,
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-accelerated-2d-canvas',
+                    '--disable-gpu'
+                ]
             });
 
-            // Sort by trendingScoreM5 descending
-            candidates.sort((a: any, b: any) => (b.trendingScoreM5 || 0) - (a.trendingScoreM5 || 0));
+            const page = await browser.newPage();
 
-            // Take top 20
-            const topTokens = candidates.slice(0, 20);
+            // Set realistic user agent
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-            logger.info(`[DexScreener M5] Found ${topTokens.length} trending tokens (from ${response.data.length} total)`);
+            // Random delay to appear more human
+            const randomDelay = Math.floor(Math.random() * 2000) + 1000; // 1-3s
+            await new Promise(r => setTimeout(r, randomDelay));
 
-            return topTokens.map((item: any) => ({
+            logger.info(`[DexScreener] 📄 Navigate to: ${this.trendingPageUrl}`);
+            await page.goto(this.trendingPageUrl, { waitUntil: 'networkidle2', timeout: 30000 });
+
+            // Wait for table to load
+            await page.waitForSelector('.ds-dex-table-row', { timeout: 15000 });
+
+            logger.info('[DexScreener] 🔍 Scraping trending tokens...');
+
+            // Extract token data from table rows
+            const tokens = await page.evaluate(() => {
+                const rows = Array.from(document.querySelectorAll('.ds-dex-table-row'));
+                const results: any[] = [];
+
+                for (const row of rows.slice(0, 30)) { // Top 30 tokens
+                    try {
+                        // Extract token address from link
+                        const linkElement = row.querySelector('a[href*="/solana/"]');
+                        if (!linkElement) continue;
+
+                        const href = linkElement.getAttribute('href') || '';
+                        const addressMatch = href.match(/\/solana\/([A-Za-z0-9]+)/);
+                        if (!addressMatch) continue;
+
+                        const address = addressMatch[1];
+
+                        // Extract symbol
+                        const symbolElement = row.querySelector('.ds-dex-table-row-col-token .ds-table-data-cell-main-value');
+                        const symbol = symbolElement?.textContent?.trim() || 'UNKNOWN';
+
+                        // Extract price change M5
+                        const priceChangeElements = row.querySelectorAll('.ds-table-data-cell-minor-value');
+                        let priceChangeM5 = 0;
+                        if (priceChangeElements.length > 0) {
+                            const text = priceChangeElements[0].textContent?.trim() || '0';
+                            priceChangeM5 = parseFloat(text.replace('%', '').replace('+', ''));
+                        }
+
+                        // Extract volume M5 (approximate from text)
+                        const volumeElements = row.querySelectorAll('.ds-table-data-cell-minor-value');
+                        let volumeM5 = 0;
+                        if (volumeElements.length > 1) {
+                            const volText = volumeElements[1].textContent?.trim() || '0';
+                            // Parse volume like "$12.5K" or "$1.2M"
+                            if (volText.includes('K')) {
+                                volumeM5 = parseFloat(volText.replace('$', '').replace('K', '')) * 1000;
+                            } else if (volText.includes('M')) {
+                                volumeM5 = parseFloat(volText.replace('$', '').replace('M', '')) * 1000000;
+                            }
+                        }
+
+                        results.push({
+                            address,
+                            symbol,
+                            priceChangeM5,
+                            volumeM5
+                        });
+                    } catch (err) {
+                        // Skip this row, continue
+                    }
+                }
+
+                return results;
+            });
+
+            await browser.close();
+            this.lastScanTime = Date.now();
+
+            logger.info(`[DexScreener UI] Found ${tokens.length} trending tokens`);
+
+            // Convert to TokenSnapshot format
+            return tokens.map((item: any) => ({
                 source: 'dexscreener',
                 chain: 'solana' as const,
-                mint: String(item.tokenAddress || item.baseToken?.address || ''), // NORMALIZED with String()
-                name: item.baseToken?.name || item.name || 'Unknown',
-                symbol: item.baseToken?.symbol || item.symbol || '???',
-                priceUsd: parseFloat(item.priceUsd || '0') || 0,
-                liquidityUsd: item.liquidity?.usd || 0,
-                marketCapUsd: item.marketCap || item.fdv || 0,
-                volume5mUsd: item.volume?.m5 || 0,
-                volume24hUsd: item.volume?.h24 || 0,
-                priceChange5m: item.priceChange?.m5 || 0,
-                createdAt: new Date(item.pairCreatedAt || Date.now()),
+                mint: String(item.address), // NORMALIZED with String()
+                name: item.symbol,
+                symbol: item.symbol,
+                priceUsd: 0, // Will be fetched from BirdEye
+                liquidityUsd: 0, // Will be fetched from BirdEye
+                marketCapUsd: 0, // Will be fetched from BirdEye
+                volume5mUsd: item.volumeM5,
+                volume24hUsd: 0,
+                priceChange5m: item.priceChangeM5,
+                createdAt: new Date(),
                 updatedAt: new Date(),
                 links: {
-                    dexScreener: item.url || `https://dexscreener.com/solana/${item.tokenAddress || ''}`
+                    dexScreener: `https://dexscreener.com/solana/${item.address}`
                 }
             }));
 
         } catch (error: any) {
-            logger.error(`[DexScreener M5] Error: ${error.message}`);
+            if (browser) await browser.close();
+            logger.error(`[DexScreener UI] Scraping error: ${error.message}`);
             this.lastScanTime = Date.now(); // Still update to prevent hammering on errors
             return [];
         }

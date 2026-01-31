@@ -27,7 +27,7 @@
     "node-telegram-bot-api": "^0.67.0",
     "openai": "^6.17.0",
     "pg": "^8.17.2",
-    "puppeteer": "^24.36.0",
+    "puppeteer": "^24.36.1",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "ts-node": "^10.9.2",
