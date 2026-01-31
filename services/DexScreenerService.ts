@@ -66,11 +66,61 @@ export class DexScreenerService {
                         if (seen.has(address)) continue;
                         seen.add(address);
 
-                        const row = link.closest('tr') || link.closest('[class*="table-row"]');
-                        const symbolEl = row?.querySelector('[class*="symbol"]') || link.querySelector('span');
+                        const row = link.closest('tr') || link.closest('[class*="table-row"]') || link.parentElement?.parentElement;
+                        if (!row) continue;
+
+                        const symbolEl = row.querySelector('[class*="symbol"]') || link.querySelector('span');
                         const symbol = symbolEl?.textContent?.trim() || 'UNKNOWN';
 
-                        results.push({ address, symbol });
+                        // Extract all cell texts
+                        const cells = Array.from(row.querySelectorAll('td, [class*="cell"]'));
+                        const cellTexts = cells.map(c => c.textContent?.trim() || '');
+
+                        // Parse liquidity
+                        let liquidity = 0;
+                        for (const text of cellTexts) {
+                            if (text.includes('$') && (text.includes('K') || text.includes('M'))) {
+                                const clean = text.replace(/[^0-9.KM]/g, '');
+                                if (clean.includes('K')) {
+                                    liquidity = parseFloat(clean.replace('K', '')) * 1000;
+                                } else if (clean.includes('M')) {
+                                    liquidity = parseFloat(clean.replace('M', '')) * 1000000;
+                                }
+                                if (liquidity > 1000) break;
+                            }
+                        }
+
+                        // Parse volume
+                        let volume24h = 0;
+                        for (const text of cellTexts) {
+                            if (text.includes('$') && text.length < 20) {
+                                const clean = text.replace(/[^0-9.KM]/g, '');
+                                if (clean.includes('K')) {
+                                    const val = parseFloat(clean.replace('K', '')) * 1000;
+                                    if (val > volume24h) volume24h = val;
+                                } else if (clean.includes('M')) {
+                                    const val = parseFloat(clean.replace('M', '')) * 1000000;
+                                    if (val > volume24h) volume24h = val;
+                                }
+                            }
+                        }
+
+                        // Parse price
+                        let price = 0;
+                        for (const text of cellTexts) {
+                            if (text.startsWith('$') && text.includes('.')) {
+                                const priceMatch = text.match(/\$([0-9.]+)/);
+                                if (priceMatch) {
+                                    const p = parseFloat(priceMatch[1]);
+                                    if (p > 0 && p < 1000) {
+                                        price = p;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+
+                        results.push({ address, symbol, liquidity, volume24h, price });
                     } catch { }
                 }
                 return results;
@@ -92,12 +142,12 @@ export class DexScreenerService {
                 mint: String(item.address),
                 name: item.symbol,
                 symbol: item.symbol,
-                priceUsd: 0,
-                liquidityUsd: 0,
-                marketCapUsd: 0,
-                volume5mUsd: 0,
-                volume24hUsd: 0,
-                priceChange5m: 0,
+                priceUsd: item.price || 0,
+                liquidityUsd: item.liquidity || 0,
+                marketCapUsd: 0, // Can calculate from price if needed
+                volume5mUsd: 0, // Not available from table
+                volume24hUsd: item.volume24h || 0,
+                priceChange5m: 0, // Not easily parseable
                 createdAt: new Date(),
                 updatedAt: new Date(),
                 links: {
