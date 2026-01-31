@@ -119,9 +119,22 @@ If you have any doubt, REJECT IT.
     "vibe": "Kısa vibe"
 }
 `;
-        const userContent = hasTweets
-            ? `Tweets:\n${tweets.slice(0, 20).map(t => `- ${t.replace(/\n/g, ' ')}`).join('\n')}`
-            : `Twitter verisi yok. Sadece teknik verileri analiz et. Risk seviyesini yüksek tut.`;
+        const userContent = `
+TOKEN METROLOJİSİ:
+- Sembol: $${token.symbol}
+- İsim: ${token.name}
+- Contract: ${token.mint}
+- Market Cap: $${(token.marketCapUsd || 0).toLocaleString()}
+- Likidite: $${(token.liquidityUsd || 0).toLocaleString()}
+- 5dk Hacim: $${(token.volume5mUsd || 0).toLocaleString()}
+- 1s Hacim: $${((token.volume30mUsd || 0) * 2).toLocaleString()} (Tahmini)
+- Token Yaşı: ${Math.floor((Date.now() - new Date(token.createdAt || Date.now()).getTime()) / 60000)} dakika
+
+SOSYAL VERİLER:
+${hasTweets
+                ? `Tweets:\n${tweets.slice(0, 20).map(t => `- ${t.replace(/\n/g, ' ')}`).join('\n')}`
+                : `Twitter verisi yok. SADECE yukarıdaki teknik verileri ve risk metriklerini analiz et.`}
+`;
 
         return { systemPrompt, userContent };
     }
