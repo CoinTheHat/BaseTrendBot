@@ -91,12 +91,16 @@ export class TokenScanJob {
                 logger.info(`[Job] Tracking ${watchlistMints.length} Watchlist CAs: ${watchlistMints.join(', ')}`);
             }
 
-            // b. Execute fetches in parallel (BirdEye SOL + BirdEye BASE)
-            const [pumpTokens, birdSolTokens, birdBaseTokens] = await Promise.all([
+            // b. Execute fetches in parallel (BirdEye SOL Only)
+            const [pumpTokens, birdSolTokens] = await Promise.all([
                 this.pumpFun.getNewTokens(),
                 this.birdeye.fetchNewListings('solana', 10),
-                this.birdeye.fetchNewListings('base', 10)
-            ]);  // Replaces DexScreener/Mino logic
+                // this.birdeye.fetchNewListings('base', 10) // Base Paused for Eco-Mode
+            ]);
+
+            const birdBaseTokens: TokenSnapshot[] = []; // Empty for now
+
+            logger.info(`🦅 Scanning Solana Only (Base Paused to save credits)...`);
 
             // Deduplicate by mint
             const allTokens = [...pumpTokens, ...birdSolTokens, ...birdBaseTokens];
