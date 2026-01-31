@@ -19,11 +19,10 @@ export class GoPlusService {
             const data = response.data?.result?.[address.toLowerCase()] || response.data?.result?.[address];
 
             if (!data) {
-                // If checking failed (API error or empty), default to SKIP (FALSE) to be safe or TRUE if lenient?
-                // USER said: "If !isSafe ... SKIP functionality".
-                // If we can't check, is it safe? Let's assume strictness.
-                logger.warn(`[GoPlus] No data for ${address} on ${chain}. Assuming UNSAFE.`);
-                return false;
+                // If checking failed (API error or empty), default to SAFE (TRUE) to avoid blocking fresh tokens.
+                // User requirement: "No GoPlus data - Proceeding with caution"
+                logger.warn(`[GoPlus] No data for ${address} on ${chain}. Proceeding with caution (Assume SAFE).`);
+                return true;
             }
 
             // CHECK FLAGS

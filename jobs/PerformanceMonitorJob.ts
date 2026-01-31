@@ -52,10 +52,24 @@ export class PerformanceMonitorJob {
             const solMints = mints.filter(m => !m.startsWith('0x'));
             const baseMints = mints.filter(m => m.startsWith('0x'));
 
-            const solUpdates = await this.birdeye.getTokensOverview(solMints, 'solana');
-            const baseUpdates = await this.birdeye.getTokensOverview(baseMints, 'base');
+            let solUpdates = new Map<string, any>();
+            let baseUpdates = new Map<string, any>();
 
-            // Merge maps
+            if (solMints.length > 0) {
+                try {
+                    solUpdates = await this.birdeye.getTokensOverview(solMints, 'solana');
+                } catch (e) {
+                    logger.error(`[PerformanceJob] Failed to update Solana tokens: ${e}`);
+                }
+            }
+
+            if (baseMints.length > 0) {
+                try {
+                    baseUpdates = await this.birdeye.getTokensOverview(baseMints, 'base');
+                } catch (e) {
+                    logger.error(`[PerformanceJob] Failed to update Base tokens: ${e}`);
+                }
+            }
             const updates = new Map([...solUpdates, ...baseUpdates]);
 
             // 3. Compare & Update

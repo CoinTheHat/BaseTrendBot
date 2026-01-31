@@ -48,8 +48,8 @@ export class TokenScanJob {
         if (this.isRunning) return;
         this.isRunning = true;
 
-        // Use 90s + Random Jitter to avoid bot detection
-        logger.info(`[Job] Token Scan Job started. Interval: ~90s (Jitter Active)`);
+        // Use 5s for Speed
+        logger.info(`[Job] Token Scan Job started. Interval: 5s (Turbo Mode)`);
 
         // Start Loop
         this.runLoop();
@@ -60,12 +60,10 @@ export class TokenScanJob {
 
         await this.runCycle();
 
-        // Calculate Next Run: 90s + random(0-10s)
-        const baseInterval = 90 * 1000;
-        const jitter = Math.random() * 10000;
-        const delay = baseInterval + jitter;
+        // Calculate Next Run: Fixed 5s for Professional Mode
+        const delay = 5000;
 
-        logger.info(`[Job] 💤 Sleeping for ${(delay / 1000).toFixed(1)}s...`);
+        // logger.info(`[Job] 💤 Sleeping for ${(delay / 1000).toFixed(1)}s...`);
 
         setTimeout(() => this.runLoop(), delay);
     }
