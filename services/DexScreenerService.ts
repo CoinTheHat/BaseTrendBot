@@ -30,8 +30,10 @@ export class DexScreenerService {
         }
 
         let browser;
+        let capturedData: any = null;
+
         try {
-            logger.info('[DexScreener] 🌐 Launching browser for UI scraping...');
+            logger.info('[DexScreener] 🌐 Launching browser with enhanced detection...');
 
             browser = await puppeteer.launch({
                 headless: true,
@@ -40,186 +42,220 @@ export class DexScreenerService {
                     '--disable-setuid-sandbox',
                     '--disable-dev-shm-usage',
                     '--disable-accelerated-2d-canvas',
-                    '--disable-gpu'
+                    '--disable-gpu',
+                    '--window-size=1920,1080'
                 ]
             });
 
             const page = await browser.newPage();
+            await page.setViewport({ width: 1920, height: 1080 });
 
-            // Set realistic user agent
+            // Enhanced user agent
             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+
+            // Intercept network requests for JSON data
+            await page.setRequestInterception(true);
+            page.on('request', req => req.continue());
+            page.on('response', async (response) => {
+                const url = response.url();
+                if (url.includes('dexscreener') && url.includes('json')) {
+                    try {
+                        const data = await response.json();
+                        if (data && (Array.isArray(data) || data.pairs)) {
+                            capturedData = data;
+                            logger.info(`[DexScreener] 📡 Intercepted JSON data`);
+                        }
+                    } catch { }
+                }
+            });
 
             // Random delay to appear more human
             const randomDelay = Math.floor(Math.random() * 2000) + 1000; // 1-3s
             await new Promise(r => setTimeout(r, randomDelay));
 
-            logger.info(`[DexScreener] 📄 Navigate to: ${this.trendingPageUrl}`);
+            logger.info(`[DexScreener] 📄 Navigating to trending page...`);
             await page.goto(this.trendingPageUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
-            // Wait for table to load
-            await page.waitForSelector('.ds-dex-table-row', { timeout: 15000 });
+            // CRITICAL: Wait for Solana token links
+            logger.info('[DexScreener] ⏳ Waiting for token links...');
+            await page.waitForSelector('a[href^="/solana/"]', { timeout: 15000 });
+            await new Promise(r => setTimeout(r, 2000)); // Extra buffer
 
-            logger.info('[DexScreener] 🔍 Scraping trending tokens...');
+            // DEBUG: Screenshot
+            await page.screenshot({ path: 'debug-dexscreener.png' });
+            logger.info('[DexScreener] 📸 Screenshot saved: debug-dexscreener.png');
 
-            // Extract token data from table rows
+            logger.info('[DexScreener] 🔍 Extracting token data...');
+
+            // Extract token data
             const tokens = await page.evaluate(() => {
-                const rows = Array.from(document.querySelectorAll('.ds-dex-table-row'));
+                const links = Array.from(document.querySelectorAll('a[href^="/solana/"]'));
                 const results: any[] = [];
+                const seen = new Set<string>();
 
-                for (const row of rows.slice(0, 30)) { // Top 30 tokens
+                for (const link of links.slice(0, 30)) {
                     try {
-                        // Extract token address from link
-                        const linkElement = row.querySelector('a[href*="/solana/"]');
-                        if (!linkElement) continue;
-
-                        const href = linkElement.getAttribute('href') || '';
+                        const href = link.getAttribute('href') || '';
                         const addressMatch = href.match(/\/solana\/([A-Za-z0-9]+)/);
                         if (!addressMatch) continue;
 
                         const address = addressMatch[1];
+                        if (seen.has(address)) continue;
+                        seen.add(address);
 
-                        // Extract symbol
-                        const symbolElement = row.querySelector('.ds-dex-table-row-col-token .ds-table-data-cell-main-value');
-                        const symbol = symbolElement?.textContent?.trim() || 'UNKNOWN';
+                        // Try to get symbol from nearby elements
+                        const row = link.closest('tr') || link.closest('[class*="table-row"]');
+                        const symbolEl = row?.querySelector('[class*="symbol"]') ||
+                            row?.querySelector('[class*="token"]') ||
+                            link.querySelector('span');
+                        const symbol = symbolEl?.textContent?.trim() || 'UNKNOWN';
 
-                        // Extract price change M5
-                        const priceChangeElements = row.querySelectorAll('.ds-table-data-cell-minor-value');
-                        let priceChangeM5 = 0;
-                        if (priceChangeElements.length > 0) {
-                            const text = priceChangeElements[0].textContent?.trim() || '0';
-                            priceChangeM5 = parseFloat(text.replace('%', '').replace('+', ''));
-                        }
-
-                        // Extract volume M5 (approximate from text)
-                        const volumeElements = row.querySelectorAll('.ds-table-data-cell-minor-value');
-                        let volumeM5 = 0;
-                        if (volumeElements.length > 1) {
-                            const volText = volumeElements[1].textContent?.trim() || '0';
-                            // Parse volume like "$12.5K" or "$1.2M"
-                            if (volText.includes('K')) {
-                                volumeM5 = parseFloat(volText.replace('$', '').replace('K', '')) * 1000;
-                            } else if (volText.includes('M')) {
-                                volumeM5 = parseFloat(volText.replace('$', '').replace('M', '')) * 1000000;
-                            }
-                        }
-
-                        results.push({
-                            address,
-                            symbol,
-                            priceChangeM5,
-                            volumeM5
-                        });
-                    } catch (err) {
-                        // Skip this row, continue
-                    }
+                        results.push({ address, symbol });
+                    } catch { }
                 }
-
                 return results;
             });
 
             await browser.close();
             this.lastScanTime = Date.now();
 
-            logger.info(`[DexScreener UI] Found ${tokens.length} trending tokens`);
+            logger.info(`[DexScreener UI] Found ${tokens.length} tokens`);
 
-            // Convert to TokenSnapshot format
+            if (tokens.length === 0) {
+                logger.error('[DexScreener] ⚠️ ZERO TOKENS! Check debug-dexscreener.png');
+                return [];
+            }
+
             return tokens.map((item: any) => ({
                 source: 'dexscreener',
                 chain: 'solana' as const,
-                mint: String(item.address), // NORMALIZED with String()
+                mint: String(item.address),
                 name: item.symbol,
                 symbol: item.symbol,
-                priceUsd: 0, // Will be fetched from BirdEye
-                liquidityUsd: 0, // Will be fetched from BirdEye
-                marketCapUsd: 0, // Will be fetched from BirdEye
-                volume5mUsd: item.volumeM5,
+                priceUsd: 0,
+                liquidityUsd: 0,
+                marketCapUsd: 0,
+                volume5mUsd: 0,
                 volume24hUsd: 0,
-                priceChange5m: item.priceChangeM5,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-                links: {
-                    dexScreener: `https://dexscreener.com/solana/${item.address}`
-                }
-            }));
+                priceChange5m: 0,
+
+                results.push({
+                    address,
+                    symbol,
+                    priceChangeM5,
+                    volumeM5
+                });
+            } catch (err) {
+                // Skip this row, continue
+            }
+        }
+
+                return results;
+    });
+
+            await browser.close();
+this.lastScanTime = Date.now();
+
+logger.info(`[DexScreener UI] Found ${tokens.length} trending tokens`);
+
+// Convert to TokenSnapshot format
+return tokens.map((item: any) => ({
+    source: 'dexscreener',
+    chain: 'solana' as const,
+    mint: String(item.address), // NORMALIZED with String()
+    name: item.symbol,
+    symbol: item.symbol,
+    priceUsd: 0, // Will be fetched from BirdEye
+    liquidityUsd: 0, // Will be fetched from BirdEye
+    marketCapUsd: 0, // Will be fetched from BirdEye
+    volume5mUsd: item.volumeM5,
+    volume24hUsd: 0,
+    priceChange5m: item.priceChangeM5,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    links: {
+        dexScreener: `https://dexscreener.com/solana/${item.address}`
+    }
+}));
 
         } catch (error: any) {
-            if (browser) await browser.close();
-            logger.error(`[DexScreener UI] Scraping error: ${error.message}`);
-            this.lastScanTime = Date.now(); // Still update to prevent hammering on errors
-            return [];
-        }
+    if (browser) await browser.close();
+    logger.error(`[DexScreener UI] Scraping error: ${error.message}`);
+    this.lastScanTime = Date.now(); // Still update to prevent hammering on errors
+    return [];
+}
     }
 
     /**
      * Fetch tokens from DexScreener (Free API)
      * Limit: 30 addresses per call (approx)
      */
-    async getTokens(mints: string[]): Promise<TokenSnapshot[]> {
-        if (!mints.length) return [];
+    async getTokens(mints: string[]): Promise < TokenSnapshot[] > {
+    if(!mints.length) return [];
 
-        // Chunking to handle URL length limits
-        const chunks = this.chunkArray(mints, 30);
-        const allTokens: TokenSnapshot[] = [];
+    // Chunking to handle URL length limits
+    const chunks = this.chunkArray(mints, 30);
+    const allTokens: TokenSnapshot[] = [];
 
-        for (const chunk of chunks) {
-            try {
-                const url = `${this.baseUrl}/${chunk.join(',')}`;
-                const response = await axios.get(url, { timeout: 10000 });
+    for(const chunk of chunks) {
+        try {
+            const url = `${this.baseUrl}/${chunk.join(',')}`;
+            const response = await axios.get(url, { timeout: 10000 });
 
-                if (!response.data || !response.data.pairs) continue;
+            if (!response.data || !response.data.pairs) continue;
 
-                const pairs = response.data.pairs;
-                // DexScreener returns pairs, we need to map to our TokenSnapshot format.
-                // One mint might have multiple pairs. We usually want the most liquid one or aggregate.
-                // Strategy: Take the pair with highest liquidity for each unique baseToken.address
+            const pairs = response.data.pairs;
+            // DexScreener returns pairs, we need to map to our TokenSnapshot format.
+            // One mint might have multiple pairs. We usually want the most liquid one or aggregate.
+            // Strategy: Take the pair with highest liquidity for each unique baseToken.address
 
-                // Group by mint
-                const bestPairs: Record<string, any> = {};
+            // Group by mint
+            const bestPairs: Record<string, any> = {};
 
-                for (const pair of pairs) {
-                    const mint = pair.baseToken.address;
-                    if (!bestPairs[mint] || pair.liquidity.usd > bestPairs[mint].liquidity.usd) {
-                        bestPairs[mint] = pair;
-                    }
+            for (const pair of pairs) {
+                const mint = pair.baseToken.address;
+                if (!bestPairs[mint] || pair.liquidity.usd > bestPairs[mint].liquidity.usd) {
+                    bestPairs[mint] = pair;
                 }
-
-                const snapshots = Object.values(bestPairs).map((pair: any) => this.mapPairToSnapshot(pair));
-                allTokens.push(...snapshots);
-
-            } catch (error: any) {
-                logger.error(`[DexScreener] Error fetching chunk: ${error.message}`);
             }
+
+            const snapshots = Object.values(bestPairs).map((pair: any) => this.mapPairToSnapshot(pair));
+            allTokens.push(...snapshots);
+
+        } catch (error: any) {
+            logger.error(`[DexScreener] Error fetching chunk: ${error.message}`);
         }
+    }
 
         return allTokens;
-    }
+}
 
     private mapPairToSnapshot(pair: any): TokenSnapshot {
-        return {
-            source: 'dexscreener',
-            chain: pair.chainId === 'solana' ? 'solana' : (pair.chainId === 'base' ? 'base' : undefined),
-            mint: pair.baseToken.address,
-            name: pair.baseToken.name,
-            symbol: pair.baseToken.symbol,
-            priceUsd: parseFloat(pair.priceUsd) || 0,
-            liquidityUsd: pair.liquidity?.usd || 0,
-            marketCapUsd: pair.marketCap || pair.fdv || 0, // DexScreener uses FDV often as MC
-            volume5mUsd: pair.volume?.m5 || 0,
-            volume30mUsd: pair.volume?.h1 / 2 || 0, // Approx
-            volume24hUsd: pair.volume?.h24 || 0,
-            createdAt: new Date(pair.pairCreatedAt || Date.now()),
-            updatedAt: new Date(),
-            links: {
-                dexScreener: pair.url
-            }
-        };
-    }
+    return {
+        source: 'dexscreener',
+        chain: pair.chainId === 'solana' ? 'solana' : (pair.chainId === 'base' ? 'base' : undefined),
+        mint: pair.baseToken.address,
+        name: pair.baseToken.name,
+        symbol: pair.baseToken.symbol,
+        priceUsd: parseFloat(pair.priceUsd) || 0,
+        liquidityUsd: pair.liquidity?.usd || 0,
+        marketCapUsd: pair.marketCap || pair.fdv || 0, // DexScreener uses FDV often as MC
+        volume5mUsd: pair.volume?.m5 || 0,
+        volume30mUsd: pair.volume?.h1 / 2 || 0, // Approx
+        volume24hUsd: pair.volume?.h24 || 0,
+        createdAt: new Date(pair.pairCreatedAt || Date.now()),
+        updatedAt: new Date(),
+        links: {
+            dexScreener: pair.url
+        }
+    };
+}
 
     private chunkArray<T>(arr: T[], size: number): T[][] {
-        const res: T[][] = [];
-        for (let i = 0; i < arr.length; i += size) {
-            res.push(arr.slice(i, i + size));
-        }
-        return res;
+    const res: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) {
+        res.push(arr.slice(i, i + size));
     }
+    return res;
+}
 }
