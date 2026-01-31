@@ -127,7 +127,6 @@ export class TokenScanJob {
                         // Volume 5m > 5k
 
                         const liq = token.liquidityUsd || 0;
-                        const v5m = token.volume5mUsd || ((token.volume24hUsd || 0) / 100);
 
                         // Double check Liq
                         if (liq < 5000) {
@@ -136,28 +135,29 @@ export class TokenScanJob {
                             return;
                         }
 
-                        // VOLUME FILTER (Floor)
-                        if (v5m < 5000) {
-                            lowVolCount++;
-                            logger.debug(`[Filter] 📊 Low 5m Volume: ${token.symbol} ($${Math.floor(v5m)})`);
-                            return;
-                        }
-
-                        // RULE B: MOMENTUM IMPULSE (The 1.5x Rule)
-                        // Volume in last 5m MUST be > 1.5x Liquidity to prove breakout.
-                        // User Request: "Son 5 dakikada en az $5,000 bunu likiditenin 1.5 katı yapmıştık"
-                        const impulseRatio = v5m / (liq || 1);
-                        if (impulseRatio < 1.5) {
-                            weakMomentumCount++;
-                            logger.debug(`[Filter] 💤 Weak Momentum: ${token.symbol} (${impulseRatio.toFixed(2)}x, needs >1.5x)`);
-                            return;
-                        }
-
-                        logger.info(`[Sniper] 💎 GEM DETECTED (V3): ${token.symbol} | Liq: $${Math.floor(liq)} | 5m Vol: $${Math.floor(v5m)} (Ratio: ${impulseRatio.toFixed(2)}x)`);
-
-                        // --- STEP 2.5: HIGH-SPEED MOMENTUM CHECK (Ultra-Hot) ---
-                        // Check exact 5m TXs to validate "Rush"
+                        // --- STEP 2.5: REAL-TIME MOMENTUM CHECK ---
+                        // Instead of estimating 5m volume, GET REAL DATA from last 5 minutes
+                        // User Insight: "Token 10 saat önce uçtu, şimdi ölü olabilir"
                         const momentum = await this.birdeye.getTokenMomentum(token.mint, 'solana');
+
+                        // VOLUME FILTER: Real 5m volume must be > $2k
+                        if (momentum.volume < 2000) {
+                            lowVolCount++;
+                            logger.debug(`[Filter] 📊 Low 5m Volume (Real): ${token.symbol} ($${Math.floor(momentum.volume)})`);
+                            return;
+                        }
+
+                        // IMPULSE CHECK: Volume / Liquidity > 1.2x (relaxed from 1.5x)
+                        const impulseRatio = momentum.volume / (liq || 1);
+                        if (impulseRatio < 1.2) {
+                            weakMomentumCount++;
+                            logger.debug(`[Filter] 💤 Weak Momentum: ${token.symbol} (${impulseRatio.toFixed(2)}x, needs >1.2x)`);
+                            return;
+                        }
+
+                        logger.info(`[Sniper] 💎 GEM DETECTED (V3): ${token.symbol} | Liq: $${Math.floor(liq)} | 5m Vol (Real): $${Math.floor(momentum.volume)} (Ratio: ${impulseRatio.toFixed(2)}x)`);
+
+                        // FAST ALERT if Ultra-Hot (>$5k vol, >5 swaps)
                         if (momentum.isHot) {
                             await this.bot.sendFastAlert(token, momentum);
                         }
