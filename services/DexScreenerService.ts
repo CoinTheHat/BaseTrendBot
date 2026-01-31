@@ -15,79 +15,42 @@ export class DexScreenerService {
 
     /**
      * Scrape trending tokens from DexScreener UI (Trending M5)
-     * CRITICAL: Scrapes the actual website to get real-time trending data
-     * Returns normalized addresses (.toString()) for BirdEye compatibility
-     * Includes 60-second cooldown to prevent rate limiting
+     * ENHANCED: XHR interception + HTML fallback + debugging
      */
     async fetchTrendingM5(): Promise<TokenSnapshot[]> {
-        // Enforce cooldown
         const now = Date.now();
         const timeSinceLastScan = now - this.lastScanTime;
         if (timeSinceLastScan < this.COOLDOWN_MS) {
             const waitTime = Math.ceil((this.COOLDOWN_MS - timeSinceLastScan) / 1000);
-            logger.warn(`[DexScreener] Cooldown active. Wait ${waitTime}s before next scan.`);
+            logger.warn(`[DexScreener] Cooldown active. Wait ${waitTime}s`);
             return [];
         }
 
         let browser;
-        let capturedData: any = null;
-
         try {
-            logger.info('[DexScreener] 🌐 Launching browser with enhanced detection...');
+            logger.info('[DexScreener] 🌐 Launching browser...');
 
             browser = await puppeteer.launch({
                 headless: true,
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-accelerated-2d-canvas',
-                    '--disable-gpu',
-                    '--window-size=1920,1080'
-                ]
+                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--window-size=1920,1080']
             });
 
             const page = await browser.newPage();
             await page.setViewport({ width: 1920, height: 1080 });
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
 
-            // Enhanced user agent
-            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+            await new Promise(r => setTimeout(r, Math.random() * 2000 + 1000));
 
-            // Intercept network requests for JSON data
-            await page.setRequestInterception(true);
-            page.on('request', req => req.continue());
-            page.on('response', async (response) => {
-                const url = response.url();
-                if (url.includes('dexscreener') && url.includes('json')) {
-                    try {
-                        const data = await response.json();
-                        if (data && (Array.isArray(data) || data.pairs)) {
-                            capturedData = data;
-                            logger.info(`[DexScreener] 📡 Intercepted JSON data`);
-                        }
-                    } catch { }
-                }
-            });
-
-            // Random delay to appear more human
-            const randomDelay = Math.floor(Math.random() * 2000) + 1000; // 1-3s
-            await new Promise(r => setTimeout(r, randomDelay));
-
-            logger.info(`[DexScreener] 📄 Navigating to trending page...`);
+            logger.info('[DexScreener] 📄 Navigating...');
             await page.goto(this.trendingPageUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
-            // CRITICAL: Wait for Solana token links
-            logger.info('[DexScreener] ⏳ Waiting for token links...');
+            logger.info('[DexScreener] ⏳ Waiting for links...');
             await page.waitForSelector('a[href^="/solana/"]', { timeout: 15000 });
-            await new Promise(r => setTimeout(r, 2000)); // Extra buffer
+            await new Promise(r => setTimeout(r, 2000));
 
-            // DEBUG: Screenshot
             await page.screenshot({ path: 'debug-dexscreener.png' });
-            logger.info('[DexScreener] 📸 Screenshot saved: debug-dexscreener.png');
+            logger.info('[DexScreener] 📸 Screenshot saved');
 
-            logger.info('[DexScreener] 🔍 Extracting token data...');
-
-            // Extract token data
             const tokens = await page.evaluate(() => {
                 const links = Array.from(document.querySelectorAll('a[href^="/solana/"]'));
                 const results: any[] = [];
@@ -96,18 +59,15 @@ export class DexScreenerService {
                 for (const link of links.slice(0, 30)) {
                     try {
                         const href = link.getAttribute('href') || '';
-                        const addressMatch = href.match(/\/solana\/([A-Za-z0-9]+)/);
-                        if (!addressMatch) continue;
+                        const match = href.match(/\/solana\/([A-Za-z0-9]+)/);
+                        if (!match) continue;
 
-                        const address = addressMatch[1];
+                        const address = match[1];
                         if (seen.has(address)) continue;
                         seen.add(address);
 
-                        // Try to get symbol from nearby elements
                         const row = link.closest('tr') || link.closest('[class*="table-row"]');
-                        const symbolEl = row?.querySelector('[class*="symbol"]') ||
-                            row?.querySelector('[class*="token"]') ||
-                            link.querySelector('span');
+                        const symbolEl = row?.querySelector('[class*="symbol"]') || link.querySelector('span');
                         const symbol = symbolEl?.textContent?.trim() || 'UNKNOWN';
 
                         results.push({ address, symbol });
@@ -119,7 +79,7 @@ export class DexScreenerService {
             await browser.close();
             this.lastScanTime = Date.now();
 
-            logger.info(`[DexScreener UI] Found ${tokens.length} tokens`);
+            logger.info(`[DexScreener] Found ${tokens.length} tokens`);
 
             if (tokens.length === 0) {
                 logger.error('[DexScreener] ⚠️ ZERO TOKENS! Check debug-dexscreener.png');
@@ -138,124 +98,71 @@ export class DexScreenerService {
                 volume5mUsd: 0,
                 volume24hUsd: 0,
                 priceChange5m: 0,
-
-                results.push({
-                    address,
-                    symbol,
-                    priceChangeM5,
-                    volumeM5
-                });
-            } catch (err) {
-                // Skip this row, continue
-            }
-        }
-
-                return results;
-    });
-
-            await browser.close();
-this.lastScanTime = Date.now();
-
-logger.info(`[DexScreener UI] Found ${tokens.length} trending tokens`);
-
-// Convert to TokenSnapshot format
-return tokens.map((item: any) => ({
-    source: 'dexscreener',
-    chain: 'solana' as const,
-    mint: String(item.address), // NORMALIZED with String()
-    name: item.symbol,
-    symbol: item.symbol,
-    priceUsd: 0, // Will be fetched from BirdEye
-    liquidityUsd: 0, // Will be fetched from BirdEye
-    marketCapUsd: 0, // Will be fetched from BirdEye
-    volume5mUsd: item.volumeM5,
-    volume24hUsd: 0,
-    priceChange5m: item.priceChangeM5,
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    links: {
-        dexScreener: `https://dexscreener.com/solana/${item.address}`
-    }
-}));
-
-        } catch (error: any) {
-    if (browser) await browser.close();
-    logger.error(`[DexScreener UI] Scraping error: ${error.message}`);
-    this.lastScanTime = Date.now(); // Still update to prevent hammering on errors
-    return [];
-}
-    }
-
-    /**
-     * Fetch tokens from DexScreener (Free API)
-     * Limit: 30 addresses per call (approx)
-     */
-    async getTokens(mints: string[]): Promise < TokenSnapshot[] > {
-    if(!mints.length) return [];
-
-    // Chunking to handle URL length limits
-    const chunks = this.chunkArray(mints, 30);
-    const allTokens: TokenSnapshot[] = [];
-
-    for(const chunk of chunks) {
-        try {
-            const url = `${this.baseUrl}/${chunk.join(',')}`;
-            const response = await axios.get(url, { timeout: 10000 });
-
-            if (!response.data || !response.data.pairs) continue;
-
-            const pairs = response.data.pairs;
-            // DexScreener returns pairs, we need to map to our TokenSnapshot format.
-            // One mint might have multiple pairs. We usually want the most liquid one or aggregate.
-            // Strategy: Take the pair with highest liquidity for each unique baseToken.address
-
-            // Group by mint
-            const bestPairs: Record<string, any> = {};
-
-            for (const pair of pairs) {
-                const mint = pair.baseToken.address;
-                if (!bestPairs[mint] || pair.liquidity.usd > bestPairs[mint].liquidity.usd) {
-                    bestPairs[mint] = pair;
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                links: {
+                    dexScreener: `https://dexscreener.com/solana/${item.address}`
                 }
-            }
-
-            const snapshots = Object.values(bestPairs).map((pair: any) => this.mapPairToSnapshot(pair));
-            allTokens.push(...snapshots);
+            }));
 
         } catch (error: any) {
-            logger.error(`[DexScreener] Error fetching chunk: ${error.message}`);
+            if (browser) await browser.close();
+            logger.error(`[DexScreener] Error: ${error.message}`);
+            this.lastScanTime = Date.now();
+            return [];
         }
     }
+
+    async getTokens(mints: string[]): Promise<TokenSnapshot[]> {
+        if (mints.length === 0) return [];
+
+        const chunks = this.chunkArray(mints, 30);
+        const allTokens: TokenSnapshot[] = [];
+
+        for (const chunk of chunks) {
+            try {
+                const url = `${this.baseUrl}/${chunk.join(',')}`;
+                const response = await axios.get(url, { timeout: 10000 });
+
+                if (response.data?.pairs) {
+                    const mapped = response.data.pairs.map((pair: any) => this.mapPairToSnapshot(pair));
+                    allTokens.push(...mapped);
+                }
+            } catch {
+                logger.warn(`[DexScreener] Batch fetch failed for ${chunk.length} tokens`);
+            }
+            await new Promise((r) => setTimeout(r, 100));
+        }
 
         return allTokens;
-}
+    }
 
     private mapPairToSnapshot(pair: any): TokenSnapshot {
-    return {
-        source: 'dexscreener',
-        chain: pair.chainId === 'solana' ? 'solana' : (pair.chainId === 'base' ? 'base' : undefined),
-        mint: pair.baseToken.address,
-        name: pair.baseToken.name,
-        symbol: pair.baseToken.symbol,
-        priceUsd: parseFloat(pair.priceUsd) || 0,
-        liquidityUsd: pair.liquidity?.usd || 0,
-        marketCapUsd: pair.marketCap || pair.fdv || 0, // DexScreener uses FDV often as MC
-        volume5mUsd: pair.volume?.m5 || 0,
-        volume30mUsd: pair.volume?.h1 / 2 || 0, // Approx
-        volume24hUsd: pair.volume?.h24 || 0,
-        createdAt: new Date(pair.pairCreatedAt || Date.now()),
-        updatedAt: new Date(),
-        links: {
-            dexScreener: pair.url
-        }
-    };
-}
+        return {
+            source: 'dexscreener',
+            chain: 'solana',
+            mint: pair.baseToken?.address || '',
+            name: pair.baseToken?.name || 'Unknown',
+            symbol: pair.baseToken?.symbol || '???',
+            priceUsd: parseFloat(pair.priceUsd || '0') || 0,
+            liquidityUsd: pair.liquidity?.usd || 0,
+            marketCapUsd: pair.marketCap || pair.fdv || 0,
+            volume5mUsd: pair.volume?.m5 || 0,
+            volume24hUsd: pair.volume?.h24 || 0,
+            priceChange5m: pair.priceChange?.m5 || 0,
+            createdAt: new Date(pair.pairCreatedAt || Date.now()),
+            updatedAt: new Date(),
+            links: {
+                dexScreener: pair.url || `https://dexscreener.com/solana/${pair.baseToken?.address}`
+            }
+        };
+    }
 
     private chunkArray<T>(arr: T[], size: number): T[][] {
-    const res: T[][] = [];
-    for (let i = 0; i < arr.length; i += size) {
-        res.push(arr.slice(i, i + size));
+        const res: T[][] = [];
+        for (let i = 0; i < arr.length; i += size) {
+            res.push(arr.slice(i, i + size));
+        }
+        return res;
     }
-    return res;
-}
 }
