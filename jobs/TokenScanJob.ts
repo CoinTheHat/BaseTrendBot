@@ -103,7 +103,6 @@ export class TokenScanJob {
 
             // Scan Statistics
             let lowLiqCount = 0;
-            let lowVolCount = 0;
             let weakMomentumCount = 0;
             let ghostCount = 0;
             let lowScoreCount = 0;
@@ -141,12 +140,6 @@ export class TokenScanJob {
                             return;
                         }
 
-                        // VOLUME FILTER: 1h volume must be > $3k (realistic threshold)
-                        if (v1h < 3000) {
-                            lowVolCount++;
-                            logger.debug(`[Filter] 📊 Low 1h Volume: ${token.symbol} ($${Math.floor(v1h)})`);
-                            return;
-                        }
 
                         // IMPULSE CHECK: 1h Volume / Liquidity > 0.5x
                         // Lower ratio since we're using hourly data (not 5m)
@@ -256,7 +249,7 @@ export class TokenScanJob {
             }
 
             // SCAN SUMMARY
-            const totalRejected = lowLiqCount + lowVolCount + weakMomentumCount + ghostCount + lowScoreCount;
+            const totalRejected = lowLiqCount + weakMomentumCount + ghostCount + lowScoreCount;
             logger.info(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 [SCAN SUMMARY]
@@ -267,7 +260,6 @@ export class TokenScanJob {
 
 🚫 REJECTED (${totalRejected}):
   💧 Low Liquidity (<$5k): ${lowLiqCount}
-  📊 Low 1h Volume (<$3k): ${lowVolCount}
   💤 Weak Momentum (<0.5x): ${weakMomentumCount}
   👻 Ghost Protocol: ${ghostCount}
   ❌ AI Score <7: ${lowScoreCount}
