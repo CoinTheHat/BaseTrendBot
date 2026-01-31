@@ -36,31 +36,39 @@ export class DashboardServer {
     }
 
     private setupRoutes() {
-        // API Endpoint for Client-Side Rendering
+        // API Endpoint: Dashboard verilerini gönderir
         this.app.get('/api/calls', async (req, res) => {
             try {
+                // Use existing storage method
                 const metrics = await this.storage.getDashboardMetrics();
 
-                // Transform for Frontend
-                const recentCalls = metrics.recentCalls.map((token: any) => {
-                    const entryMc = token.alertMc || 0;
-                    const athMc = token.athMc || entryMc; // Fallback
-                    const multiplier = entryMc > 0 ? (athMc / entryMc) : 0;
+                // Frontend'in beklediği format (HTML ile %100 uyumlu)
+                // Adapting TokenPerformance (flat) to User's desired structure
+                const recentCalls = metrics.recentCalls.map((t: any) => {
+                    const entryMc = t.alertMc || 0; // Giriş MC
+                    const athMc = t.athMc || entryMc; // ATH MC
+                    const multiplier = entryMc > 0 ? (athMc / entryMc) : 1.0;
 
                     return {
-                        ...token,
-                        entryMc,
-                        athMc,
-                        multiplier: Number(multiplier.toFixed(2))
+                        symbol: t.symbol,
+                        status: t.status, // MOONED, RUGGED, TRACKING
+                        alertTimestamp: t.alertTimestamp,
+                        entryMc: entryMc,
+                        athMc: athMc,
+                        multiplier: Number(multiplier.toFixed(2)),
+                        mint: t.mint // <--- ÖNEMLİ: DB'de 'mint' olarak saklanıyor.
                     };
                 });
 
                 res.json({
-                    ...metrics,
-                    recentCalls // Override with enriched data
+                    winRate: metrics.winRate,
+                    totalCalls: metrics.totalCalls,
+                    moonCount: metrics.moonCount,
+                    recentCalls
                 });
-            } catch (err) {
-                logger.error('[Dashboard] API Error:', err);
+
+            } catch (error) {
+                logger.error(`Dashboard API Error: ${error}`);
                 res.status(500).json({ error: 'Internal Server Error' });
             }
         });
