@@ -1,7 +1,7 @@
 import { CronJob } from 'cron';
 import { logger } from '../utils/Logger';
 import { PostgresStorage } from '../storage/PostgresStorage';
-import { DexScreenerService } from '../services/DexScreenerService';
+import { BirdeyeService } from '../services/BirdeyeService';
 import { config } from '../config/env';
 
 export class PerformanceMonitorJob {
@@ -10,8 +10,7 @@ export class PerformanceMonitorJob {
 
     constructor(
         private storage: PostgresStorage,
-        private dexScreener: DexScreenerService,
-        private birdeye: any // Injected dynamically or updated in index.ts
+        private birdeye: BirdeyeService
     ) {
         // Run every 10 minutes: "*/10 * * * *"
         this.job = new CronJob('*/10 * * * *', () => {

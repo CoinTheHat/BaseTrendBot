@@ -17,6 +17,13 @@ async function hardReset() {
     const { Pool } = require('pg');
     const { config } = require('../config/env');
 
+    if (!config.DATABASE_URL) {
+        console.error('❌ ERROR: DATABASE_URL is missing from .env file.');
+        console.error('👉 Since your database is on Railway, you must copy the "Connection URL" from Railway and add it to your local .env file:');
+        console.error('   DATABASE_URL=postgresql://postgres:password@roundhouse.proxy.rlwy.net:12345/railway');
+        process.exit(1);
+    }
+
     const pool = new Pool({
         connectionString: config.DATABASE_URL,
         ssl: config.DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false }
