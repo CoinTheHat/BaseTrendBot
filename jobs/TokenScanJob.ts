@@ -124,7 +124,7 @@ export class TokenScanJob {
                         // Volume 5m > 5k
 
                         const liq = token.liquidityUsd || 0;
-                        const v1h = token.volume1hUsd || ((token.volume24hUsd || 0) / 24); // 1h volume (more reliable)
+                        const v1h = (token.volume24hUsd || 0) / 24; // 1h volume estimate (more reliable)
 
                         // Double check Liq
                         if (liq < 5000) {
@@ -155,7 +155,7 @@ export class TokenScanJob {
                         if (v1h > 10000 && impulseRatio > 1.0) {
                             const mockMomentum = {
                                 volume: v1h,
-                                swapCount: Math.floor(v1h / 1000),
+                                swaps: Math.floor(v1h / 1000),
                                 isHot: true
                             };
                             await this.bot.sendFastAlert(token, mockMomentum);
