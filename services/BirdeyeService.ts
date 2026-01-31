@@ -46,65 +46,40 @@ export class BirdeyeService {
      * Returns Map<mint, { price, mc, liquidity }>
      */
     async getTokensOverview(mints: string[], chain: 'solana' | 'base'): Promise<Map<string, any>> {
-        if (!mints.length) return new Map();
+        if (!config.BIRDEYE_API_KEY || !mints.length) return new Map();
 
-        // BirdEye limit is 50 per call normally, let's chunk safely at 20
-        const chunkSize = 20;
+        // BirdEye limit is 50 per call normally.
+        const chunkSize = 50;
         const resultMap = new Map<string, any>();
 
         for (let i = 0; i < mints.length; i += chunkSize) {
             const chunk = mints.slice(i, i + chunkSize);
             try {
-                // Post request for bulk
-                // Note: Check docs if GET or POST. Public API usually supports headers for list? 
-                // Using x-chain.
-                // Actually, /defi/v2/tokens/overview takes 'address' param comma separated?
-                // Let's assume comma separated GET based on standard BirdEye patterns or POST.
-
-                // Correction: V2 usually implies standard GET with list or POST.
-                // Let's try GET with comma separated addresses as per common implementation
-
-                // Docs say: GET /defi/v2/tokens/overview?address_list=... on some versions, 
-                // or /defi/multi_price. 
-                // Let's stick to the secure standard endpoint: /defi/multi_price is definitely bulk.
-                // But user asked for /defi/v2/tokens/overview.
-                // NOTE: Using /defi/multi_price is safer for bulk pricing. 
-                // However, user specifically asked for OVERVIEW to get MC/Liq.
-                // We will try iterating simpler requests if bulk overview isn't documented clearly as GET.
-                // Actually, for "Professional Mode", let's use the explicit single calls in parallel if list not supported, 
-                // OR use the Multi-Price and separate Token Info calls.
-
-                // OPTIMIZATION: Use /multi_price for price, but we need MC.
-                // Let's assume standard V2 GET with ?list is not standard.
-                // We will use axios.all (parallel) for Overview if bulk endpoint ambiguous, 
-                // BUT User Request implied bulk support. 
-                // Let's use the standard "list" param if available, if not, iterate.
-
-                // TRUSTING USER PROMPT: "allows bulk fetching"
-                // Assuming headers: x-chain, content-type.
-
+                // FIXED: Use 'list_address' param and explicit headers
                 const response = await axios.get(`${this.baseUrl}/defi/v2/tokens/overview`, {
-                    headers: { ...this.headers, 'x-chain': chain },
+                    headers: {
+                        'X-API-KEY': config.BIRDEYE_API_KEY,
+                        'x-chain': chain,
+                        'accept': 'application/json'
+                    },
                     params: {
-                        address_list: chunk.join(',')
+                        list_address: chunk.join(',')
                     }
                 });
 
                 const data = response.data?.data || [];
-                // Data likely array of objects
                 if (Array.isArray(data)) {
                     data.forEach((t: any) => {
                         resultMap.set(t.address, {
                             price: t.price,
-                            mc: t.mc || t.realMc || 0,
+                            mc: t.mc || t.realMc || t.marketCap || 0,
                             liquidity: t.liquidity || 0
                         });
                     });
                 }
 
             } catch (error: any) {
-                logger.error(`[Birdeye] Bulk Overview Warning: ${error.message}`);
-                // Fallback: try fetching singular if bulk fails? No, too slow.
+                logger.error(`[Birdeye] Bulk Overview Warning (${chain}): ${error.message} (status: ${error.response?.status})`);
             }
         }
         return resultMap;
