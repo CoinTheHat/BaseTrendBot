@@ -28,7 +28,7 @@ export class DexScreenerService {
 
         let browser;
         try {
-            logger.info('[DexScreener] 🌐 Launching browser...');
+            logger.info('[DexScreener] 🌐 Launching Mass Scraper (100 tokens)...');
 
             browser = await puppeteer.launch({
                 headless: true,
@@ -37,104 +37,110 @@ export class DexScreenerService {
 
             const page = await browser.newPage();
             await page.setViewport({ width: 1920, height: 1080 });
-            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36');
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-            await new Promise(r => setTimeout(r, Math.random() * 2000 + 1000));
-
-            logger.info('[DexScreener] 📄 Navigating...');
+            logger.info('[DexScreener] 📄 Navigating to Trending...');
             await page.goto(this.trendingPageUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
-            logger.info('[DexScreener] ⏳ Waiting for links...');
-            await page.waitForSelector('a[href^="/solana/"]', { timeout: 15000 });
+            // Wait and scroll to load lazy-loaded elements
+            await page.waitForSelector('a[href^="/solana/"]', { timeout: 15000 }).catch(() => { });
+            await page.evaluate(() => window.scrollBy(0, 5000));
             await new Promise(r => setTimeout(r, 2000));
 
-            await page.screenshot({ path: 'debug-dexscreener.png' });
-            logger.info('[DexScreener] 📸 Screenshot saved');
-
             const tokens = await page.evaluate(() => {
-                const links = Array.from(document.querySelectorAll('a[href^="/solana/"]'));
+                const parseVal = (s: string) => {
+                    if (!s || s === '-') return 0;
+                    const clean = s.replace(/[$,\s]/g, '').toUpperCase();
+                    let mult = 1;
+                    if (clean.endsWith('K')) mult = 1000;
+                    else if (clean.endsWith('M')) mult = 1000000;
+                    else if (clean.endsWith('B')) mult = 1000000000;
+                    const val = parseFloat(clean.replace(/[KMB]/g, ''));
+                    return isNaN(val) ? 0 : val * mult;
+                };
+
+                const parseAgeMs = (s: string) => {
+                    if (!s) return 0;
+                    const m = s.match(/^(\d+)([mhd])$/);
+                    if (!m) return 0;
+                    const v = parseInt(m[1]);
+                    const u = m[2];
+                    if (u === 'm') return v * 60 * 1000;
+                    if (u === 'h') return v * 3600 * 1000;
+                    if (u === 'd') return v * 86400 * 1000;
+                    return 0;
+                };
+
+                const rows = Array.from(document.querySelectorAll('a.ds-dex-table-row, a[href^="/solana/"]'))
+                    .map(el => ({
+                        link: el,
+                        row: el.closest('tr') || el.closest('.ds-dex-table-row') || el.parentElement?.parentElement
+                    }))
+                    .filter(item => item.row && item.link.getAttribute('href')?.includes('/solana/'));
+
                 const results: any[] = [];
                 const seen = new Set<string>();
 
-                for (const link of links.slice(0, 30)) {
+                for (const item of rows) {
                     try {
-                        const href = link.getAttribute('href') || '';
+                        const href = item.link.getAttribute('href') || '';
                         const match = href.match(/\/solana\/([A-Za-z0-9]+)/);
-                        if (!match) continue;
+                        if (!match || seen.has(match[1])) continue;
 
                         const address = match[1];
-                        if (seen.has(address)) continue;
                         seen.add(address);
 
-                        const row = link.closest('tr') || link.closest('[class*="table-row"]') || link.parentElement?.parentElement;
-                        if (!row) continue;
+                        const row = item.row as HTMLElement;
+                        const symbolEl = row.querySelector('.ds-dex-table-row-base-token-symbol') ||
+                            row.querySelector('[class*="symbol"]') ||
+                            item.link.querySelector('span');
 
-                        const symbolEl = row.querySelector('[class*="symbol"]') || link.querySelector('span');
-                        const symbol = symbolEl?.textContent?.trim() || 'UNKNOWN';
+                        const cells = Array.from(row.querySelectorAll('td, div.ds-dex-table-row-col, [class*="cell"]'));
+                        const texts = cells.map(c => c.textContent?.trim() || '');
 
-                        // Extract all cell texts
-                        const cells = Array.from(row.querySelectorAll('td, [class*="cell"]'));
-                        const cellTexts = cells.map(c => c.textContent?.trim() || '');
-
-                        // Parse liquidity
-                        let liquidity = 0;
-                        for (const text of cellTexts) {
-                            if (text.includes('$') && (text.includes('K') || text.includes('M'))) {
-                                const clean = text.replace(/[^0-9.KM]/g, '');
-                                if (clean.includes('K')) {
-                                    liquidity = parseFloat(clean.replace('K', '')) * 1000;
-                                } else if (clean.includes('M')) {
-                                    liquidity = parseFloat(clean.replace('M', '')) * 1000000;
-                                }
-                                if (liquidity > 1000) break;
-                            }
-                        }
-
-                        // Parse volume
-                        let volume24h = 0;
-                        for (const text of cellTexts) {
-                            if (text.includes('$') && text.length < 20) {
-                                const clean = text.replace(/[^0-9.KM]/g, '');
-                                if (clean.includes('K')) {
-                                    const val = parseFloat(clean.replace('K', '')) * 1000;
-                                    if (val > volume24h) volume24h = val;
-                                } else if (clean.includes('M')) {
-                                    const val = parseFloat(clean.replace('M', '')) * 1000000;
-                                    if (val > volume24h) volume24h = val;
-                                }
-                            }
-                        }
-
-                        // Parse price
                         let price = 0;
-                        for (const text of cellTexts) {
-                            if (text.startsWith('$') && text.includes('.')) {
-                                const priceMatch = text.match(/\$([0-9.]+)/);
-                                if (priceMatch) {
-                                    const p = parseFloat(priceMatch[1]);
-                                    if (p > 0 && p < 1000) {
-                                        price = p;
-                                        break;
-                                    }
-                                }
+                        let ageStr = '';
+                        let moneyValues: number[] = [];
+
+                        for (const t of texts) {
+                            if (t.startsWith('$') && t.includes('.') && t.length < 20 && price === 0) {
+                                price = parseFloat(t.replace(/[$,]/g, ''));
+                            }
+                            if (t.match(/^\d+[mhd]$/)) ageStr = t;
+                            if (t.includes('$') && (t.includes('K') || t.includes('M') || t.includes('B'))) {
+                                moneyValues.push(parseVal(t));
                             }
                         }
 
-                        results.push({ address, symbol, liquidity, volume24h, price });
-                    } catch { }
+                        // Remove price from moneyValues (usually first entry)
+                        if (price > 0 && moneyValues.length > 0 && Math.abs(moneyValues[0] - price) < 0.0001) {
+                            moneyValues.shift();
+                        }
+
+                        // Heuristic: Last 3 money values are Vol, Liq, MC
+                        const mc = moneyValues.length >= 1 ? moneyValues[moneyValues.length - 1] : 0;
+                        const liq = moneyValues.length >= 2 ? moneyValues[moneyValues.length - 2] : 0;
+                        const vol = moneyValues.length >= 3 ? moneyValues[moneyValues.length - 3] : 0;
+
+                        results.push({
+                            address,
+                            symbol: symbolEl?.textContent?.trim() || 'UNKNOWN',
+                            price,
+                            volume: vol,
+                            liquidity: liq,
+                            marketCap: mc,
+                            ageMs: parseAgeMs(ageStr)
+                        });
+
+                        if (results.length >= 100) break;
+                    } catch (e) { }
                 }
                 return results;
             });
 
             await browser.close();
             this.lastScanTime = Date.now();
-
-            logger.info(`[DexScreener] Found ${tokens.length} tokens`);
-
-            if (tokens.length === 0) {
-                logger.error('[DexScreener] ⚠️ ZERO TOKENS! Check debug-dexscreener.png');
-                return [];
-            }
+            logger.info(`[DexScreener] ✅ Scraped ${tokens.length} tokens.`);
 
             return tokens.map((item: any) => ({
                 source: 'dexscreener',
@@ -144,11 +150,11 @@ export class DexScreenerService {
                 symbol: item.symbol,
                 priceUsd: item.price || 0,
                 liquidityUsd: item.liquidity || 0,
-                marketCapUsd: 0, // Can calculate from price if needed
-                volume5mUsd: 0, // Not available from table
-                volume24hUsd: item.volume24h || 0,
-                priceChange5m: 0, // Not easily parseable
-                createdAt: new Date(),
+                marketCapUsd: item.marketCap || 0,
+                volume5mUsd: 0,
+                volume24hUsd: item.volume || 0,
+                priceChange5m: 0,
+                createdAt: item.ageMs ? new Date(Date.now() - item.ageMs) : new Date(),
                 updatedAt: new Date(),
                 links: {
                     dexScreener: `https://dexscreener.com/solana/${item.address}`
@@ -157,7 +163,7 @@ export class DexScreenerService {
 
         } catch (error: any) {
             if (browser) await browser.close();
-            logger.error(`[DexScreener] Error: ${error.message}`);
+            logger.error(`[DexScreener] Scraping failed: ${error.message}`);
             this.lastScanTime = Date.now();
             return [];
         }

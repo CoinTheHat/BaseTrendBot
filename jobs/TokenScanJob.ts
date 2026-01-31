@@ -127,22 +127,31 @@ export class TokenScanJob {
                         // 3. Twitter sentiment (Ghost Protocol)
 
                         // --- STEP 2: PREMIUM FILTERS ---
-                        // Liquidity > 5k (Handled by API Fallback / Implicit in Trending)
-                        // Volume 5m > 5k
-
                         const liq = token.liquidityUsd || 0;
-                        const v1h = (token.volume24hUsd || 0) / 24; // 1h volume estimate (more reliable)
+                        const v1h = (token.volume24hUsd || 0) / 24;
+                        const mc = token.marketCapUsd || 0;
+                        const ageHours = token.createdAt ? (Date.now() - token.createdAt.getTime()) / (3600 * 1000) : 0;
 
-                        // Double check Liq
+                        // FILTER 1: Liquidity (Min $5k)
                         if (liq < 5000) {
                             lowLiqCount++;
                             logger.debug(`[Filter] 💧 Low Liquidity: ${token.symbol} ($${Math.floor(liq)})`);
                             return;
                         }
 
+                        // FILTER 2: Market Cap (Max $5M - We want early gems)
+                        if (mc > 5000000) {
+                            logger.debug(`[Filter] 🐳 Too Big: ${token.symbol} (MC: $${(mc / 1000000).toFixed(1)}M)`);
+                            return;
+                        }
 
-                        // IMPULSE CHECK: 1h Volume / Liquidity > 0.5x
-                        // Lower ratio since we're using hourly data (not 5m)
+                        // FILTER 3: Age (Max 24h - We want fresh trends)
+                        if (ageHours > 24) {
+                            logger.debug(`[Filter] 👴 Too Old: ${token.symbol} (${Math.floor(ageHours)}h)`);
+                            return;
+                        }
+
+                        // FILTER 4: Impulse/Momentum (Vol/Liq Ratio > 0.5x)
                         const impulseRatio = v1h / (liq || 1);
                         if (impulseRatio < 0.5) {
                             weakMomentumCount++;
@@ -150,7 +159,8 @@ export class TokenScanJob {
                             return;
                         }
 
-                        logger.info(`[Sniper] 💎 GEM DETECTED: ${token.symbol} | Liq: $${Math.floor(liq)} | 1h Vol: $${Math.floor(v1h)} (Ratio: ${impulseRatio.toFixed(2)}x)`);
+                        const ageDisplay = ageHours < 1 ? `${Math.floor(ageHours * 60)}m` : `${Math.floor(ageHours)}h`;
+                        logger.info(`[Sniper] 💎 GEM DETECTED: ${token.symbol} | MC: $${Math.floor(mc)} | Age: ${ageDisplay} | Ratio: ${impulseRatio.toFixed(2)}x`);
 
 
                         // --- STEP 3: TWITTER SCAN (Safe Mode) ---
