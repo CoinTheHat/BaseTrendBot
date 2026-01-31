@@ -53,7 +53,7 @@ export class TokenScanJob {
     private async runLoop() {
         if (!this.isRunning) return;
         await this.runCycle();
-        const delay = 120000; // 2 Minutes (Premium Interval)
+        const delay = 60000; // 60 seconds
         logger.info(`[Premium-Mode] Scan complete. Resting for 60s...`);
         setTimeout(() => this.runLoop(), delay);
     }
