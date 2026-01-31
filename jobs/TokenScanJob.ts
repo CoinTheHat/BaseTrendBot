@@ -94,8 +94,7 @@ export class TokenScanJob {
             // b. Execute fetches in parallel (BirdEye SOL Only)
             const [pumpTokens, birdSolTokens] = await Promise.all([
                 this.pumpFun.getNewTokens(),
-                this.birdeye.fetchNewListings('solana', 10),
-                // this.birdeye.fetchNewListings('base', 10) // Base Paused for Eco-Mode
+                this.birdeye.fetchNewListings('solana', 10)
             ]);
 
             const birdBaseTokens: TokenSnapshot[] = []; // Empty for now

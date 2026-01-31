@@ -40,50 +40,7 @@ export class BirdeyeService {
         }
     }
 
-    /**
-     * Bulk fetch token overview (Performance Monitor)
-     * Endpoint: /defi/v2/tokens/overview
-     * Returns Map<mint, { price, mc, liquidity }>
-     */
-    async getTokensOverview(mints: string[], chain: 'solana' | 'base'): Promise<Map<string, any>> {
-        if (!config.BIRDEYE_API_KEY || !mints.length) return new Map();
 
-        // BirdEye limit is 50 per call normally.
-        const chunkSize = 50;
-        const resultMap = new Map<string, any>();
-
-        for (let i = 0; i < mints.length; i += chunkSize) {
-            const chunk = mints.slice(i, i + chunkSize);
-            try {
-                // FIXED: Use 'list_address' param and explicit headers
-                const response = await axios.get(`${this.baseUrl}/defi/v2/tokens/overview`, {
-                    headers: {
-                        'X-API-KEY': config.BIRDEYE_API_KEY,
-                        'x-chain': chain,
-                        'accept': 'application/json'
-                    },
-                    params: {
-                        list_address: chunk.join(',')
-                    }
-                });
-
-                const data = response.data?.data || [];
-                if (Array.isArray(data)) {
-                    data.forEach((t: any) => {
-                        resultMap.set(t.address, {
-                            price: t.price,
-                            mc: t.mc || t.realMc || t.marketCap || 0,
-                            liquidity: t.liquidity || 0
-                        });
-                    });
-                }
-
-            } catch (error: any) {
-                logger.error(`[Birdeye] Bulk Overview Warning (${chain}): ${error.message} (status: ${error.response?.status})`);
-            }
-        }
-        return resultMap;
-    }
 
     /**
      * Get Token ATH via OHLCV

@@ -42,8 +42,7 @@ export class PerformanceMonitorJob {
 
             logger.info(`[PerformanceJob] Checking ${tokens.length} tokens...`);
 
-            // 2. Fetch current prices via BirdEye (Bulk)
-            // 2. Fetch current prices via DexScreener (Updated for Eco-Mode)
+            // 2. Fetch current prices via DexScreener (Eco-Mode)
             const mints = tokens.map(t => t.mint);
 
             // DexScreener handles mixed chains automatically
