@@ -159,15 +159,6 @@ export class TokenScanJob {
 
                         logger.info(`[Sniper] 💎 GEM DETECTED: ${token.symbol} | Liq: $${Math.floor(liq)} | 1h Vol: $${Math.floor(v1h)} (Ratio: ${impulseRatio.toFixed(2)}x)`);
 
-                        // Check for ultra-hot tokens (optional fast alert)
-                        if (v1h > 10000 && impulseRatio > 1.0) {
-                            const mockMomentum = {
-                                volume: v1h,
-                                swaps: Math.floor(v1h / 1000),
-                                isHot: true
-                            };
-                            await this.bot.sendFastAlert(token, mockMomentum);
-                        }
 
                         // --- STEP 3: TWITTER SCAN (Safe Mode) ---
                         let tweets: string[] = [];
