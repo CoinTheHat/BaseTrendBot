@@ -87,8 +87,7 @@ async function main() {
         storage,
         trendCollector,
         trendMatcher,
-        alphaSearchService, // Injected
-        goPlusService
+        alphaSearchService // Injected
     );
 
     // 6. Performance & Dashboard

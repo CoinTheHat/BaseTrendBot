@@ -2,7 +2,6 @@ import { config } from '../config/env';
 import { logger } from '../utils/Logger';
 import { PumpFunService } from '../services/PumpFunService';
 import { BirdeyeService } from '../services/BirdeyeService';
-import { GoPlusService } from '../services/GoPlusService';
 import { Matcher } from '../core/Matcher';
 import { ScoringEngine } from '../core/ScoringEngine';
 import { PhaseDetector } from '../core/PhaseDetector';
@@ -39,8 +38,7 @@ export class TokenScanJob {
         private storage: PostgresStorage,
         private trendCollector: TrendCollector,
         private trendMatcher: TrendTokenMatcher,
-        private alphaSearch: AlphaSearchService,
-        private goPlus: GoPlusService
+        private alphaSearch: AlphaSearchService
     ) { }
 
     start() {
@@ -97,7 +95,6 @@ export class TokenScanJob {
             logger.info(`[Job] 🔍 Processing ${freshCandidates.length} fresh candidates...`);
 
             // Scan Statistics
-            let honeypotCount = 0;
             let lowLiqCount = 0;
             let lowVolCount = 0;
             let weakMomentumCount = 0;
@@ -113,14 +110,14 @@ export class TokenScanJob {
                     try {
                         this.processedCache.set(token.mint, Date.now());
 
-                        // --- STEP 1: HONEYPOT CHECK ---
-                        const chain = token.mint.startsWith('0x') ? 'base' : 'solana';
-                        const isSafe = await this.goPlus.checkToken(token.mint, chain);
-                        if (!isSafe) {
-                            honeypotCount++;
-                            logger.warn(`[Security] 🚨 HONEYPOT: ${token.symbol}`);
-                            return;
-                        }
+
+                        // --- STEP 1: SECURITY (SIMPLIFIED) ---
+                        // BirdEye Trending already filters out most scams
+                        // GoPlus often returns "No data" for new tokens anyway
+                        // Skip honeypot check for speed, rely on:
+                        // 1. BirdEye's curated trending list
+                        // 2. Real-time volume/liquidity checks
+                        // 3. Twitter sentiment (Ghost Protocol)
 
                         // --- STEP 2: PREMIUM FILTERS ---
                         // Liquidity > 5k (Handled by API Fallback / Implicit in Trending)
@@ -249,7 +246,7 @@ export class TokenScanJob {
             }
 
             // SCAN SUMMARY
-            const totalRejected = honeypotCount + lowLiqCount + lowVolCount + weakMomentumCount + ghostCount + lowScoreCount;
+            const totalRejected = lowLiqCount + lowVolCount + weakMomentumCount + ghostCount + lowScoreCount;
             logger.info(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 [SCAN SUMMARY]
@@ -259,10 +256,9 @@ export class TokenScanJob {
 🎯 Fresh Candidates: ${freshCandidates.length}
 
 🚫 REJECTED (${totalRejected}):
-  🚨 Honeypot: ${honeypotCount}
   💧 Low Liquidity (<$5k): ${lowLiqCount}
-  📊 Low Volume (<$5k): ${lowVolCount}
-  💤 Weak Momentum (<1.5x): ${weakMomentumCount}
+  📊 Low Volume (<$2k real): ${lowVolCount}
+  💤 Weak Momentum (<1.2x): ${weakMomentumCount}
   👻 Ghost Protocol: ${ghostCount}
   ❌ AI Score <7: ${lowScoreCount}
 
