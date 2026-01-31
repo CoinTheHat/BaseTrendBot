@@ -99,16 +99,18 @@ export class BirdeyeService {
             const now = Math.floor(Date.now() / 1000);
             const fiveMinsAgo = now - 300;
 
-            // URL: https://public-api.birdeye.so/defi/txs/token/seek_by_time?address=...
-            const response = await axios.get(`${this.baseUrl}/defi/txs/token/seek_by_time`, {
+            // URL: https://public-api.birdeye.so/defi/v3/token/txs_by_volume?address=...
+            // User Recommendation: Use 'txs_by_volume' to capture BIGGEST trades (Whale Volume)
+            const response = await axios.get(`${this.baseUrl}/defi/v3/token/txs_by_volume`, {
                 headers: { ...this.headers, 'x-chain': chain },
                 params: {
                     address: address,
                     after_time: fiveMinsAgo,
                     before_time: now,
-                    tx_type: 'swap',
-                    limit: 100, // Check up to 100 txs to sum volume efficiently
-                    offset: 0
+                    type: 'swap', // V3 usually uses 'type' or 'tx_type', keeping standard
+                    limit: 100,
+                    offset: 0,
+                    sort_type: 'desc'
                 }
             });
 
@@ -128,11 +130,13 @@ export class BirdeyeService {
                 swapCount++;
             }
 
-            // CRITERIA: >15 Swaps AND >$5k Volume in last 5m (User Request: 15)
-            const isHot = swapCount > 15 && totalVolume > 5000;
+            // CRITERIA: Volume is King.
+            // User Feedback: "Swap sayısı önemli değil, hacim ve likidite önemli."
+            // We keep a minimal swap check (>5) just to ensure it's not a single wash trade.
+            const isHot = totalVolume > 5000 && swapCount > 5;
 
             if (isHot) {
-                logger.info(`[Momentum] 🔥 Ultra-Hot: ${address} (${swapCount} Swaps, $${Math.floor(totalVolume)})`);
+                logger.info(`[Momentum] 🔥 Ultra-Hot: ${address} ($${Math.floor(totalVolume)} Vol, ${swapCount} Swaps)`);
             }
 
             return { isHot, swaps: swapCount, volume: totalVolume };
