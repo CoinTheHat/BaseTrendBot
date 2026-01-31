@@ -36,10 +36,22 @@ export class PerformanceMonitorJob {
 
             if (tokens.length === 0) return;
 
+            const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+            const now = Date.now();
+
             logger.info(`[Autopsy] 🩺 Vital Check on ${tokens.length} active tokens...`);
 
             for (const token of tokens) {
                 try {
+                    // 0. Timeout Check (24 Hours)
+                    // If a token does nothing for 24 hours, we drop it to save resources.
+                    const age = now - new Date(token.alertTimestamp).getTime();
+                    if (age > TWENTY_FOUR_HOURS) {
+                        logger.info(`[Autopsy] 💤 Token ${token.symbol} is stale (>24h). Finalizing as STALE.`);
+                        await this.finalizeToken(token, 'FINALIZED', token.currentMc, token.currentMc); // Or a new status like 'STALE'
+                        continue;
+                    }
+
                     // 1. Get Current Price
                     // Note: Birdeye V3 Price endpoint is cheap (CUs).
                     const currentPrice = await this.birdeye.getTokenPrice(token.mint, 'solana');
@@ -87,8 +99,10 @@ export class PerformanceMonitorJob {
                         await this.storage.updatePerformance(token);
                     }
 
-                } catch (err) {
-                    logger.error(`[Autopsy] Error for ${token.symbol}: ${err}`);
+                } catch (err: any) {
+                    // Enhanced Error Logging for diagnosis
+                    const errorDetail = err.response?.data ? JSON.stringify(err.response.data) : err.message;
+                    logger.error(`[Autopsy] Error for ${token.symbol}: ${errorDetail}`);
                 }
             }
 
