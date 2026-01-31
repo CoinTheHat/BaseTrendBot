@@ -54,7 +54,7 @@ export class TokenScanJob {
         if (!this.isRunning) return;
         await this.runCycle();
         const delay = 120000; // 2 Minutes (Premium Interval)
-        logger.info(`[Premium-Mode] Scan complete. Resting for 120s...`);
+        logger.info(`[Premium-Mode] Scan complete. Resting for 60s...`);
         setTimeout(() => this.runLoop(), delay);
     }
 
