@@ -43,13 +43,13 @@ export class BirdeyeService {
         // 2. Fallback: V3 Token List (Volume Sorted)
         if (items.length === 0) {
             try {
-                // FIXED: V3 List requires specific params and chain in URL for some reason (or just strict params)
-                // URL: https://public-api.birdeye.so/defi/v3/token/list?chain=solana&sort_by=v24hUSD&sort_type=desc&min_liquidity=5000&limit=20
+                // FIXED: V3 List requires 'v24h_usd' (snake_case) and specific params
+                // URL: https://public-api.birdeye.so/defi/v3/token/list?chain=solana&sort_by=v24h_usd&sort_type=desc&min_liquidity=5000&limit=20
                 const response = await axios.get(`${this.baseUrl}/defi/v3/token/list`, {
-                    headers: { ...this.headers, 'x-chain': chain }, // Header is generic requirement
+                    headers: { ...this.headers, 'x-chain': chain },
                     params: {
-                        chain: chain, // Added per instruction
-                        sort_by: 'v24hUSD',
+                        chain: chain,
+                        sort_by: 'v24h_usd', // Fixed: snake_case per user instruction
                         sort_type: 'desc',
                         offset: 0,
                         limit: 50,
