@@ -2,6 +2,7 @@
 // Core Token Snapshot (Unified Model)
 export interface TokenSnapshot {
     source: "pumpfun" | "dexscreener" | "birdeye" | "combined";
+    chain?: "solana" | "base";
     mint: string;
     name: string;
     symbol: string;
@@ -10,6 +11,7 @@ export interface TokenSnapshot {
     liquidityUsd?: number;
     volume5mUsd?: number;
     volume30mUsd?: number;
+    volume24hUsd?: number; // Added for BirdEye
     buyers5m?: number;
     buyers30m?: number;
     priceChange5m?: number; // %

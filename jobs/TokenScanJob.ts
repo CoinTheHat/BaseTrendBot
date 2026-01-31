@@ -1,9 +1,7 @@
 import { config } from '../config/env';
 import { logger } from '../utils/Logger';
 import { PumpFunService } from '../services/PumpFunService';
-import { DexScreenerService } from '../services/DexScreenerService';
 import { BirdeyeService } from '../services/BirdeyeService';
-import { MinoService } from '../services/MinoService';
 import { GoPlusService } from '../services/GoPlusService';
 import { Matcher } from '../core/Matcher';
 import { ScoringEngine } from '../core/ScoringEngine';
@@ -31,8 +29,7 @@ export class TokenScanJob {
 
     constructor(
         private pumpFun: PumpFunService,
-        private dexScreener: DexScreenerService,
-        private birdeye: BirdeyeService,
+        private birdeye: BirdeyeService, // Main Source
         private matcher: Matcher,
         private scorer: ScoringEngine,
         private phaseDetector: PhaseDetector,
@@ -40,11 +37,10 @@ export class TokenScanJob {
         private narrative: NarrativeEngine,
         private bot: ScandexBot,
         private twitter: TwitterPublisher,
-        private storage: PostgresStorage, // Updated type
+        private storage: PostgresStorage,
         private trendCollector: TrendCollector,
         private trendMatcher: TrendTokenMatcher,
         private alphaSearch: AlphaSearchService,
-        private minoService: MinoService,
         private goPlus: GoPlusService
     ) { }
 
@@ -97,18 +93,15 @@ export class TokenScanJob {
                 logger.info(`[Job] Tracking ${watchlistMints.length} Watchlist CAs: ${watchlistMints.join(', ')}`);
             }
 
-            // b. Execute fetches in parallel
-            const [pumpTokens, dexTokens, birdTokens, watchlistTokens, minoSolana, minoBase] = await Promise.all([
+            // b. Execute fetches in parallel (BirdEye SOL + BirdEye BASE)
+            const [pumpTokens, birdSolTokens, birdBaseTokens] = await Promise.all([
                 this.pumpFun.getNewTokens(),
-                this.dexScreener.getLatestPairs(),
-                this.birdeye.getNewTokens(10),
-                watchlistMints.length > 0 ? this.dexScreener.getTokens(watchlistMints) : Promise.resolve([]),
-                this.minoService.fetchNewPairsFromDexScreener('solana'),
-                this.minoService.fetchNewPairsFromDexScreener('base')
-            ]);
+                this.birdeye.fetchNewListings('solana'),
+                this.birdeye.fetchNewListings('base')
+            ]);  // Replaces DexScreener/Mino logic
 
             // Deduplicate by mint
-            const allTokens = [...pumpTokens, ...dexTokens, ...birdTokens, ...watchlistTokens, ...minoSolana, ...minoBase];
+            const allTokens = [...pumpTokens, ...birdSolTokens, ...birdBaseTokens];
             const uniqueTokens: Record<string, TokenSnapshot> = {};
             allTokens.forEach(t => uniqueTokens[t.mint] = t);
             const candidates = Object.values(uniqueTokens);
@@ -193,23 +186,8 @@ export class TokenScanJob {
                 await Promise.all(chunk.map(async (token) => {
                     try {
                         // --- BIRDEYE FALLBACK LOGIC START ---
-                        if (token.symbol === 'UNKNOWN' || token.name === 'Unknown Token' || !token.symbol) {
-                            try {
-                                console.log(`[BirdEye] Attempting to fix UNKNOWN token: ${token.mint}`);
-                                const metadata = await this.birdeye.getTokenMetadata(token.mint);
-
-                                if (metadata) {
-                                    token.symbol = metadata.symbol;
-                                    token.name = metadata.name;
-                                    console.log(`[BirdEye] ✅ FIXED: ${token.mint} is ${token.symbol}`);
-                                } else {
-                                    console.log(`[BirdEye] ❌ Could not find metadata for ${token.mint}`);
-                                }
-                            } catch (error: any) {
-                                console.log(`[BirdEye] API Error: ${error.message}`);
-                            }
-                        }
-                        // --- BIRDEYE FALLBACK LOGIC END ---
+                        // Legacy BirdEye Fallback Removed (Data now hydrated from source)
+                        // If symbol missing, we rely on PumpFun/BirdEye source data.
 
                         // Mark as processed immediately to prevent re-entry in race conditions
                         this.processedCache.set(token.mint, Date.now());
@@ -283,8 +261,8 @@ export class TokenScanJob {
 
                         // logger.info(`[Discovery] MATCH: ${token.symbol} matches '${matchResult.matchedMeme?.phrase}'`);
 
-                        // 3. Enrich (Birdeye) - selectively
-                        const [enrichedToken] = await this.birdeye.enrichTokens([token]);
+                        // 3. Enrich (Birdeye) - Skipped (Data already hydrated from source)
+                        const enrichedToken = token;
 
                         // 4. Score
                         const scoreRes = this.scorer.score(enrichedToken, matchResult);

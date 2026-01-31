@@ -1,7 +1,7 @@
 import { CronJob } from 'cron';
 import { logger } from '../utils/Logger';
 import { PostgresStorage } from '../storage/PostgresStorage';
-import { DexScreenerService } from '../services/DexScreenerService';
+import { BirdeyeService } from '../services/BirdeyeService';
 import { config } from '../config/env';
 
 export class PerformanceMonitorJob {
@@ -10,7 +10,7 @@ export class PerformanceMonitorJob {
 
     constructor(
         private storage: PostgresStorage,
-        private dexScreener: DexScreenerService
+        private birdeye: BirdeyeService
     ) {
         // Run every 1 minutes: "0 */1 * * * *" to capture ATH better
         this.job = new CronJob('0 */1 * * * *', () => {
@@ -42,30 +42,37 @@ export class PerformanceMonitorJob {
 
             logger.info(`[PerformanceJob] Checking ${tokens.length} tokens...`);
 
-            // 2. Fetch current prices via DexScreener
-            // We need to chunk them if too many (DexScreener limit ~30)
+            // 2. Fetch current prices via BirdEye (Bulk)
             const mints = tokens.map(t => t.mint);
+            // NOTE: Assuming all on same chain for simplicity in this batch job, or we iterate.
+            // But mints can be mixed chains. We should split them?
+            // Simplified: Fetch 'solana' batch and 'base' batch separately.
 
-            // Re-use logic from DexScreenerService if avail, or call checkTokens
-            // Service method getTokens handles chunking internally.
-            const snapshots = await this.dexScreener.getTokens(mints);
+            // Partition mints
+            const solMints = mints.filter(m => !m.startsWith('0x'));
+            const baseMints = mints.filter(m => m.startsWith('0x'));
+
+            const solUpdates = await this.birdeye.getTokensOverview(solMints, 'solana');
+            const baseUpdates = await this.birdeye.getTokensOverview(baseMints, 'base');
+
+            // Merge maps
+            const updates = new Map([...solUpdates, ...baseUpdates]);
 
             // 3. Compare & Update
-            for (const snap of snapshots) {
-                const perf = tokens.find(t => t.mint === snap.mint);
-                if (!perf) continue;
+            for (const perf of tokens) {
+                const update = updates.get(perf.mint);
+                if (!update) continue;
 
-                const currentMc = snap.marketCapUsd || 0;
+                const currentMc = update.mc || 0;
                 if (currentMc === 0) continue;
 
                 // SELF-HEALING: Fix missing data from Backfilled items
                 let isRepairNeeded = false;
                 if (!perf.symbol || perf.alertMc === 0) {
                     isRepairNeeded = true;
-                    // Fix Symbol
-                    if (snap.symbol) {
-                        perf.symbol = snap.symbol;
-                    }
+                    // Fix Symbol - NOT NEEDED AS MUCH, BUT KEEP LOGIC IF AVAILABLE
+                    // BirdEye overview doesn't guarantee symbol in bulk map unless we map it differently.
+                    // perf.symbol = ... (Skip for now, updates focus on price)
                     // Fix Alert MC (If 0, assume current is entry)
                     if (perf.alertMc === 0) {
                         perf.alertMc = currentMc;
@@ -116,7 +123,7 @@ export class PerformanceMonitorJob {
                 }
             }
 
-            logger.info(`[PerformanceJob] Updated ${snapshots.length} tokens.`);
+            logger.info(`[PerformanceJob] Updated ${updates.size} tokens.`);
 
         } catch (error) {
             logger.error('[PerformanceJob] Failed:', error);

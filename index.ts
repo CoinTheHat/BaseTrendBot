@@ -1,9 +1,7 @@
 import { config } from './config/env';
 import { TokenScanJob } from './jobs/TokenScanJob';
 import { PumpFunService } from './services/PumpFunService';
-import { DexScreenerService } from './services/DexScreenerService';
 import { BirdeyeService } from './services/BirdeyeService';
-import { MinoService } from './services/MinoService';
 import { GoPlusService } from './services/GoPlusService';
 import { PerformanceMonitorJob } from './jobs/PerformanceMonitorJob';
 import { KeywordMonitorJob } from './jobs/KeywordMonitorJob';
@@ -50,11 +48,9 @@ async function main() {
 
     // 2. Services
     const pumpFun = new PumpFunService();
-    const dexScreener = new DexScreenerService();
     const birdeye = new BirdeyeService();
     const twitterService = new TwitterTrendsService();
     const alphaSearchService = new AlphaSearchService(); // Instantiated
-    const minoService = new MinoService(dexScreener);
     const goPlusService = new GoPlusService();
 
     // 3. Core & Trends
@@ -72,13 +68,12 @@ async function main() {
     // 4. Alerting
     const llmService = new LLMService();
     const narrative = new NarrativeEngine(llmService);
-    const bot = new ScandexBot(watchlist, trendCollector, trendMatcher, dexScreener);
+    const bot = new ScandexBot(watchlist, trendCollector, trendMatcher);
     const twitter = new TwitterPublisher();
 
     // 5. Job
     const job = new TokenScanJob(
         pumpFun,
-        dexScreener,
         birdeye,
         matcher,
         scorer,
@@ -91,12 +86,11 @@ async function main() {
         trendCollector,
         trendMatcher,
         alphaSearchService, // Injected
-        minoService,
         goPlusService
     );
 
     // 6. Performance & Dashboard
-    const performanceJob = new PerformanceMonitorJob(storage, dexScreener);
+    const performanceJob = new PerformanceMonitorJob(storage, birdeye);
     const keywordJob = new KeywordMonitorJob(storage, bot, twitterService, llmService); // New Sniper with AI
     const dashboard = new DashboardServer(storage); // Railway auto-sets PORT env var
 

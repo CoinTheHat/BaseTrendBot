@@ -6,7 +6,7 @@ import { MemeWatchlist } from '../core/MemeWatchlist';
 import { TrendCollector } from '../trends/TrendCollector';
 import { TrendTokenMatcher } from '../core/TrendTokenMatcher';
 import { TrendDigest } from './TrendDigest';
-import { DexScreenerService } from '../services/DexScreenerService';
+
 
 export class ScandexBot {
     private bot: TelegramBot | null = null;
@@ -15,8 +15,7 @@ export class ScandexBot {
     constructor(
         private watchlist: MemeWatchlist,
         private trendCollector?: TrendCollector,
-        private trendMatcher?: TrendTokenMatcher,
-        private dexScreener?: DexScreenerService
+        private trendMatcher?: TrendTokenMatcher
     ) {
         if (config.TELEGRAM_BOT_TOKEN) {
             this.bot = new TelegramBot(config.TELEGRAM_BOT_TOKEN, { polling: false });
@@ -53,46 +52,10 @@ export class ScandexBot {
             this.bot?.sendMessage(msg.chat.id, text, { parse_mode: 'Markdown' });
         });
 
-        // Trend -> Tokens (Alpha)
+        // Trend -> Tokens (Alpha) - DISABLED (DexScreener Removed)
         this.bot.onText(/\/trendtokens|\/alpha/, async (msg) => {
             if (!this.checkAuth(msg)) return; // Guard
-            if (!this.trendCollector || !this.trendMatcher || !this.dexScreener) {
-                this.bot?.sendMessage(msg.chat.id, "❌ Trend modules not enabled.");
-                return;
-            }
-            await this.bot?.sendChatAction(msg.chat.id, 'typing');
-            this.bot?.sendMessage(msg.chat.id, "🕵️‍♂️ **Derin Tarama Başlatıldı...**\nHer trend için canlı havuz taranıyor. (Bu işlem 10-15s sürebilir)");
-
-            // 1. Get Top Trends
-            const trends = this.trendCollector.getTopTrends(5);
-            let matches: any[] = [];
-
-            // 2. Targeted Search (The Fix)
-            // Instead of relying on a generic 'latest' list, we search specifically for each trend.
-            for (const trend of trends) {
-                // Search DexScreener for this trend phrase
-                const results = await this.dexScreener.search(trend.phrase);
-
-                // If found, add to matches (Reuse matcher logic or manual format)
-                if (results.length > 0) {
-                    // Pick best result (highest liquidity or exact match)
-                    const best = results.sort((a, b) => (b.liquidityUsd || 0) - (a.liquidityUsd || 0))[0];
-                    matches.push({
-                        trend: trend,
-                        tokens: [{ snapshot: best, score: 99 }]
-                    });
-                }
-                // Else: Do not push empty match (Hide "Watching..." clutter)
-            }
-
-            // 4. Send Result (Filtered)
-            if (matches.length === 0) {
-                this.bot?.sendMessage(msg.chat.id, "📉 **Şu an Twitter trendlerine uyan bir Solana tokenı bulunamadı.**\nSistem taramaya devam ediyor...");
-                return;
-            }
-
-            const text = this.trendDigest.formatTrendTokenMatches(matches);
-            this.bot?.sendMessage(msg.chat.id, text, { parse_mode: 'Markdown', disable_web_page_preview: true });
+            this.bot?.sendMessage(msg.chat.id, "⚠️ **Komut Geçici Olarak Devre Dışı**\nBirdEye geçişi nedeniyle trend araması şu an aktif değil.", { parse_mode: 'Markdown' });
         });
 
         this.bot.onText(/\/status/, (msg) => {
@@ -171,33 +134,7 @@ export class ScandexBot {
             const ca = match?.[1]?.trim();
             if (!ca) return;
 
-            this.bot?.sendMessage(msg.chat.id, `🔍 **Analiz Başlatılıyor...**\nCA: \`${ca}\`\n\n_Twitter verileri taranıyor, lütfen bekleyin (10-20sn)..._`, { parse_mode: 'Markdown' });
-
-            // Trigger manual analysis (This requires exposing a method in TokenScanJob or similar, or just running ad-hoc logic here)
-            // For now, let's try to fetch token info via DexScreener/Birdeye then run Story Engine
-            try {
-                // 1. Fetch info
-                let token: TokenSnapshot | null = null;
-                const pairs = await this.dexScreener?.getLatestPairs(); // Optimized: usually better to fetch specific, but DexApi might not have getOne.
-                // Fallback: Create dummy snapshot if needed, or implement getOne. 
-                // Let's assume we can use Birdeye for specific lookup if Dex fails or iterate.
-                // ...Simpler: Use Birdeye to get basics
-                if (this.dexScreener) {
-                    // Try to find in cache or recent? 
-                    // Actually, let's just use what we have available. 
-                    // Note: Ideally we'd have a `services.getToken(ca)` method.
-                }
-
-                // Temporary: Just tell user to watch Logs for now if complexity is high, 
-                // OR implement a quick scraper check.
-
-                // Let's rely on the "Watchlist" mechanism. If they Add it, it gets scanned.
-                // Suggestion: Just use /add, but this command confirms "I am looking".
-                this.bot?.sendMessage(msg.chat.id, `⚠️ **Hızlı Analiz** modülü henüz aktif değil. Lütfen \`/add ${ca}\` komutunu kullanarak Watchlist'e ekleyin. Bot otomatik olarak tarayıp raporlayacaktır.`, { parse_mode: 'Markdown' });
-
-            } catch (e) {
-                this.bot?.sendMessage(msg.chat.id, `❌ Hata: ${e}`);
-            }
+            this.bot?.sendMessage(msg.chat.id, `🔍 **Analiz Başlatılıyor...**\nCA: \`${ca}\`\n\n⚠️ **Hızlı Analiz** modülü şu an bakımda. Lütfen \`/add ${ca}\` komutunu kullanarak Watchlist'e ekleyin. Bot otomatik olarak tarayıp raporlayacaktır.`, { parse_mode: 'Markdown' });
         });
     }
 
