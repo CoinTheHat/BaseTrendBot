@@ -48,8 +48,8 @@ export class TokenScanJob {
         if (this.isRunning) return;
         this.isRunning = true;
 
-        // Use 5s for Speed
-        logger.info(`[Job] Token Scan Job started. Interval: 5s (Turbo Mode)`);
+        // Use 60s for Eco-Mode
+        logger.info(`[Job] Token Scan Job started. Interval: 60s (Eco-Mode)`);
 
         // Start Loop
         this.runLoop();
@@ -60,10 +60,10 @@ export class TokenScanJob {
 
         await this.runCycle();
 
-        // Calculate Next Run: Fixed 5s for Professional Mode
-        const delay = 5000;
+        // Calculate Next Run: Fixed 60s for Eco-Mode
+        const delay = 60000;
 
-        // logger.info(`[Job] 💤 Sleeping for ${(delay / 1000).toFixed(1)}s...`);
+        logger.info(`[Eco-Mode] Scan complete. Resting for 60s to save API credits...`);
 
         setTimeout(() => this.runLoop(), delay);
     }
@@ -94,8 +94,8 @@ export class TokenScanJob {
             // b. Execute fetches in parallel (BirdEye SOL + BirdEye BASE)
             const [pumpTokens, birdSolTokens, birdBaseTokens] = await Promise.all([
                 this.pumpFun.getNewTokens(),
-                this.birdeye.fetchNewListings('solana'),
-                this.birdeye.fetchNewListings('base')
+                this.birdeye.fetchNewListings('solana', 10),
+                this.birdeye.fetchNewListings('base', 10)
             ]);  // Replaces DexScreener/Mino logic
 
             // Deduplicate by mint
