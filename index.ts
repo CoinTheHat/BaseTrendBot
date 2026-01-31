@@ -77,6 +77,7 @@ async function main() {
     const job = new TokenScanJob(
         pumpFun,
         birdeye,
+        dexScreener, // INJECTED: DexScreener for M5 trending
         matcher,
         scorer,
         phaseDetector,

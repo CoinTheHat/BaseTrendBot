@@ -17,6 +17,7 @@ import { TwitterStoryEngine } from '../narrative/TwitterStoryEngine';
 import { TrendCollector } from '../trends/TrendCollector';
 import { TrendTokenMatcher } from '../core/TrendTokenMatcher';
 import { AlphaSearchService } from '../twitter/AlphaSearchService';
+import { DexScreenerService } from '../services/DexScreenerService';
 
 export class TokenScanJob {
     private isRunning = false;
@@ -28,6 +29,7 @@ export class TokenScanJob {
     constructor(
         private pumpFun: PumpFunService,
         private birdeye: BirdeyeService,
+        private dexScreener: DexScreenerService,
         private matcher: Matcher,
         private scorer: ScoringEngine,
         private phaseDetector: PhaseDetector,
@@ -65,17 +67,22 @@ export class TokenScanJob {
         this.isScanning = true;
 
         try {
-            logger.info('[Job] Starting V3 Trending Scan...');
+            logger.info('[Job] 🔍 Starting DexScreener M5 Scan...');
 
-            // 1. Fetch Candidates (Trending V3)
-            const birdSolTokens = await this.birdeye.fetchTrendingTokens('solana');
-            logger.info(`[Fetch] 📡 Received ${birdSolTokens.length} tokens from BirdEye V3`);
+            // 1. Fetch Candidates (DexScreener 5-Minute Trending)
+            const dexTokens = await this.dexScreener.fetchTrendingM5();
+            logger.info(`[Fetch] 📡 Received ${dexTokens.length} tokens from DexScreener M5`);
+
+            if (dexTokens.length === 0) {
+                logger.info(`[Scan] ⚠️ No trending tokens from DexScreener. Cooldown may be active.`);
+                return;
+            }
 
             const freshCandidates: TokenSnapshot[] = [];
             const now = Date.now();
             let cachedCount = 0;
 
-            for (const token of birdSolTokens) {
+            for (const token of dexTokens) {
                 const lastProcessed = this.processedCache.get(token.mint);
                 // ANTI-SPAM: Ignore if seen in last 15 mins
                 if (lastProcessed && (now - lastProcessed < 15 * 60 * 1000)) {
@@ -101,6 +108,7 @@ export class TokenScanJob {
             let ghostCount = 0;
             let lowScoreCount = 0;
             let alertCount = 0;
+            let birdeyeFailCount = 0; // Track BirdEye validation failures
 
             // Process in chunks
             const chunks = this.chunkArray(freshCandidates, 2);
@@ -253,7 +261,7 @@ export class TokenScanJob {
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 [SCAN SUMMARY]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔍 Total Fetched: ${birdSolTokens.length}
+🔍 Total Fetched: ${dexTokens.length}
 🔄 Cached (15m): ${cachedCount}
 🎯 Fresh Candidates: ${freshCandidates.length}
 
@@ -266,6 +274,12 @@ export class TokenScanJob {
 
 ✅ ALERTS SENT: ${alertCount}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+
+            // CRITICAL: 60-second cooldown before next scan
+            // Prevents DexScreener rate limiting + gives system breathing room
+            logger.info(`[Cooldown] 😴 Sleeping for 60 seconds before next scan...`);
+            await new Promise(r => setTimeout(r, 60000));
+
         } catch (err) {
             logger.error(`[Job] Cycle failed: ${err}`);
         } finally {
