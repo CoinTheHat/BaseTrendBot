@@ -5,7 +5,7 @@ import { BirdeyeService } from './services/BirdeyeService';
 import { GoPlusService } from './services/GoPlusService';
 import { PerformanceMonitorJob } from './jobs/PerformanceMonitorJob';
 import { DexScreenerService } from './services/DexScreenerService';
-import { KeywordMonitorJob } from './jobs/KeywordMonitorJob';
+// import { KeywordMonitorJob } from './jobs/KeywordMonitorJob'; // Removed
 import { DashboardServer } from './web/DashboardServer';
 import { Matcher } from './core/Matcher';
 import { ScoringEngine } from './core/ScoringEngine';
@@ -93,17 +93,26 @@ async function main() {
 
     // 6. Performance & Dashboard
     const performanceJob = new PerformanceMonitorJob(storage, birdeye);
-    const keywordJob = new KeywordMonitorJob(storage, bot, twitterService, llmService); // New Sniper with AI
+    // REMOVED: KeywordMonitorJob (Jeweler Mode) killed by user request.
     const dashboard = new DashboardServer(storage); // Railway auto-sets PORT env var
 
     performanceJob.start();
-    keywordJob.start();
     dashboard.start();
 
     // Start
     job.start();
-    await bot.notifyAdmin("🚀 **Sistemler Aktif!**\nSCANDEX taramaya başladı.\n_Bu mesajı görüyorsan bot çalışıyor demektir._");
-    logger.info('✅ SCANDEX Systems Operational. Watching chains...');
+    await bot.notifyAdmin("🚀 **TRENDBOT V3 (Premium Sniper)**\nSistem Başlatıldı:\n- Trending V3 Scanner: 🟢\n- Autopsy (15m): 🟢\n- Keyword Monitor: 🔴 (Disabled)");
+    logger.info('✅ TrendBot Systems Operational. Scanning V3 Trending...');
+
+    // Graceful Shutdown
+    const shutdown = async () => {
+        logger.info('🛑 Shutting down...');
+        await bot.stop(); // Stop Telegram Polling
+        process.exit(0);
+    };
+
+    process.once('SIGINT', shutdown);
+    process.once('SIGTERM', shutdown);
 }
 
 main();

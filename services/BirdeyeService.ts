@@ -11,39 +11,71 @@ export class BirdeyeService {
     };
 
     /**
-     * Fetch Trending Tokens (Volume Based)
-     * Endpoint: /defi/token_list
-     * Replaces "New Listings" to avoid low-quality spam.
+     * Fetch Trending Tokens (Premium Sniper Mode)
+     * Primary: /defi/token_trending (Rank-based high movers)
+     * Fallback: /defi/v3/token/list (High Volume)
      */
-    async fetchNewListings(chain: 'solana' | 'base', limit: number = 20): Promise<TokenSnapshot[]> {
-        if (!config.BIRDEYE_API_KEY) {
-            logger.warn('[Birdeye] Missing API Key');
-            return [];
-        }
+    async fetchTrendingTokens(chain: 'solana' | 'base'): Promise<TokenSnapshot[]> {
+        if (!config.BIRDEYE_API_KEY) return [];
 
+        let items: any[] = [];
+
+        // 1. Try TRENDING Endpoint
         try {
-            // UPDATED: Use 'token_list' instead of 'new_listing'
-            // Sort by 24h Volume to find active tokens
-            const response = await axios.get(`${this.baseUrl}/defi/token_list`, {
+            const response = await axios.get(`${this.baseUrl}/defi/token_trending`, {
                 headers: { ...this.headers, 'x-chain': chain },
                 params: {
-                    sort_by: 'v24hUSD',
-                    sort_type: 'desc',
+                    sort_by: 'rank',
+                    sort_type: 'asc',
                     offset: 0,
-                    limit: 50, // Fetch more to filter down
-                    min_liquidity: 5000 // Server-side pre-filtering
+                    limit: 20
                 }
             });
+            items = response.data?.data?.items || [];
+            if (items.length > 0) {
+                logger.info(`[Birdeye] Fetched ${items.length} Trending Tokens (V3 Rank).`);
+            }
+        } catch (err: any) {
+            logger.warn(`[Birdeye] Trending API failed (${err.message}). Switching to V3 List fallback.`);
+        }
 
-            const items = response.data?.data?.items || [];
-            if (!Array.isArray(items)) return [];
+        // 2. Fallback: V3 Token List (Volume Sorted)
+        if (items.length === 0) {
+            try {
+                const response = await axios.get(`${this.baseUrl}/defi/v3/token/list`, {
+                    headers: { ...this.headers, 'x-chain': chain },
+                    params: {
+                        sort_by: 'v24hUSD',
+                        sort_type: 'desc',
+                        offset: 0,
+                        limit: 50,
+                        min_liquidity: 5000
+                    }
+                });
+                items = response.data?.data?.items || [];
+                logger.info(`[Birdeye] Fetched ${items.length} Tokens via V3 List Fallback.`);
+            } catch (fallbackErr: any) {
+                logger.error(`[Birdeye] V3 Fallback Failed: ${fallbackErr.message}`);
+                return [];
+            }
+        }
 
-            // Map and return
-            return items.map((item: any) => this.mapListingToSnapshot(item, chain));
+        return items.map((item: any) => this.mapListingToSnapshot(item, chain));
+    }
 
-        } catch (error: any) {
-            logger.error(`[Birdeye] Fetch Trending (${chain}) Failed: ${error.message}`);
-            return [];
+    /**
+     * Get Current Price (Simple check for Autopsy)
+     * Endpoint: /defi/price
+     */
+    async getTokenPrice(address: string, chain: 'solana' | 'base'): Promise<number> {
+        try {
+            const response = await axios.get(`${this.baseUrl}/defi/price`, {
+                headers: { ...this.headers, 'x-chain': chain },
+                params: { address }
+            });
+            return response.data?.data?.value || 0;
+        } catch (error) {
+            return 0;
         }
     }
 

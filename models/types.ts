@@ -107,6 +107,7 @@ export interface TokenPerformance {
     alertMc: number;
     athMc: number;
     currentMc: number;
+    entryPrice?: number; // Added for V3 Autopsy
     status: 'TRACKING' | 'MOONED' | 'RUGGED' | 'STABLE' | 'FAILED' | 'FAILED_NO_DATA' | 'FINALIZED' | 'FINALIZED_MOONED' | 'FINALIZED_FAILED';
     alertTimestamp: Date;
     lastUpdated: Date;

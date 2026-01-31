@@ -53,8 +53,8 @@ export class TokenScanJob {
     private async runLoop() {
         if (!this.isRunning) return;
         await this.runCycle();
-        const delay = 60000; // 60s Eco-Mode
-        logger.info(`[Eco-Mode] Scan complete. Resting for 60s to save API credits...`);
+        const delay = 120000; // 2 Minutes (Premium Interval)
+        logger.info(`[Premium-Mode] Scan complete. Resting for 120s...`);
         setTimeout(() => this.runLoop(), delay);
     }
 
@@ -67,36 +67,26 @@ export class TokenScanJob {
         this.isScanning = true;
 
         try {
-            logger.info('[Job] Starting scan cycle...');
+            logger.info('[Job] Starting V3 Trending Scan...');
 
-            // 1. Fetch Candidates (Solana Only - RAYDIUM GRADUATED)
-            // We NO LONGER fetch from PumpFun direct. Only BirdEye (which lists Raydium).
-            const birdSolTokens = await this.birdeye.fetchNewListings('solana', 20);
+            // 1. Fetch Candidates (Trending V3)
+            const birdSolTokens = await this.birdeye.fetchTrendingTokens('solana');
 
-            logger.info(`🦅 Scanning Solana (Raydium Only) - Filter: Min Liq $5k...`);
-
-            // Deduplicate (Though now we only have one source, good practice to keep unique logic)
-            const allTokens = [...birdSolTokens];
-            const uniqueTokens: Record<string, TokenSnapshot> = {};
-            allTokens.forEach(t => uniqueTokens[t.mint] = t);
-            const candidates = Object.values(uniqueTokens);
-
-            // Filter Fresh Tokens
-            const now = Date.now();
             const freshCandidates: TokenSnapshot[] = [];
-            for (const token of candidates) {
+            const now = Date.now();
+
+            for (const token of birdSolTokens) {
                 const lastProcessed = this.processedCache.get(token.mint);
-                // ANTI-SPAM: Ignore if seen in last 15 mins (900,000ms)
+                // ANTI-SPAM: Ignore if seen in last 15 mins
                 if (lastProcessed && (now - lastProcessed < 15 * 60 * 1000)) continue;
                 freshCandidates.push(token);
             }
 
             if (freshCandidates.length === 0) {
-                // logger.info(`[Job] No fresh tokens to process.`); // Silence "No tokens" spam too
                 return;
             }
 
-            logger.info(`[Job] Processing ${freshCandidates.length} potential trending tokens...`);
+            logger.info(`[Job] Processing ${freshCandidates.length} V3 Trending candidates...`);
 
             // Process in chunks
             const chunks = this.chunkArray(freshCandidates, 2);
@@ -104,41 +94,32 @@ export class TokenScanJob {
             for (const chunk of chunks) {
                 await Promise.all(chunk.map(async (token) => {
                     try {
-                        // Mark as seen immediately to prevent re-processing in next cycle
                         this.processedCache.set(token.mint, Date.now());
 
                         // --- STEP 1: HONEYPOT CHECK ---
                         const chain = token.mint.startsWith('0x') ? 'base' : 'solana';
                         const isSafe = await this.goPlus.checkToken(token.mint, chain);
                         if (!isSafe) {
-                            // logger.warn(`[Security] 🚨 HONEYPOT DETECTED: ${token.symbol}. SKIP.`);
+                            // logger.warn(`[Security] 🚨 HONEYPOT: ${token.symbol}`);
                             return;
                         }
 
-                        // --- STEP 2: SNIPER PRE-FILTERS (Hard Gate) ---
-                        // We filter BEFORE Twitter/AI to save resources.
+                        // --- STEP 2: PREMIUM FILTERS ---
+                        // Liquidity > 5k (Handled by API Fallback / Implicit in Trending)
+                        // Volume 5m > 5k
 
                         const liq = token.liquidityUsd || 0;
-                        // Use 5m Volume, fallback to 1% of 24h volume if missing
                         const v5m = token.volume5mUsd || ((token.volume24hUsd || 0) / 100);
 
-                        // RULE A: Liquidity Floor ($5,000) - HANDLED BY API NOW
-                        // Doubling check just in case API allows slight variance
+                        // Double check Liq
                         if (liq < 5000) return;
 
-                        // RULE B: MOMENTUM (5m Volume > $5k)
-                        // This ensures the token is MOVING NOW.
+                        // VOLUME FILTER
                         if (v5m < 5000) {
-                            // logger.debug(`[Filter] Low 5m Vol: ${token.symbol} ($${Math.floor(v5m)}). Skip.`);
                             return;
                         }
 
-                        const impulseRatio = v5m / (liq || 1);
-                        if (impulseRatio < 0.1) { // Relaxed ratio since we have hard volume floor
-                            return;
-                        }
-
-                        logger.info(`[Sniper] 🎯 TRENDING DETECTED: ${token.symbol} | Liq: $${Math.floor(liq)} | 5m Vol: $${Math.floor(v5m)}`);
+                        logger.info(`[Sniper] 💎 GEM DETECTED (V3): ${token.symbol} | Liq: $${Math.floor(liq)} | 5m Vol: $${Math.floor(v5m)}`);
 
                         // --- STEP 3: TWITTER SCAN (Safe Mode) ---
                         let tweets: string[] = [];

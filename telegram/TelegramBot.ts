@@ -35,6 +35,13 @@ export class ScandexBot {
         }
     }
 
+    async stop() {
+        if (this.bot) {
+            await this.bot.stopPolling();
+            logger.info('[Telegram] Polling stopped.');
+        }
+    }
+
     private initCommands() {
         if (!this.bot) return;
 
