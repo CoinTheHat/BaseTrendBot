@@ -244,4 +244,29 @@ Güven Skoru: **${narrative.twitterStory.trustScore ?? 50}/100** (${(narrative.t
             logger.error(`[Telegram] Failed to send alert: ${err} `);
         }
     }
+
+    async sendFastAlert(token: TokenSnapshot, momentum: { swaps: number, volume: number }) {
+        if (!this.bot || !config.TELEGRAM_CHAT_ID) return;
+
+        const message = `⚡ **FAST ALERT (MOMENTUM)** ⚡
+        
+🚀 **$${token.symbol}** is heating up!
+Boarding now...
+
+📊 **5m Data:**
+• Swaps: ${momentum.swaps}
+• Volume: $${Math.floor(momentum.volume).toLocaleString()}
+• Liq: $${Math.floor(token.liquidityUsd || 0).toLocaleString()}
+
+📋 \`${token.mint}\`
+
+🤖 *AI Analizi bekleniyor...*`;
+
+        try {
+            await this.bot.sendMessage(config.TELEGRAM_CHAT_ID, message, { parse_mode: 'Markdown' });
+            logger.info(`[Telegram] Fast Alert sent for ${token.symbol}`);
+        } catch (err) {
+            logger.error(`[Telegram] Failed to send fast alert: ${err}`);
+        }
+    }
 }

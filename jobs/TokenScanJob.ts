@@ -130,6 +130,13 @@ export class TokenScanJob {
 
                         logger.info(`[Sniper] 💎 GEM DETECTED (V3): ${token.symbol} | Liq: $${Math.floor(liq)} | 5m Vol: $${Math.floor(v5m)} (Ratio: ${impulseRatio.toFixed(2)}x)`);
 
+                        // --- STEP 2.5: HIGH-SPEED MOMENTUM CHECK (Ultra-Hot) ---
+                        // Check exact 5m TXs to validate "Rush"
+                        const momentum = await this.birdeye.getTokenMomentum(token.mint, 'solana');
+                        if (momentum.isHot) {
+                            await this.bot.sendFastAlert(token, momentum);
+                        }
+
                         // --- STEP 3: TWITTER SCAN (Safe Mode) ---
                         let tweets: string[] = [];
                         if (config.ENABLE_TWITTER_SCRAPING) {

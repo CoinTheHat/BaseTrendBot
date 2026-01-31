@@ -88,6 +88,62 @@ export class BirdeyeService {
         }
     }
 
+    /**
+     * High-Speed Momentum Check (5 Minute Window)
+     * Fetches recent swaps to validate "Ultra-Hot" status.
+     */
+    async getTokenMomentum(address: string, chain: 'solana' | 'base'): Promise<{ isHot: boolean, swaps: number, volume: number }> {
+        if (!config.BIRDEYE_API_KEY) return { isHot: false, swaps: 0, volume: 0 };
+
+        try {
+            const now = Math.floor(Date.now() / 1000);
+            const fiveMinsAgo = now - 300;
+
+            // URL: https://public-api.birdeye.so/defi/txs/token/seek_by_time?address=...
+            const response = await axios.get(`${this.baseUrl}/defi/txs/token/seek_by_time`, {
+                headers: { ...this.headers, 'x-chain': chain },
+                params: {
+                    address: address,
+                    after_time: fiveMinsAgo,
+                    before_time: now,
+                    tx_type: 'swap',
+                    limit: 100, // Check up to 100 txs to sum volume efficiently
+                    offset: 0
+                }
+            });
+
+            const items = response.data?.data?.items || [];
+
+            // Analyze Momentum
+            let swapCount = 0;
+            let totalVolume = 0;
+
+            for (const tx of items) {
+                // Determine raw volume (Birdeye usually provides 'value' in USD for swaps, need to check structure)
+                // If structure is complex, we try to grab value. 
+                // Documentation says 'value' is available in some endpoints. 
+                // Creating a safe access.
+                const val = tx.value || 0;
+                totalVolume += val;
+                swapCount++;
+            }
+
+            // CRITERIA: >20 Swaps AND >$5k Volume in last 5m
+            const isHot = swapCount > 20 && totalVolume > 5000;
+
+            if (isHot) {
+                logger.info(`[Momentum] 🔥 Ultra-Hot: ${address} (${swapCount} Swaps, $${Math.floor(totalVolume)})`);
+            }
+
+            return { isHot, swaps: swapCount, volume: totalVolume };
+
+        } catch (err: any) {
+            // Quiet fail or log debug
+            // logger.debug(`[Momentum] Failed for ${address}: ${err.message}`);
+            return { isHot: false, swaps: 0, volume: 0 };
+        }
+    }
+
 
 
     /**
