@@ -23,13 +23,16 @@ export class DashboardServer {
 
         // Setup EJS
         this.app.set('view engine', 'ejs');
-        // CRITICAL: Point to source directory since .ejs files aren't copied to dist by tsc
-        const viewsPath = path.join(__dirname, '../../web/views');
+        // Use process.cwd() for Railway compatibility
+        const viewsPath = path.join(process.cwd(), 'web', 'views');
         this.app.set('views', viewsPath);
 
-        // Public static files
-        // CRITICAL: Point to source directory since static files aren't copied to dist by tsc
-        this.app.use(express.static(path.join(__dirname, '../../web/public')));
+        // Public static files - CRITICAL FIX
+        // Use process.cwd() to ensure correct path in production
+        const publicPath = path.join(process.cwd(), 'web', 'public');
+        this.app.use(express.static(publicPath));
+
+        logger.info(`[Dashboard] Static files serving from: ${publicPath}`);
 
         // Routes
         this.setupRoutes();
@@ -89,7 +92,8 @@ export class DashboardServer {
 
         // Redirect root to static index.html if it exists, otherwise dashboard
         this.app.get('/', (req, res) => {
-            res.sendFile(path.join(__dirname, '../../web/public/index.html'));
+            const indexPath = path.join(process.cwd(), 'web', 'public', 'index.html');
+            res.sendFile(indexPath);
         });
 
         // NEW: Portfolio Tracking API
