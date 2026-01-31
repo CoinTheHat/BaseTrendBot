@@ -40,17 +40,15 @@ export class BirdeyeService {
             logger.warn(`[Birdeye] Trending API failed (${err.message}). Switching to V3 List fallback.`);
         }
 
-        // 2. Fallback: V3 Token List (Volume Sorted)
+        // 2. Fallback: V3 Token List
         if (items.length === 0) {
             try {
-                // FIXED: V3 List requires 'v24h_usd' (snake_case) and specific params
-                // URL: https://public-api.birdeye.so/defi/v3/token/list?chain=solana&sort_by=v24h_usd&sort_type=desc&min_liquidity=5000&limit=20
+                // V3 List endpoint doesn't support sort_by parameter - returns pre-sorted results
+                // URL: https://public-api.birdeye.so/defi/v3/token/list?chain=solana&min_liquidity=5000&limit=50
                 const response = await axios.get(`${this.baseUrl}/defi/v3/token/list`, {
                     headers: { ...this.headers, 'x-chain': chain },
                     params: {
                         chain: chain,
-                        sort_by: 'v24h_usd', // Fixed: snake_case per user instruction
-                        sort_type: 'desc',
                         offset: 0,
                         limit: 50,
                         min_liquidity: 5000
