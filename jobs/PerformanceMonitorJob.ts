@@ -55,6 +55,10 @@ export class PerformanceMonitorJob {
             let solUpdates = new Map<string, any>();
             let baseUpdates = new Map<string, any>();
 
+            if (solMints.length > 0 || baseMints.length > 0) {
+                logger.info(`[PerformanceJob] Split: ${solMints.length} SOL | ${baseMints.length} BASE`);
+            }
+
             if (solMints.length > 0) {
                 try {
                     solUpdates = await this.birdeye.getTokensOverview(solMints, 'solana');
