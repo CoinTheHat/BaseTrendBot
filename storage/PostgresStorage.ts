@@ -68,63 +68,54 @@ export class PostgresStorage {
                 last_updated TIMESTAMP DEFAULT NOW(),
                 entry_price NUMERIC DEFAULT 0 -- Added for Continuous Autopsy
             );`,
-            `CREATE TABLE IF NOT EXISTS keyword_alerts (
-                tweet_id TEXT PRIMARY KEY,
-                keyword TEXT,
-                content TEXT,
-                created_at TIMESTAMP DEFAULT NOW()
-            );`
-        ];
-
-        try {
-            for (const q of queries) {
-                await this.pool.query(q);
-            }
             // Auto-Migration
             await this.pool.query(`ALTER TABLE seen_tokens ADD COLUMN IF NOT EXISTS last_price NUMERIC;`);
-            await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS entry_price NUMERIC DEFAULT 0;`);
+        await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS entry_price NUMERIC DEFAULT 0;`);
 
-            logger.info('[Postgres] Schema initialized.');
-        } catch (err) {
-            logger.error('[Postgres] Schema init failed', err);
-        }
+        // Cleanup Legacy Tables
+        await this.pool.query(`DROP TABLE IF EXISTS keyword_alerts;`);
+
+        logger.info('[Postgres] Schema initialized.');
+    } catch(err) {
+        logger.error('[Postgres] Schema init failed', err);
     }
+}
 
     // ... (Existing methods) ...
 
     // --- Performance Monitor ---
 
     async savePerformance(perf: TokenPerformance) {
-        try {
-            await this.pool.query(
-                `INSERT INTO token_performance(mint, symbol, alert_mc, ath_mc, current_mc, status, alert_timestamp, last_updated, entry_price)
+    try {
+        await this.pool.query(
+            `INSERT INTO token_performance(mint, symbol, alert_mc, ath_mc, current_mc, status, alert_timestamp, last_updated, entry_price)
         VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)
                  ON CONFLICT(mint) DO NOTHING`,
-                [perf.mint, perf.symbol, perf.alertMc, perf.athMc, perf.currentMc, perf.status, perf.alertTimestamp, perf.lastUpdated, perf.entryPrice || 0]
-            );
-        } catch (err) {
-            logger.error('[Postgres] savePerformance failed', err);
-        }
+            [perf.mint, perf.symbol, perf.alertMc, perf.athMc, perf.currentMc, perf.status, perf.alertTimestamp, perf.lastUpdated, perf.entryPrice || 0]
+        );
+    } catch (err) {
+        logger.error('[Postgres] savePerformance failed', err);
     }
+}
 
     async updatePerformance(perf: TokenPerformance) {
-        try {
-            await this.pool.query(
-                `UPDATE token_performance
+    try {
+        await this.pool.query(
+            `UPDATE token_performance
                  SET ath_mc = $2, current_mc = $3, status = $4, last_updated = NOW()
                  WHERE mint = $1`,
-                [perf.mint, perf.athMc, perf.currentMc, perf.status]
-            );
-        } catch (err) {
-            logger.error('[Postgres] updatePerformance failed', err);
-        }
+            [perf.mint, perf.athMc, perf.currentMc, perf.status]
+        );
+    } catch (err) {
+        logger.error('[Postgres] updatePerformance failed', err);
     }
+}
 
     // SELF-HEALING: Update missing details like Symbol and Alert MC using fresh API data
     async updatePerformanceEnriched(perf: TokenPerformance) {
-        try {
-            await this.pool.query(
-                `UPDATE token_performance
+    try {
+        await this.pool.query(
+            `UPDATE token_performance
                  SET 
                     symbol = COALESCE(NULLIF($2, ''), symbol),
                     alert_mc = CASE WHEN alert_mc = 0 THEN $3 ELSE alert_mc END,
@@ -134,17 +125,17 @@ export class PostgresStorage {
                     last_updated = NOW(),
                     entry_price = CASE WHEN entry_price = 0 THEN $7 ELSE entry_price END
                  WHERE mint = $1`,
-                [perf.mint, perf.symbol, perf.alertMc, perf.athMc, perf.currentMc, perf.status, perf.entryPrice || 0]
-            );
-        } catch (err) {
-            logger.error('[Postgres] updatePerformanceEnriched failed', err);
-        }
+            [perf.mint, perf.symbol, perf.alertMc, perf.athMc, perf.currentMc, perf.status, perf.entryPrice || 0]
+        );
+    } catch (err) {
+        logger.error('[Postgres] updatePerformanceEnriched failed', err);
     }
+}
 
     // BACKFILL: Sync missing tokens from seen_tokens to token_performance
-    async backfillMissingTokens(): Promise<number> {
-        try {
-            const query = `
+    async backfillMissingTokens(): Promise < number > {
+    try {
+        const query = `
                 INSERT INTO token_performance (mint, symbol, alert_mc, ath_mc, current_mc, status, alert_timestamp)
                 SELECT 
                     st.mint,
@@ -159,37 +150,37 @@ export class PostgresStorage {
                 AND st.mint NOT IN (SELECT mint FROM token_performance)
                 ON CONFLICT (mint) DO NOTHING
             `;
-            const res = await this.pool.query(query);
-            const count = res.rowCount || 0;
-            if (count > 0) {
-                logger.info(`[Postgres] Backfilled ${count} missing tokens to token_performance`);
-            }
-            return count;
+        const res = await this.pool.query(query);
+        const count = res.rowCount || 0;
+        if(count > 0) {
+    logger.info(`[Postgres] Backfilled ${count} missing tokens to token_performance`);
+}
+return count;
         } catch (err) {
-            logger.error('[Postgres] backfillMissingTokens failed', err);
-            return 0;
-        }
+    logger.error('[Postgres] backfillMissingTokens failed', err);
+    return 0;
+}
     }
 
-    async getTrackingTokens(): Promise<TokenPerformance[]> {
-        try {
-            // Get tokens alerting in last 48h that are still TRACKING
-            const res = await this.pool.query(
-                `SELECT * FROM token_performance 
+    async getTrackingTokens(): Promise < TokenPerformance[] > {
+    try {
+        // Get tokens alerting in last 48h that are still TRACKING
+        const res = await this.pool.query(
+            `SELECT * FROM token_performance 
                  WHERE status = 'TRACKING' 
                  AND alert_timestamp > NOW() - INTERVAL '48 hours'`
-            );
-            return res.rows.map(this.mapPerformanceRow);
-        } catch (err) {
-            logger.error('[Postgres] getTrackingTokens failed', err);
-            return [];
-        }
+        );
+        return res.rows.map(this.mapPerformanceRow);
+    } catch(err) {
+        logger.error('[Postgres] getTrackingTokens failed', err);
+        return [];
     }
+}
 
-    async getDashboardMetrics(): Promise<any> {
-        try {
-            // UNION QUERY: Combine new system (token_performance) + historical (seen_tokens)
-            const combinedView = `
+    async getDashboardMetrics(): Promise < any > {
+    try {
+        // UNION QUERY: Combine new system (token_performance) + historical (seen_tokens)
+        const combinedView = `
                 SELECT 
                     mint, symbol, alert_mc, ath_mc, current_mc, status, alert_timestamp
                 FROM token_performance
@@ -209,20 +200,20 @@ export class PostgresStorage {
                 AND mint NOT IN (SELECT mint FROM token_performance)
             `;
 
-            // 1. Total Calls
-            const totalRes = await this.pool.query(`SELECT COUNT(*) FROM (${combinedView}) combined`);
-            const totalCalls = parseInt(totalRes.rows[0].count);
+        // 1. Total Calls
+        const totalRes = await this.pool.query(`SELECT COUNT(*) FROM (${combinedView}) combined`);
+        const totalCalls = parseInt(totalRes.rows[0].count);
 
-            // 2. Win Rate (Tokens with > 2x ATH from Alert)
-            const winRes = await this.pool.query(`
+        // 2. Win Rate (Tokens with > 2x ATH from Alert)
+        const winRes = await this.pool.query(`
                 SELECT COUNT(*) FROM (${combinedView}) combined
                 WHERE ath_mc >= alert_mc * 2 AND alert_mc > 0
             `);
-            const moons = parseInt(winRes.rows[0].count);
-            const winRate = totalCalls > 0 ? (moons / totalCalls) * 100 : 0;
+        const moons = parseInt(winRes.rows[0].count);
+        const winRate = totalCalls > 0 ? (moons / totalCalls) * 100 : 0;
 
-            // 3. Top Performers (Max Multiple)
-            const topRes = await this.pool.query(`
+        // 3. Top Performers (Max Multiple)
+        const topRes = await this.pool.query(`
                 SELECT *, (ath_mc / NULLIF(alert_mc, 0)) as multiple 
                 FROM (${combinedView}) combined
                 WHERE alert_mc > 0
@@ -230,176 +221,155 @@ export class PostgresStorage {
                 LIMIT 5
             `);
 
-            // 4. Recent Calls
-            const recentRes = await this.pool.query(`
+        // 4. Recent Calls
+        const recentRes = await this.pool.query(`
                 SELECT * FROM (${combinedView}) combined
                 ORDER BY alert_timestamp DESC 
                 LIMIT 20
             `);
 
-            return {
-                totalCalls,
-                winRate: Math.round(winRate),
-                moonCount: moons,
-                topPerformers: topRes.rows.map(this.mapPerformanceRow),
-                recentCalls: recentRes.rows.map(this.mapPerformanceRow)
-            };
-        } catch (err) {
-            logger.error('[Postgres] getDashboardMetrics failed', err);
-            return { totalCalls: 0, winRate: 0, moonCount: 0, topPerformers: [], recentCalls: [] };
-        }
+        return {
+            totalCalls,
+            winRate: Math.round(winRate),
+            moonCount: moons,
+            topPerformers: topRes.rows.map(this.mapPerformanceRow),
+            recentCalls: recentRes.rows.map(this.mapPerformanceRow)
+        };
+    } catch(err) {
+        logger.error('[Postgres] getDashboardMetrics failed', err);
+        return { totalCalls: 0, winRate: 0, moonCount: 0, topPerformers: [], recentCalls: [] };
     }
+}
 
     private mapPerformanceRow(row: any): TokenPerformance {
-        return {
-            mint: row.mint,
-            symbol: row.symbol,
-            alertMc: Number(row.alert_mc),
-            athMc: Number(row.ath_mc),
-            currentMc: Number(row.current_mc),
-            status: row.status,
-            alertTimestamp: row.alert_timestamp,
-            lastUpdated: row.last_updated,
-            entryPrice: row.entry_price ? Number(row.entry_price) : 0
-        };
-    }
+    return {
+        mint: row.mint,
+        symbol: row.symbol,
+        alertMc: Number(row.alert_mc),
+        athMc: Number(row.ath_mc),
+        currentMc: Number(row.current_mc),
+        status: row.status,
+        alertTimestamp: row.alert_timestamp,
+        lastUpdated: row.last_updated,
+        entryPrice: row.entry_price ? Number(row.entry_price) : 0
+    };
+}
     // --- Watchlist ---
 
-    async getWatchlist(): Promise<MemeWatchItem[]> {
-        try {
-            const res = await this.pool.query('SELECT * FROM watchlist');
-            return res.rows.map(row => ({
-                id: row.id,
-                phrase: row.phrase,
-                tags: row.tags || [],
-                createdAt: row.created_at
-            }));
-        } catch (err) {
-            logger.error('[Postgres] getWatchlist failed', err);
-            return [];
-        }
+    async getWatchlist(): Promise < MemeWatchItem[] > {
+    try {
+        const res = await this.pool.query('SELECT * FROM watchlist');
+        return res.rows.map(row => ({
+            id: row.id,
+            phrase: row.phrase,
+            tags: row.tags || [],
+            createdAt: row.created_at
+        }));
+    } catch(err) {
+        logger.error('[Postgres] getWatchlist failed', err);
+        return [];
     }
+}
 
     async addWatchItem(item: MemeWatchItem) {
-        try {
-            await this.pool.query(
-                'INSERT INTO watchlist (id, phrase, tags, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING',
-                [item.id, item.phrase, item.tags, item.createdAt]
-            );
-        } catch (err) {
-            logger.error('[Postgres] addWatchItem failed', err);
-        }
+    try {
+        await this.pool.query(
+            'INSERT INTO watchlist (id, phrase, tags, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO NOTHING',
+            [item.id, item.phrase, item.tags, item.createdAt]
+        );
+    } catch (err) {
+        logger.error('[Postgres] addWatchItem failed', err);
     }
+}
 
     async removeWatchItem(phraseOrId: string) {
-        try {
-            // Try deleting by ID or Phrase (normalized)
-            await this.pool.query(
-                'DELETE FROM watchlist WHERE id = $1 OR phrase = $1',
-                [phraseOrId]
-            );
-        } catch (err) {
-            logger.error('[Postgres] removeWatchItem failed', err);
-        }
+    try {
+        // Try deleting by ID or Phrase (normalized)
+        await this.pool.query(
+            'DELETE FROM watchlist WHERE id = $1 OR phrase = $1',
+            [phraseOrId]
+        );
+    } catch (err) {
+        logger.error('[Postgres] removeWatchItem failed', err);
     }
+}
 
     // --- Cooldowns / Seen Tokens ---
 
-    async getSeenToken(mint: string): Promise<SeenTokenData | null> {
-        try {
-            const res = await this.pool.query('SELECT * FROM seen_tokens WHERE mint = $1', [mint]);
-            if (res.rows.length === 0) return null;
-            const row = res.rows[0];
-            return {
-                firstSeenAt: Number(row.first_seen_at),
-                lastAlertAt: Number(row.last_alert_at),
-                lastScore: row.last_score,
-                lastPhase: row.last_phase,
-                lastPrice: row.last_price ? Number(row.last_price) : undefined
-            };
-        } catch (err) {
-            logger.error('[Postgres] getSeenToken failed', err);
-            return null;
-        }
+    async getSeenToken(mint: string): Promise < SeenTokenData | null > {
+    try {
+        const res = await this.pool.query('SELECT * FROM seen_tokens WHERE mint = $1', [mint]);
+        if(res.rows.length === 0) return null;
+        const row = res.rows[0];
+        return {
+            firstSeenAt: Number(row.first_seen_at),
+            lastAlertAt: Number(row.last_alert_at),
+            lastScore: row.last_score,
+            lastPhase: row.last_phase,
+            lastPrice: row.last_price ? Number(row.last_price) : undefined
+        };
+    } catch(err) {
+        logger.error('[Postgres] getSeenToken failed', err);
+        return null;
     }
+}
 
     async saveSeenToken(mint: string, data: SeenTokenData) {
-        try {
-            await this.pool.query(
-                `INSERT INTO seen_tokens(mint, first_seen_at, last_alert_at, last_score, last_phase, last_price)
+    try {
+        await this.pool.query(
+            `INSERT INTO seen_tokens(mint, first_seen_at, last_alert_at, last_score, last_phase, last_price)
         VALUES($1, $2, $3, $4, $5, $6)
                  ON CONFLICT(mint) DO UPDATE SET
         last_alert_at = EXCLUDED.last_alert_at,
             last_score = EXCLUDED.last_score,
             last_phase = EXCLUDED.last_phase,
             last_price = EXCLUDED.last_price; `,
-                [mint, data.firstSeenAt, data.lastAlertAt, data.lastScore, data.lastPhase, data.lastPrice || 0]
-            );
-        } catch (err) {
-            logger.error('[Postgres] saveSeenToken failed', err);
-        }
+            [mint, data.firstSeenAt, data.lastAlertAt, data.lastScore, data.lastPhase, data.lastPrice || 0]
+        );
+    } catch (err) {
+        logger.error('[Postgres] saveSeenToken failed', err);
     }
+}
 
     // --- Trends ---
 
     async saveTrends(trends: TrendItem[]) {
-        // Full replace or Upsert? Strategy: Upsert.
-        // We might want to clear old trends, but for now let's just Upsert active ones.
-        try {
-            for (const t of trends) {
-                await this.pool.query(
-                    `INSERT INTO trends(id, phrase, source, metrics, trend_score, last_updated)
+    // Full replace or Upsert? Strategy: Upsert.
+    // We might want to clear old trends, but for now let's just Upsert active ones.
+    try {
+        for (const t of trends) {
+            await this.pool.query(
+                `INSERT INTO trends(id, phrase, source, metrics, trend_score, last_updated)
         VALUES($1, $2, $3, $4, $5, $6)
                      ON CONFLICT(phrase) DO UPDATE SET
         trend_score = EXCLUDED.trend_score,
             metrics = EXCLUDED.metrics,
             last_updated = EXCLUDED.last_updated; `,
-                    [t.id, t.phrase, t.source, JSON.stringify(t.metrics), t.trendScore, t.lastUpdated]
-                );
-            }
-        } catch (err) {
-            logger.error('[Postgres] saveTrends failed', err);
+                [t.id, t.phrase, t.source, JSON.stringify(t.metrics), t.trendScore, t.lastUpdated]
+            );
         }
+    } catch (err) {
+        logger.error('[Postgres] saveTrends failed', err);
     }
+}
 
-    async getTrends(): Promise<TrendItem[]> {
-        try {
-            const res = await this.pool.query('SELECT * FROM trends ORDER BY trend_score DESC LIMIT 50');
-            return res.rows.map(row => ({
-                id: row.id,
-                phrase: row.phrase,
-                source: row.source,
-                metrics: row.metrics,
-                trendScore: row.trend_score,
-                lastUpdated: row.last_updated
-            }));
-        } catch (err) {
-            logger.error('[Postgres] getTrends failed', err);
-            return [];
-        }
+    async getTrends(): Promise < TrendItem[] > {
+    try {
+        const res = await this.pool.query('SELECT * FROM trends ORDER BY trend_score DESC LIMIT 50');
+        return res.rows.map(row => ({
+            id: row.id,
+            phrase: row.phrase,
+            source: row.source,
+            metrics: row.metrics,
+            trendScore: row.trend_score,
+            lastUpdated: row.last_updated
+        }));
+    } catch(err) {
+        logger.error('[Postgres] getTrends failed', err);
+        return [];
     }
+}
     // --- Keyword Sniper ---
 
-    async hasSeenKeywordTweet(tweetId: string): Promise<boolean> {
-        try {
-            const res = await this.pool.query('SELECT 1 FROM keyword_alerts WHERE tweet_id = $1', [tweetId]);
-            return res.rowCount !== null && res.rowCount > 0;
-        } catch (err) {
-            logger.error('[Postgres] hasSeenKeywordTweet failed', err);
-            return false;
-        }
-    }
-
-    async saveKeywordTweet(tweetId: string, keyword: string, content: string) {
-        try {
-            await this.pool.query(
-                `INSERT INTO keyword_alerts (tweet_id, keyword, content)
-                 VALUES ($1, $2, $3)
-                 ON CONFLICT (tweet_id) DO NOTHING`,
-                [tweetId, keyword, content]
-            );
-        } catch (err) {
-            logger.error('[Postgres] saveKeywordTweet failed', err);
-        }
-    }
+    async hasSeenKeywordTweet(tweetId: string): Promise < boolean > {
 }
