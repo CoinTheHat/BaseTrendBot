@@ -29,85 +29,63 @@ export class PerformanceMonitorJob {
 
         try {
             await this.storage.backfillMissingTokens();
+
+            // CONTINUOUS TRACKING: Get ALL tokens currently in 'TRACKING' status
+            // We do NOT filter by 15 mins. We check them forever (until Moon or Die).
             const tokens = await this.storage.getTrackingTokens();
+
             if (tokens.length === 0) return;
 
-            const now = Date.now();
-            const FIFTEEN_MINS = 15 * 60 * 1000;
+            logger.info(`[Autopsy] 🩺 Vital Check on ${tokens.length} active tokens...`);
 
-            const targets = tokens.filter(t => {
-                const age = now - new Date(t.alertTimestamp).getTime();
-                return age >= FIFTEEN_MINS;
-            });
-
-            if (targets.length === 0) return;
-
-            logger.info(`[Autopsy] 💀 Performing 15-min post-mortem on ${targets.length} tokens...`);
-
-            for (const token of targets) {
+            for (const token of tokens) {
                 try {
-                    // PREMIUM SNIPER MODE: Use simple Price Check to save CUs
+                    // 1. Get Current Price
+                    // Note: Birdeye V3 Price endpoint is cheap (CUs).
                     const currentPrice = await this.birdeye.getTokenPrice(token.mint, 'solana');
 
                     if (!currentPrice || currentPrice === 0) {
-                        logger.warn(`[Autopsy] No price data for ${token.symbol}. Finalizing as FAILED.`);
-                        await this.finalizeToken(token, 'FAILED', 0, 0);
+                        // logger.warn(`[Autopsy] No price for ${token.symbol}. Skipping.`);
                         continue;
                     }
 
-                    // Entry Price (stored in database from scan time)
-                    // If not stored, we rely on alertMc for comparison logic, but let's try to infer if needed.
-                    // Ideally we should have stored entryPrice. 
-                    // Fallback: Compare MC if we don't have price.
+                    // 2. Determine Entry Price
+                    const entryPrice = token.entryPrice || (token.alertMc > 0 ? (token.alertMc / 1000000000) : 0);
 
-                    // Actually, we use market cap for "Moon" definition usually.
-                    // Let's re-calculate MC from this price.
-                    // Note: We don't strictly know supply here without another call, BUT
-                    // we can compare Price Ratio vs Alert Price Ratio if we had alertPrice.
-                    // We DO have 'alertMc'.
-                    // If we assume supply didn't change (burns happen but usually okay for approx):
-                    // Ratio = currentPrice / (alertMc / supply? No wait).
+                    if (entryPrice === 0) {
+                        // Impossible to calc multiplier without entry. 
+                        // If we have alertMc, we can try to compare MC if we fetch "Token Overview".
+                        // But for now, we skip or assume failed if very old.
+                        continue;
+                    }
 
-                    // Better approach: We need MC. 
-                    // Birdeye /defi/price returns 'value' (price).
-                    // We need /defi/token_overview for MC, OR we can just check if price doubled?
-                    // If we don't know entry PRICE, we can't know if PRICE doubled.
-                    // We only have 'alertMc'.
-                    // Let's assume the user wants check against entry.
-                    // Since sticking to strictly /defi/price is the order, I will assume we can't easily get MC without another call.
-                    // BUT, if I can't get MC, I can't compare to alertMc.
-                    // Workaround: Use 'token_list' fallback? No, that's heavy.
-                    // OK, I will fetch price. I will also check if I saved 'entryPrice' in DB.
-                    // In 'TokenSnapshot', we have `priceUsd`.
-
-                    // Checking DB schema (mental model): 'token_performance' likely has 'price_usd' or similar at entry?
-                    // If not, I'll have to rely on assuming the 'alertMc' was accurate and I need 'currentMc'.
-                    // Wait, /defi/price is just price per token.
-                    // Without supply, I cannot calculate MC.
-                    // AND without entry price, I cannot calculate X.
-                    // User said: "use the simple /defi/price... to get the current price for performance tracking."
-                    // Maybe they imply I should have entry price?
-                    // I'll check `token` object properties. PostgresStorage `backfill` usually puts `price` in `entry_price` column if it exists.
-                    // If `token` has `entryPrice` (it should if mapped correctly), I use it.
-                    // If not, I'm stuck.
-                    // I will assume `token.entryPrice` exists or `alertMc`. 
-                    // Actually, if we use `getHistoricalCandles` we got open price of first candle as entry.
-                    // Now we effectively "lose" that retrospective entry check.
-                    // CRITICAL: We MUST have entry price stored at alert time.
-                    // `TokenScanJob` passes `TokenSnapshot`. `saveSeenToken` -> `token_performance`.
-                    // I will assume `Storage` stores `priceUsd` as `entryPrice`.
-
-                    const entryPrice = token.entryPrice || (token.alertMc / 1000000000); // Fallback dummy if missing
+                    // 3. Calculate Multiplier
                     const multiplier = currentPrice / entryPrice;
-
-                    // Approx MC (using multiplier on alertMc)
                     const approxCurrentMc = multiplier * (token.alertMc || 0);
 
-                    const outcome = (multiplier >= 2.0) ? 'MOONED' : 'FAILED';
+                    // 4. Decision Logic (User: 2x Moon / -90% Death)
+                    let outcome = 'TRACKING';
 
-                    logger.info(`🏁 [Autopsy] ${token.symbol}: ${multiplier.toFixed(2)}x (Price $${currentPrice}). Result: ${outcome}`);
+                    if (multiplier >= 2.0) {
+                        outcome = 'MOONED';
+                    } else if (multiplier <= 0.1) {
+                        outcome = 'FAILED';
+                    }
 
-                    await this.finalizeToken(token, outcome, approxCurrentMc, approxCurrentMc);
+                    // Log only significant updates to avoid spam
+                    // logger.info(`[Autopsy] ${token.symbol}: ${multiplier.toFixed(2)}x ($${currentPrice}). Status: ${outcome}`);
+
+                    if (outcome !== 'TRACKING') {
+                        logger.info(`🏁 [Autopsy] ${token.symbol} Finalized: ${outcome} (${multiplier.toFixed(2)}x)`);
+                        await this.finalizeToken(token, outcome, approxCurrentMc, approxCurrentMc);
+                    } else {
+                        // Just update Last Seen / Current MC for dashboard
+                        token.currentMc = approxCurrentMc;
+                        token.lastUpdated = new Date();
+                        // Special method to just update current stats without finalizing? 
+                        // existing updatePerformance updates status too. 
+                        await this.storage.updatePerformance(token);
+                    }
 
                 } catch (err) {
                     logger.error(`[Autopsy] Error for ${token.symbol}: ${err}`);

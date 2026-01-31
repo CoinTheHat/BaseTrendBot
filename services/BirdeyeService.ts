@@ -22,6 +22,7 @@ export class BirdeyeService {
 
         // 1. Try TRENDING Endpoint
         try {
+            // URL: https://public-api.birdeye.so/defi/token_trending?sort_by=rank&sort_type=asc&offset=0&limit=20
             const response = await axios.get(`${this.baseUrl}/defi/token_trending`, {
                 headers: { ...this.headers, 'x-chain': chain },
                 params: {
@@ -42,9 +43,12 @@ export class BirdeyeService {
         // 2. Fallback: V3 Token List (Volume Sorted)
         if (items.length === 0) {
             try {
+                // FIXED: V3 List requires specific params and chain in URL for some reason (or just strict params)
+                // URL: https://public-api.birdeye.so/defi/v3/token/list?chain=solana&sort_by=v24hUSD&sort_type=desc&min_liquidity=5000&limit=20
                 const response = await axios.get(`${this.baseUrl}/defi/v3/token/list`, {
-                    headers: { ...this.headers, 'x-chain': chain },
+                    headers: { ...this.headers, 'x-chain': chain }, // Header is generic requirement
                     params: {
+                        chain: chain, // Added per instruction
                         sort_by: 'v24hUSD',
                         sort_type: 'desc',
                         offset: 0,
@@ -55,7 +59,8 @@ export class BirdeyeService {
                 items = response.data?.data?.items || [];
                 logger.info(`[Birdeye] Fetched ${items.length} Tokens via V3 List Fallback.`);
             } catch (fallbackErr: any) {
-                logger.error(`[Birdeye] V3 Fallback Failed: ${fallbackErr.message}`);
+                const apiError = fallbackErr.response?.data ? JSON.stringify(fallbackErr.response.data) : fallbackErr.message;
+                logger.error(`[Birdeye] V3 Fallback Failed: ${apiError}`);
                 return [];
             }
         }
@@ -69,9 +74,13 @@ export class BirdeyeService {
      */
     async getTokenPrice(address: string, chain: 'solana' | 'base'): Promise<number> {
         try {
+            // https://public-api.birdeye.so/defi/price?address=${address}&chain=solana
             const response = await axios.get(`${this.baseUrl}/defi/price`, {
                 headers: { ...this.headers, 'x-chain': chain },
-                params: { address }
+                params: {
+                    address,
+                    chain // Added per instruction
+                }
             });
             return response.data?.data?.value || 0;
         } catch (error) {

@@ -65,7 +65,8 @@ export class PostgresStorage {
                 current_mc NUMERIC,
                 status TEXT DEFAULT 'TRACKING',
                 alert_timestamp TIMESTAMP DEFAULT NOW(),
-                last_updated TIMESTAMP DEFAULT NOW()
+                last_updated TIMESTAMP DEFAULT NOW(),
+                entry_price NUMERIC DEFAULT 0 -- Added for Continuous Autopsy
             );`,
             `CREATE TABLE IF NOT EXISTS keyword_alerts (
                 tweet_id TEXT PRIMARY KEY,
@@ -79,8 +80,9 @@ export class PostgresStorage {
             for (const q of queries) {
                 await this.pool.query(q);
             }
-            // Auto-Migration for new features
-            await this.pool.query(`ALTER TABLE seen_tokens ADD COLUMN IF NOT EXISTS last_price NUMERIC; `);
+            // Auto-Migration
+            await this.pool.query(`ALTER TABLE seen_tokens ADD COLUMN IF NOT EXISTS last_price NUMERIC;`);
+            await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS entry_price NUMERIC DEFAULT 0;`);
 
             logger.info('[Postgres] Schema initialized.');
         } catch (err) {
@@ -95,10 +97,10 @@ export class PostgresStorage {
     async savePerformance(perf: TokenPerformance) {
         try {
             await this.pool.query(
-                `INSERT INTO token_performance(mint, symbol, alert_mc, ath_mc, current_mc, status, alert_timestamp, last_updated)
-        VALUES($1, $2, $3, $4, $5, $6, $7, $8)
-                 ON CONFLICT(mint) DO NOTHING`, // Only insert on first alert
-                [perf.mint, perf.symbol, perf.alertMc, perf.athMc, perf.currentMc, perf.status, perf.alertTimestamp, perf.lastUpdated]
+                `INSERT INTO token_performance(mint, symbol, alert_mc, ath_mc, current_mc, status, alert_timestamp, last_updated, entry_price)
+        VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                 ON CONFLICT(mint) DO NOTHING`,
+                [perf.mint, perf.symbol, perf.alertMc, perf.athMc, perf.currentMc, perf.status, perf.alertTimestamp, perf.lastUpdated, perf.entryPrice || 0]
             );
         } catch (err) {
             logger.error('[Postgres] savePerformance failed', err);
@@ -129,9 +131,10 @@ export class PostgresStorage {
                     ath_mc = $4,
                     current_mc = $5,
                     status = $6,
-                    last_updated = NOW()
+                    last_updated = NOW(),
+                    entry_price = CASE WHEN entry_price = 0 THEN $7 ELSE entry_price END
                  WHERE mint = $1`,
-                [perf.mint, perf.symbol, perf.alertMc, perf.athMc, perf.currentMc, perf.status]
+                [perf.mint, perf.symbol, perf.alertMc, perf.athMc, perf.currentMc, perf.status, perf.entryPrice || 0]
             );
         } catch (err) {
             logger.error('[Postgres] updatePerformanceEnriched failed', err);
@@ -256,7 +259,8 @@ export class PostgresStorage {
             currentMc: Number(row.current_mc),
             status: row.status,
             alertTimestamp: row.alert_timestamp,
-            lastUpdated: row.last_updated
+            lastUpdated: row.last_updated,
+            entryPrice: row.entry_price ? Number(row.entry_price) : 0
         };
     }
     // --- Watchlist ---

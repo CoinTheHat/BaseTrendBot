@@ -114,12 +114,21 @@ export class TokenScanJob {
                         // Double check Liq
                         if (liq < 5000) return;
 
-                        // VOLUME FILTER
+                        // VOLUME FILTER (Floor)
                         if (v5m < 5000) {
                             return;
                         }
 
-                        logger.info(`[Sniper] 💎 GEM DETECTED (V3): ${token.symbol} | Liq: $${Math.floor(liq)} | 5m Vol: $${Math.floor(v5m)}`);
+                        // RULE B: MOMENTUM IMPULSE (The 1.5x Rule)
+                        // Volume in last 5m MUST be > 1.5x Liquidity to prove breakout.
+                        // User Request: "Son 5 dakikada en az $5,000 bunu likiditenin 1.5 katı yapmıştık"
+                        const impulseRatio = v5m / (liq || 1);
+                        if (impulseRatio < 1.5) {
+                            // logger.debug(`[Filter] 💤 Weak Momentum: ${token.symbol} (Vol/Liq: ${impulseRatio.toFixed(2)}x). Needs > 1.5x. Skip.`);
+                            return;
+                        }
+
+                        logger.info(`[Sniper] 💎 GEM DETECTED (V3): ${token.symbol} | Liq: $${Math.floor(liq)} | 5m Vol: $${Math.floor(v5m)} (Ratio: ${impulseRatio.toFixed(2)}x)`);
 
                         // --- STEP 3: TWITTER SCAN (Safe Mode) ---
                         let tweets: string[] = [];
@@ -189,7 +198,8 @@ export class TokenScanJob {
                                 alertMc: token.marketCapUsd || 0,
                                 athMc: token.marketCapUsd || 0,
                                 currentMc: token.marketCapUsd || 0,
-                                status: 'TRACKING',
+                                entryPrice: token.priceUsd || 0,
+                                status: 'TRACKING', // Fixed missing status
                                 alertTimestamp: new Date(),
                                 lastUpdated: new Date()
                             });
