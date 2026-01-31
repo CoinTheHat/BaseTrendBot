@@ -22,6 +22,7 @@ import { TrendTokenMatcher } from './core/TrendTokenMatcher';
 import { AlphaSearchService } from './twitter/AlphaSearchService';
 import { LLMService } from './services/LLMService';
 import { logger } from './utils/Logger';
+import { PortfolioTrackerJob } from './jobs/PortfolioTrackerJob';
 
 // Error handling
 process.on('uncaughtException', (err) => {
@@ -93,15 +94,17 @@ async function main() {
 
     // 6. Performance & Dashboard
     const performanceJob = new PerformanceMonitorJob(storage, birdeye);
+    const portfolioTracker = new PortfolioTrackerJob(storage, birdeye);
     // REMOVED: KeywordMonitorJob (Jeweler Mode) killed by user request.
     const dashboard = new DashboardServer(storage); // Railway auto-sets PORT env var
 
     performanceJob.start();
+    portfolioTracker.start();
     dashboard.start();
 
     // Start
     job.start();
-    await bot.notifyAdmin("🚀 **TRENDBOT V3 (Premium Sniper)**\nSistem Başlatıldı:\n- Trending V3 Scanner: 🟢\n- Autopsy (15m): 🟢\n- Keyword Monitor: 🔴 (Disabled)");
+    await bot.notifyAdmin("🚀 **TRENDBOT V3 (Premium Sniper)**\nSistem Başlatıldı:\n- Trending V3 Scanner: 🟢\n- Autopsy (15m): 🟢\n- Portfolio Tracker (30m): 🟢\n- Keyword Monitor: 🔴 (Disabled)");
     logger.info('✅ TrendBot Systems Operational. Scanning V3 Trending...');
 
     // Graceful Shutdown

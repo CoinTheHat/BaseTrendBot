@@ -91,6 +91,17 @@ export class DashboardServer {
         this.app.get('/', (req, res) => {
             res.sendFile(path.join(__dirname, '../../web/public/index.html'));
         });
+
+        // NEW: Portfolio Tracking API
+        this.app.get('/api/tokens', async (req, res) => {
+            try {
+                const tokens = await this.storage.getAllTrackingTokens();
+                res.json(tokens);
+            } catch (error) {
+                logger.error(`[API] /api/tokens error: ${error}`);
+                res.status(500).json({ error: 'Internal Server Error' });
+            }
+        });
     }
 
     start() {

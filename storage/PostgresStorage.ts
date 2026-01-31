@@ -63,10 +63,13 @@ export class PostgresStorage {
                 alert_mc NUMERIC,
                 ath_mc NUMERIC,
                 current_mc NUMERIC,
+                found_mc NUMERIC,
+                max_mc NUMERIC,
                 status TEXT DEFAULT 'TRACKING',
                 alert_timestamp TIMESTAMP DEFAULT NOW(),
+                found_at TIMESTAMP DEFAULT NOW(),
                 last_updated TIMESTAMP DEFAULT NOW(),
-                entry_price NUMERIC DEFAULT 0 -- Added for Continuous Autopsy
+                entry_price NUMERIC DEFAULT 0
             );`,
             `CREATE TABLE IF NOT EXISTS keyword_alerts (
                 tweet_id TEXT PRIMARY KEY,
@@ -83,6 +86,14 @@ export class PostgresStorage {
             // Auto-Migration
             await this.pool.query(`ALTER TABLE seen_tokens ADD COLUMN IF NOT EXISTS last_price NUMERIC;`);
             await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS entry_price NUMERIC DEFAULT 0;`);
+            await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS found_mc NUMERIC;`);
+            await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS max_mc NUMERIC;`);
+            await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS found_at TIMESTAMP DEFAULT NOW();`);
+
+            // Backfill: found_mc = alert_mc, max_mc = ath_mc for existing rows
+            await this.pool.query(`UPDATE token_performance SET found_mc = alert_mc WHERE found_mc IS NULL;`);
+            await this.pool.query(`UPDATE token_performance SET max_mc = ath_mc WHERE max_mc IS NULL;`);
+            await this.pool.query(`UPDATE token_performance SET found_at = alert_timestamp WHERE found_at IS NULL;`);
 
             logger.info('[Postgres] Schema initialized.');
         } catch (err) {
@@ -400,6 +411,53 @@ export class PostgresStorage {
             );
         } catch (err) {
             logger.error('[Postgres] saveKeywordTweet failed', err);
+        }
+    }
+
+    // === PORTFOLIO TRACKING METHODS ===
+
+    async getAllTrackingTokens(): Promise<any[]> {
+        try {
+            const res = await this.pool.query(
+                `SELECT 
+                    mint, symbol, found_mc, max_mc, current_mc, 
+                    status, found_at, last_updated
+                FROM token_performance 
+                WHERE status = 'TRACKING'
+                ORDER BY found_at DESC`
+            );
+            return res.rows;
+        } catch (err) {
+            logger.error('[Postgres] getAllTrackingTokens failed', err);
+            return [];
+        }
+    }
+
+    async updateTokenMC(mint: string, currentMc: number) {
+        try {
+            await this.pool.query(
+                `UPDATE token_performance 
+                SET current_mc = $1,
+                    max_mc = GREATEST(COALESCE(max_mc, 0), $1),
+                    last_updated = NOW()
+                WHERE mint = $2`,
+                [currentMc, mint]
+            );
+        } catch (err) {
+            logger.error(`[Postgres] updateTokenMC failed for ${mint}`, err);
+        }
+    }
+
+    async archiveToken(mint: string) {
+        try {
+            await this.pool.query(
+                `UPDATE token_performance 
+                SET status = 'ARCHIVED', last_updated = NOW()
+                WHERE mint = $1`,
+                [mint]
+            );
+        } catch (err) {
+            logger.error(`[Postgres] archiveToken failed for ${mint}`, err);
         }
     }
 }

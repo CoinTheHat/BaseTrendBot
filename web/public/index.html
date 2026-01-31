@@ -4,170 +4,295 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TrendBot HQ (Live)</title>
-    <!-- Tailwind via CDN -->
+    <title>Portfolio Tracker | TrendBot</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        .neon-text {
-            text-shadow: 0 0 10px rgba(52, 211, 153, 0.5);
+        body {
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+
+        .glow {
+            box-shadow: 0 0 20px rgba(34, 211, 238, 0.3);
+        }
+
+        .multiplier-high {
+            color: #22c55e;
+            font-weight: 700;
+        }
+
+        .multiplier-medium {
+            color: #eab308;
+            font-weight: 600;
+        }
+
+        .multiplier-low {
+            color: #64748b;
+        }
+
+        @keyframes pulse-glow {
+
+            0%,
+            100% {
+                box-shadow: 0 0 15px rgba(34, 211, 238, 0.2);
+            }
+
+            50% {
+                box-shadow: 0 0 25px rgba(34, 211, 238, 0.5);
+            }
+        }
+
+        .live-indicator {
+            animation: pulse-glow 2s ease-in-out infinite;
+        }
+
+        .table-row:hover {
+            background: rgba(51, 65, 85, 0.5);
+            transition: all 0.2s ease;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-tracking {
+            background: rgba(34, 197, 94, 0.2);
+            color: #22c55e;
+            border: 1px solid rgba(34, 197, 94, 0.4);
+        }
+
+        .status-archived {
+            background: rgba(100, 116, 139, 0.2);
+            color: #94a3b8;
+            border: 1px solid rgba(100, 116, 139, 0.4);
         }
     </style>
 </head>
 
-<body class="bg-gray-900 text-gray-100 font-sans">
-    <div class="container mx-auto px-4 py-8">
+<body class="min-h-screen p-8">
+    <div class="max-w-7xl mx-auto">
         <!-- Header -->
-        <header class="mb-8 flex justify-between items-center border-b border-gray-700 pb-4">
-            <div>
-                <h1
-                    class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-green-400 to-blue-500 neon-text">
-                    TrendBot HQ
-                </h1>
-                <p class="text-gray-400 text-sm mt-1">AI-Powered Solana Trend Hunter</p>
-            </div>
-            <div class="text-right">
-                <div class="text-xs text-gray-500">Last Updated</div>
-                <div id="last-updated" class="font-mono text-green-400">Loading...</div>
-            </div>
-        </header>
-
-        <!-- Metrics Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <!-- Win Rate -->
-            <div class="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
-                <div class="text-gray-400 text-sm font-semibold uppercase tracking-wider">Win Rate (>2x)</div>
-                <div class="mt-2 flex items-baseline">
-                    <span id="win-rate" class="text-4xl font-bold text-green-400">--%</span>
-                    <span id="total-calls" class="ml-2 text-sm text-gray-400">of -- calls</span>
+        <div class="mb-8">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-4xl font-bold text-white mb-2">
+                        🎯 Portfolio Tracker
+                    </h1>
+                    <p class="text-slate-400">Real-time performance monitoring powered by BirdEye</p>
                 </div>
-            </div>
-
-            <!-- Moons -->
-            <div class="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
-                <div class="text-gray-400 text-sm font-semibold uppercase tracking-wider">Moonshots</div>
-                <div class="mt-2 flex items-baseline">
-                    <span id="moon-count" class="text-4xl font-bold text-yellow-400">--</span>
-                    <span class="ml-2 text-sm text-gray-400">Tokens > 2x</span>
-                </div>
-            </div>
-
-            <!-- Active -->
-            <div class="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
-                <div class="text-gray-400 text-sm font-semibold uppercase tracking-wider">Total Scanned</div>
-                <div class="mt-2">
-                    <span id="total-scanned" class="text-4xl font-bold text-blue-400">--</span>
+                <div class="flex items-center gap-3">
+                    <div class="live-indicator bg-slate-800 px-4 py-2 rounded-lg border border-cyan-500/30">
+                        <div class="flex items-center gap-2">
+                            <div class="w-2 h-2 bg-cyan-400 rounded-full animate-pulse"></div>
+                            <span class="text-cyan-400 font-semibold text-sm">LIVE</span>
+                        </div>
+                    </div>
+                    <div class="bg-slate-800 px-4 py-2 rounded-lg border border-slate-700">
+                        <p class="text-slate-400 text-sm">Last Update</p>
+                        <p class="text-white font-semibold" id="lastUpdate">Loading...</p>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <!-- Recent Calls -->
-        <div>
-            <h2 class="text-xl font-bold text-white mb-4 flex items-center">
-                <span class="mr-2">📢</span> Recent Calls
-            </h2>
-            <div class="bg-gray-800 rounded-xl overflow-hidden shadow-lg border border-gray-700">
-                <table class="w-full text-left">
-                    <thead class="bg-gray-700 text-gray-300">
-                        <tr>
-                            <th class="px-6 py-3">Time</th>
-                            <th class="px-6 py-3">Token</th>
-                            <th class="px-6 py-3">Status</th>
-                            <th class="px-6 py-3">MC Journey 🚀</th>
-                            <th class="px-6 py-3">Link</th>
+        <!-- Stats Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <div class="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
+                <p class="text-slate-400 text-sm mb-1">Total Tracked</p>
+                <p class="text-3xl font-bold text-white" id="totalTokens">0</p>
+            </div>
+            <div class="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
+                <p class="text-slate-400 text-sm mb-1">Active</p>
+                <p class="text-3xl font-bold text-green-400" id="activeTokens">0</p>
+            </div>
+            <div class="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
+                <p class="text-slate-400 text-sm mb-1">Archived</p>
+                <p class="text-3xl font-bold text-slate-400" id="archivedTokens">0</p>
+            </div>
+            <div class="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
+                <p class="text-slate-400 text-sm mb-1">Best Performer</p>
+                <p class="text-3xl font-bold text-yellow-400" id="bestMultiplier">0x</p>
+            </div>
+        </div>
+
+        <!-- Table -->
+        <div class="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead>
+                        <tr class="bg-slate-900/50 border-b border-slate-700">
+                            <th class="text-left p-4 text-slate-400 font-semibold text-sm">Token</th>
+                            <th class="text-left p-4 text-slate-400 font-semibold text-sm">Found Date</th>
+                            <th class="text-right p-4 text-slate-400 font-semibold text-sm">Found MC</th>
+                            <th class="text-right p-4 text-slate-400 font-semibold text-sm">Max MC (ATH)</th>
+                            <th class="text-right p-4 text-slate-400 font-semibold text-sm">Current MC</th>
+                            <th class="text-right p-4 text-slate-400 font-semibold text-sm">Multiplier</th>
+                            <th class="text-center p-4 text-slate-400 font-semibold text-sm">Status</th>
                         </tr>
                     </thead>
-                    <tbody id="calls-body" class="divide-y divide-gray-700">
+                    <tbody id="tokenTable">
                         <tr>
-                            <td colspan="5" class="px-6 py-4 text-center text-gray-500">Loading data...</td>
+                            <td colspan="7" class="text-center p-8 text-slate-500">
+                                <div class="flex items-center justify-center gap-2">
+                                    <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none"
+                                        viewBox="0 0 24 24">
+                                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor"
+                                            stroke-width="4"></circle>
+                                        <path class="opacity-75" fill="currentColor"
+                                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                                        </path>
+                                    </svg>
+                                    Loading tokens...
+                                </div>
+                            </td>
                         </tr>
                     </tbody>
                 </table>
             </div>
         </div>
+
+        <!-- Footer -->
+        <div class="mt-8 text-center text-slate-500 text-sm">
+            <p>Auto-refreshes every 30 seconds • Powered by <span class="text-cyan-400">BirdEye API</span></p>
+        </div>
     </div>
 
     <script>
-        // Helper: Compact Number Format ($1.2M, $400k)
-        function formatMC(num) {
-            if (!num) return '$0';
-            if (num >= 1000000) return '$' + (num / 1000000).toFixed(1) + 'M';
-            if (num >= 1000) return '$' + (num / 1000).toFixed(0) + 'k';
-            return '$' + num.toFixed(0);
-        }
+        const REFRESH_INTERVAL = 30000; // 30 seconds
 
-        async function fetchMetrics() {
+        async function fetchTokens() {
             try {
-                const response = await fetch('/api/calls');
-                const data = await response.json();
+                const response = await fetch('/api/tokens');
+                const tokens = await response.json();
 
-                // Update Header
-                document.getElementById('last-updated').innerText = new Date().toLocaleTimeString();
-
-                // Update Cards
-                document.getElementById('win-rate').innerText = data.winRate + '%';
-                document.getElementById('total-calls').innerText = 'of ' + data.totalCalls + ' calls';
-                document.getElementById('moon-count').innerText = data.moonCount;
-                document.getElementById('total-scanned').innerText = data.totalCalls;
-
-                // Render Table
-                const tbody = document.getElementById('calls-body');
-                tbody.innerHTML = '';
-
-                if (data.recentCalls.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No recent calls.</td></tr>';
-                    return;
-                }
-
-                data.recentCalls.forEach(token => {
-                    const tr = document.createElement('tr');
-                    tr.className = 'hover:bg-gray-750 transition-colors';
-
-                    // Time
-                    const time = new Date(token.alertTimestamp).toLocaleString();
-
-                    // Status Badge
-                    let statusBadge = '';
-                    if (token.status === 'MOONED') statusBadge = '<span class="px-2 py-1 rounded bg-green-900 text-green-300 text-xs font-bold">MOONED 🚀</span>';
-                    else if (token.status === 'RUGGED') statusBadge = '<span class="px-2 py-1 rounded bg-red-900 text-red-300 text-xs font-bold">RUGGED 💀</span>';
-                    else statusBadge = '<span class="px-2 py-1 rounded bg-blue-900 text-blue-300 text-xs font-bold">TRACKING 👀</span>';
-
-                    // MC Journey Logic
-                    const entryText = formatMC(token.entryMc);
-                    const athText = formatMC(token.athMc);
-                    // Highlight Green if ATH is > 1.2x Entry
-                    const isProfit = token.multiplier > 1.2;
-                    const colorClass = isProfit ? "text-green-400 font-bold" : "text-gray-400";
-
-                    const mcJourneyHtml = `
-                        <div class="flex items-center space-x-1">
-                            <span class="text-xs text-gray-500">${entryText}</span>
-                            <span class="text-gray-600 text-xs">➔</span>
-                            <span class="text-sm ${colorClass}">${athText}</span>
-                        </div>
-                        <div class="text-[10px] text-gray-500 mt-0.5">Max: ${token.multiplier}x</div>
-                    `;
-
-                    // Link
-                    const linkHtml = `<a href="https://dexscreener.com/solana/${token.mint}" target="_blank" class="text-blue-400 hover:text-blue-300">Chart ↗</a>`;
-
-                    tr.innerHTML = `
-                        <td class="px-6 py-4 text-gray-400 text-sm">${time}</td>
-                        <td class="px-6 py-4 text-white font-medium">${token.symbol || '???'}</td>
-                        <td class="px-6 py-4">${statusBadge}</td>
-                        <td class="px-4 py-3">${mcJourneyHtml}</td>
-                        <td class="px-6 py-4">${linkHtml}</td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-
-            } catch (err) {
-                console.error("Failed to fetch metrics", err);
+                updateStats(tokens);
+                renderTable(tokens);
+                updateLastUpdate();
+            } catch (error) {
+                console.error('Error fetching tokens:', error);
+                document.getElementById('tokenTable').innerHTML = `
+                    <tr>
+                        <td colspan="7" class="text-center p-8 text-red-400">
+                            ⚠️ Error loading tokens. Check console for details.
+                        </td>
+                    </tr>
+                `;
             }
         }
 
-        // Fetch on load and every 10s
-        fetchMetrics();
-        setInterval(fetchMetrics, 10000);
+        function updateStats(tokens) {
+            const total = tokens.length;
+            const active = tokens.filter(t => t.status === 'TRACKING').length;
+            const archived = total - active;
+
+            let bestMultiplier = 0;
+            tokens.forEach(t => {
+                const mult = t.found_mc > 0 ? (t.max_mc || 0) / t.found_mc : 1;
+                if (mult > bestMultiplier) bestMultiplier = mult;
+            });
+
+            document.getElementById('totalTokens').textContent = total;
+            document.getElementById('activeTokens').textContent = active;
+            document.getElementById('archivedTokens').textContent = archived;
+            document.getElementById('bestMultiplier').textContent = bestMultiplier.toFixed(2) + 'x';
+        }
+
+        function renderTable(tokens) {
+            const tbody = document.getElementById('tokenTable');
+
+            if (tokens.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="text-center p-8 text-slate-500">
+                            No tokens tracked yet. Start scanning to populate the list.
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = tokens.map(token => {
+                const foundMc = token.found_mc || 0;
+                const maxMc = token.max_mc || 0;
+                const currentMc = token.current_mc || 0;
+                const multiplier = foundMc > 0 ? maxMc / foundMc : 1;
+
+                let multiplierClass = 'multiplier-low';
+                if (multiplier >= 5) multiplierClass = 'multiplier-high';
+                else if (multiplier >= 2) multiplierClass = 'multiplier-medium';
+
+                const statusClass = token.status === 'TRACKING' ? 'status-tracking' : 'status-archived';
+                const timeAgo = getTimeAgo(new Date(token.found_at));
+
+                return `
+                    <tr class="table-row border-b border-slate-800">
+                        <td class="p-4">
+                            <div>
+                                <p class="text-white font-semibold">${token.symbol || 'Unknown'}</p>
+                                <p class="text-slate-500 text-xs font-mono">${token.mint.slice(0, 8)}...</p>
+                            </div>
+                        </td>
+                        <td class="p-4 text-slate-400 text-sm">${timeAgo}</td>
+                        <td class="p-4 text-right text-white">${formatMC(foundMc)}</td>
+                        <td class="p-4 text-right">
+                            <span class="text-green-400 font-bold">${formatMC(maxMc)}</span>
+                        </td>
+                        <td class="p-4 text-right text-slate-300">${formatMC(currentMc)}</td>
+                        <td class="p-4 text-right">
+                            <span class="${multiplierClass} text-lg">${multiplier.toFixed(2)}x</span>
+                        </td>
+                        <td class="p-4 text-center">
+                            <span class="status-badge ${statusClass}">${token.status}</span>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function formatMC(value) {
+            if (!value || value === 0) return '-';
+            if (value >= 1000000) return `$${(value / 1000000).toFixed(2)}M`;
+            if (value >= 1000) return `$${(value / 1000).toFixed(1)}K`;
+            return `$${Math.floor(value)}`;
+        }
+
+        function getTimeAgo(date) {
+            const seconds = Math.floor((new Date() - date) / 1000);
+
+            const intervals = {
+                year: 31536000,
+                month: 2592000,
+                week: 604800,
+                day: 86400,
+                hour: 3600,
+                minute: 60
+            };
+
+            for (const [unit, secondsInUnit] of Object.entries(intervals)) {
+                const interval = Math.floor(seconds / secondsInUnit);
+                if (interval >= 1) {
+                    return `${interval} ${unit}${interval > 1 ? 's' : ''} ago`;
+                }
+            }
+
+            return 'Just now';
+        }
+
+        function updateLastUpdate() {
+            const now = new Date();
+            document.getElementById('lastUpdate').textContent = now.toLocaleTimeString();
+        }
+
+        // Initial load
+        fetchTokens();
+
+        // Auto-refresh
+        setInterval(fetchTokens, REFRESH_INTERVAL);
     </script>
 </body>
 
