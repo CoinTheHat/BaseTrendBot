@@ -71,22 +71,39 @@ export class TokenScanJob {
 
             // 1. Fetch Candidates (Trending V3)
             const birdSolTokens = await this.birdeye.fetchTrendingTokens('solana');
+            logger.info(`[Fetch] 📡 Received ${birdSolTokens.length} tokens from BirdEye V3`);
 
             const freshCandidates: TokenSnapshot[] = [];
             const now = Date.now();
+            let cachedCount = 0;
 
             for (const token of birdSolTokens) {
                 const lastProcessed = this.processedCache.get(token.mint);
                 // ANTI-SPAM: Ignore if seen in last 15 mins
-                if (lastProcessed && (now - lastProcessed < 15 * 60 * 1000)) continue;
+                if (lastProcessed && (now - lastProcessed < 15 * 60 * 1000)) {
+                    cachedCount++;
+                    continue;
+                }
                 freshCandidates.push(token);
             }
 
+            logger.info(`[Cache] 🔄 Filtered out ${cachedCount} recently seen tokens`);
+
             if (freshCandidates.length === 0) {
+                logger.info(`[Scan] ⚠️ No fresh candidates to process. Next cycle in 120s.`);
                 return;
             }
 
-            logger.info(`[Job] Processing ${freshCandidates.length} V3 Trending candidates...`);
+            logger.info(`[Job] 🔍 Processing ${freshCandidates.length} fresh candidates...`);
+
+            // Scan Statistics
+            let honeypotCount = 0;
+            let lowLiqCount = 0;
+            let lowVolCount = 0;
+            let weakMomentumCount = 0;
+            let ghostCount = 0;
+            let lowScoreCount = 0;
+            let alertCount = 0;
 
             // Process in chunks
             const chunks = this.chunkArray(freshCandidates, 2);
@@ -100,7 +117,8 @@ export class TokenScanJob {
                         const chain = token.mint.startsWith('0x') ? 'base' : 'solana';
                         const isSafe = await this.goPlus.checkToken(token.mint, chain);
                         if (!isSafe) {
-                            // logger.warn(`[Security] 🚨 HONEYPOT: ${token.symbol}`);
+                            honeypotCount++;
+                            logger.warn(`[Security] 🚨 HONEYPOT: ${token.symbol}`);
                             return;
                         }
 
@@ -112,10 +130,16 @@ export class TokenScanJob {
                         const v5m = token.volume5mUsd || ((token.volume24hUsd || 0) / 100);
 
                         // Double check Liq
-                        if (liq < 5000) return;
+                        if (liq < 5000) {
+                            lowLiqCount++;
+                            logger.debug(`[Filter] 💧 Low Liquidity: ${token.symbol} ($${Math.floor(liq)})`);
+                            return;
+                        }
 
                         // VOLUME FILTER (Floor)
                         if (v5m < 5000) {
+                            lowVolCount++;
+                            logger.debug(`[Filter] 📊 Low 5m Volume: ${token.symbol} ($${Math.floor(v5m)})`);
                             return;
                         }
 
@@ -124,7 +148,8 @@ export class TokenScanJob {
                         // User Request: "Son 5 dakikada en az $5,000 bunu likiditenin 1.5 katı yapmıştık"
                         const impulseRatio = v5m / (liq || 1);
                         if (impulseRatio < 1.5) {
-                            // logger.debug(`[Filter] 💤 Weak Momentum: ${token.symbol} (Vol/Liq: ${impulseRatio.toFixed(2)}x). Needs > 1.5x. Skip.`);
+                            weakMomentumCount++;
+                            logger.debug(`[Filter] 💤 Weak Momentum: ${token.symbol} (${impulseRatio.toFixed(2)}x, needs >1.5x)`);
                             return;
                         }
 
@@ -152,6 +177,7 @@ export class TokenScanJob {
                         // --- STEP 4: GHOST PROTOCOL ---
                         // If no tweets found, Auto-Reject (Risk of ghost scam)
                         if (!tweets || tweets.length === 0) {
+                            ghostCount++;
                             logger.warn(`[Ghost] 👻 No tweets found for ${token.symbol}. Auto-Rejecting (Score: 4).`);
 
                             await this.storage.saveSeenToken(token.mint, {
@@ -176,8 +202,9 @@ export class TokenScanJob {
 
                         // --- STEP 6: THE GATEKEEPER (Strict < 7 Reject) ---
                         if (aiScore < 7) {
+                            lowScoreCount++;
                             const reason = narrative.aiReason || "Score < 7";
-                            logger.info(`❌ Rejected [Score: ${aiScore}] - ${token.symbol} - Reason: ${reason}`);
+                            logger.info(`❌ [AI Reject] ${token.symbol} - Score: ${aiScore}/10 - Reason: ${reason}`);
 
                             await this.storage.saveSeenToken(token.mint, {
                                 firstSeenAt: Date.now(),
@@ -191,7 +218,8 @@ export class TokenScanJob {
                         // --- STEP 7: SUCCESS - GEM SPOTTED ---
                         const { allowed } = await this.cooldown.canAlert(token.mint);
                         if (allowed) {
-                            logger.info(`💎 [GEM SPOTTED] ${token.symbol} Score: ${aiScore} -> Sending Alert!`);
+                            alertCount++;
+                            logger.info(`✅ [GEM SPOTTED] ${token.symbol} Score: ${aiScore}/10 -> Sending Alert!`);
 
                             await this.bot.sendAlert(narrative, enrichedToken, scoreRes);
                             if (aiScore >= 8) await this.twitter.postTweet(narrative, enrichedToken);
@@ -219,6 +247,27 @@ export class TokenScanJob {
                 // Tiny delay between chunks
                 await new Promise(r => setTimeout(r, 100));
             }
+
+            // SCAN SUMMARY
+            const totalRejected = honeypotCount + lowLiqCount + lowVolCount + weakMomentumCount + ghostCount + lowScoreCount;
+            logger.info(`
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 [SCAN SUMMARY]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔍 Total Fetched: ${birdSolTokens.length}
+🔄 Cached (15m): ${cachedCount}
+🎯 Fresh Candidates: ${freshCandidates.length}
+
+🚫 REJECTED (${totalRejected}):
+  🚨 Honeypot: ${honeypotCount}
+  💧 Low Liquidity (<$5k): ${lowLiqCount}
+  📊 Low Volume (<$5k): ${lowVolCount}
+  💤 Weak Momentum (<1.5x): ${weakMomentumCount}
+  👻 Ghost Protocol: ${ghostCount}
+  ❌ AI Score <7: ${lowScoreCount}
+
+✅ ALERTS SENT: ${alertCount}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
         } catch (err) {
             logger.error(`[Job] Cycle failed: ${err}`);
         } finally {
