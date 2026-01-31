@@ -54,7 +54,10 @@ export const config = {
     // APIs
     PUMPFUN_API_KEY: process.env.PUMPFUN_API_KEY || '', // If needed later
     DEXSCREENER_API_KEY: process.env.DEXSCREENER_API_KEY || '',
-    BIRDEYE_API_KEY: process.env.BIRDEYE_API_KEY || ''
+    BIRDEYE_API_KEY: process.env.BIRDEYE_API_KEY || '',
+
+    // Base Chain Monitoring
+    BASE_KEYWORDS: ["ERC-8004", "ERC8004", "Hybrid Token", "404"]
 };
 
 // Simple validation

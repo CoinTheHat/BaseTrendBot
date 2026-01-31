@@ -4,6 +4,7 @@ import { PumpFunService } from './services/PumpFunService';
 import { DexScreenerService } from './services/DexScreenerService';
 import { BirdeyeService } from './services/BirdeyeService';
 import { MinoService } from './services/MinoService';
+import { GoPlusService } from './services/GoPlusService';
 import { PerformanceMonitorJob } from './jobs/PerformanceMonitorJob';
 import { KeywordMonitorJob } from './jobs/KeywordMonitorJob';
 import { DashboardServer } from './web/DashboardServer';
@@ -54,6 +55,7 @@ async function main() {
     const twitterService = new TwitterTrendsService();
     const alphaSearchService = new AlphaSearchService(); // Instantiated
     const minoService = new MinoService(dexScreener);
+    const goPlusService = new GoPlusService();
 
     // 3. Core & Trends
     const trendCollector = new TrendCollector(twitterService, storage); // Injected
@@ -89,7 +91,8 @@ async function main() {
         trendCollector,
         trendMatcher,
         alphaSearchService, // Injected
-        minoService
+        minoService,
+        goPlusService
     );
 
     // 6. Performance & Dashboard

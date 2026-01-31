@@ -27,14 +27,45 @@ export class DashboardServer {
         const viewsPath = path.join(__dirname, '../../web/views');
         this.app.set('views', viewsPath);
 
-        // Public static files (if needed)
-        this.app.use(express.static(path.join(__dirname, 'public')));
+        // Public static files
+        // CRITICAL: Point to source directory since static files aren't copied to dist by tsc
+        this.app.use(express.static(path.join(__dirname, '../../web/public')));
 
         // Routes
         this.setupRoutes();
     }
 
     private setupRoutes() {
+        // API Endpoint for Client-Side Rendering
+        this.app.get('/api/calls', async (req, res) => {
+            try {
+                const metrics = await this.storage.getDashboardMetrics();
+
+                // Transform for Frontend
+                const recentCalls = metrics.recentCalls.map((token: any) => {
+                    const entryMc = token.alertMc || 0;
+                    const athMc = token.athMc || entryMc; // Fallback
+                    const multiplier = entryMc > 0 ? (athMc / entryMc) : 0;
+
+                    return {
+                        ...token,
+                        entryMc,
+                        athMc,
+                        multiplier: Number(multiplier.toFixed(2))
+                    };
+                });
+
+                res.json({
+                    ...metrics,
+                    recentCalls // Override with enriched data
+                });
+            } catch (err) {
+                logger.error('[Dashboard] API Error:', err);
+                res.status(500).json({ error: 'Internal Server Error' });
+            }
+        });
+
+        // Legacy SSR Route (Keep for backup)
         this.app.get('/dashboard', async (req, res) => {
             try {
                 const metrics = await this.storage.getDashboardMetrics();
@@ -48,8 +79,9 @@ export class DashboardServer {
             }
         });
 
+        // Redirect root to static index.html if it exists, otherwise dashboard
         this.app.get('/', (req, res) => {
-            res.redirect('/dashboard');
+            res.sendFile(path.join(__dirname, '../../web/public/index.html'));
         });
     }
 

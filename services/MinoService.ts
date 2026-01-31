@@ -14,17 +14,25 @@ export class MinoService {
         }
     }
 
-    async fetchNewPairsFromDexScreener(): Promise<TokenSnapshot[]> {
+    async fetchNewPairsFromDexScreener(chain: 'solana' | 'base'): Promise<TokenSnapshot[]> {
         if (!this.apiKey) return [];
 
+        const targetUrl = chain === 'base'
+            ? "https://dexscreener.com/base/new-pairs"
+            : "https://dexscreener.com/solana/new-pairs";
+
+        const goalPrompt = chain === 'base'
+            ? "Extract first 20 tokens with Symbol, Name, Address, Liquidity. For Base, ensure addresses start with 0x. Return valid JSON."
+            : "Extract first 20 tokens with Symbol, Name, Address, Liquidity. Return valid JSON.";
+
         try {
-            logger.info('🤖 Mino AI Agent is extracting data from DexScreener...');
+            logger.info(`🤖 Mino AI Agent is extracting data from DexScreener (${chain})...`);
 
             const response = await axios.post(
                 this.baseUrl,
                 {
-                    url: "https://dexscreener.com/solana/new-pairs",
-                    goal: "Extract first 20 tokens with Symbol, Name, Address, Liquidity. Return valid JSON.",
+                    url: targetUrl,
+                    goal: goalPrompt,
                     mode: "stealth" // Bu çok önemli! Cloudflare'i geçen mod.
                 },
                 {
@@ -39,22 +47,27 @@ export class MinoService {
             // Mino'nun döndüğü veriyi işle
             const data = response.data;
             if (data && data.resultJson && data.resultJson.tokens) {
-                logger.info(`✅ Mino returned ${data.resultJson.tokens.length} tokens.`);
+                logger.info(`✅ Mino returned ${data.resultJson.tokens.length} tokens for ${chain}.`);
 
                 // Extract Mints
                 const tokens = data.resultJson.tokens;
                 const mints: string[] = tokens
                     .map((t: any) => t.Address || t.address || t.contractAddress || t.ContractAddress)
-                    .filter((m: string) => typeof m === 'string' && m.length > 30); // Basic Solana address check
+                    .filter((m: string) => {
+                        if (!m || typeof m !== 'string') return false;
+                        if (chain === 'base') return m.startsWith('0x') && m.length > 40;
+                        return m.length > 30; // Solana check
+                    });
 
                 if (mints.length > 0) {
-                    logger.info(`[Mino] Hydrating ${mints.length} valid mints via DexScreener API...`);
+                    logger.info(`[Mino] Hydrating ${mints.length} valid ${chain} mints via DexScreener API...`);
+                    // DexScreener supports both Solana and Base addresses in the same endpoint /tokens/{address}
                     return await this.dexScreener.getTokens(mints);
                 } else {
-                    logger.warn(`[Mino] No valid mints found in AI response.`);
+                    logger.warn(`[Mino] No valid mints found in AI response for ${chain}.`);
                 }
             } else {
-                logger.warn(`[Mino] Invalid response format or no tokens found.`);
+                logger.warn(`[Mino] Invalid response format or no tokens found for ${chain}.`);
             }
 
             return [];

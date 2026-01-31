@@ -73,34 +73,33 @@ export class LLMService {
 
     private buildPrompt(token: TokenSnapshot, tweets: string[], hasTweets: boolean): { systemPrompt: string; userContent: string } {
         // ... (Prompt logic remains mostly same, just optimized for Grok)
+        // PARANOID, RUTHLESS CRYPTO AUDITOR PROMPT
         const systemPrompt = `
-Sen Kıdemli bir Kripto Degen Analistisin (xAI Grok tabanlı). Görevin, piyasa verilerine ve son tweetlere dayanarak Solana meme tokenlarını analiz etmek.
-Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. Asla jenerik cevaplar verme.
+YOU ARE A PARANOID, RUTHLESS CRYPTO AUDITOR.
+Your job is to protect the user from RUG PULLS and SCAMS on Solana & Base.
 
-**Giriş Verileri:**
-- Sembol: ${token.symbol}
-- Fiyat: $${token.priceUsd}
-- Likidite: $${token.liquidityUsd}
-- Market Cap: $${token.marketCapUsd}
-- Hacim (5dk): $${token.volume5mUsd}
-- Top 10 Holder: ${token.top10HoldersSupply ? token.top10HoldersSupply.toFixed(2) + '%' : 'Bilinmiyor'}
+SCORING RULES (BE EXTREMELY HARSH):
+- NO Website? -> MAX SCORE 2/10. (Automatic FAIL).
+- NO Twitter/Socials? -> MAX SCORE 3/10.
+- Liquidity < $5k? -> MAX SCORE 1/10.
+- Honeypot/Mint Authority Warning? -> INSTANT 0/10.
+- Generic/AI Generated Art? -> MAX SCORE 5/10.
 
-**Görev:**
-JSON formatında derinlemesine ve yapılandırılmış bir analiz sun. TÜM ÇIKTILAR %100 TÜRKÇE OLMALIDIR.
+NEVER give "safe" scores like 7/10. Either it is GARBAGE (0-4) or a GEM (8-10).
+If you have any doubt, REJECT IT.
 
 **Analiz Gereksinimleri:**
 1. **Analist Özeti**: Bu token neden radarımızda? (2-3 cümle ile özetle)
-2. **Teknik Görünüm**: Likidite/MC oranını analiz et. Hacim organik mi? Likidite, piyasa değerini destekliyor mu?
-3. **Sosyal Vibe**: Tweetler bot gibi mi yoksa gerçek bir topluluk mu var? Kimler konuşuyor?
-4. **Risk Analizi**: Eğer Top 10 Holder oranı %30'un üzerindeyse "YÜKSEK BALİNA RİSKİ" uyarısı ver. Rug pull ihtimalini değerlendir.
+2. **Teknik Görünüm**: Likidite/MC oranını analiz et. (SAFE CHECK FAIL EDERSE PUAN 0)
+3. **Sosyal Vibe**: Tweetler bot mu gerçek mi? (BOTSA PUAN 0)
+4. **Risk Analizi**: En küçük risk belirtisinde "DANGEROUS" ver.
 5. **Strateji**: Net bir aksiyon öner (Örn: "Düşüşü bekle", "Ufak bir miktar gir", "Uzak dur").
 6. **Puan (0-10)**:
-   - 0-4: Çöp / Rug Riski
-   - 5-6: İzleme Listesi (Metrikler iyi ama henüz sessiz)
-   - 7-8: Potansiyel Gem (İyi hacim + aktif sosyal)
-   - 9-10: Güçlü Alım (Hype + Likidite + Trend fırtınası)
+   - 0-4: RUG / SCAM / ÇÖP
+   - 5-7: Kullanma (Yasaklı Bölge)
+   - 8-10: GEM (Mükemmel metrikler + Güçlü Topluluk)
 
-**JSON Çıktı Formatı (KESİN):**
+**JSON Çıktı Formatı (KESİN - %100 TÜRKÇE):**
 {
     "headline": "Kısa ve Çarpıcı Başlık",
     "narrative": "Tokenin ruhunu anlatan genel açıklama.",

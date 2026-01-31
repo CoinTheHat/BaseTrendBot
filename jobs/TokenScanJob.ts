@@ -4,6 +4,7 @@ import { PumpFunService } from '../services/PumpFunService';
 import { DexScreenerService } from '../services/DexScreenerService';
 import { BirdeyeService } from '../services/BirdeyeService';
 import { MinoService } from '../services/MinoService';
+import { GoPlusService } from '../services/GoPlusService';
 import { Matcher } from '../core/Matcher';
 import { ScoringEngine } from '../core/ScoringEngine';
 import { PhaseDetector } from '../core/PhaseDetector';
@@ -43,7 +44,8 @@ export class TokenScanJob {
         private trendCollector: TrendCollector,
         private trendMatcher: TrendTokenMatcher,
         private alphaSearch: AlphaSearchService,
-        private minoService: MinoService
+        private minoService: MinoService,
+        private goPlus: GoPlusService
     ) { }
 
     start() {
@@ -96,16 +98,17 @@ export class TokenScanJob {
             }
 
             // b. Execute fetches in parallel
-            const [pumpTokens, dexTokens, birdTokens, watchlistTokens, minoTokens] = await Promise.all([
+            const [pumpTokens, dexTokens, birdTokens, watchlistTokens, minoSolana, minoBase] = await Promise.all([
                 this.pumpFun.getNewTokens(),
                 this.dexScreener.getLatestPairs(),
                 this.birdeye.getNewTokens(10),
                 watchlistMints.length > 0 ? this.dexScreener.getTokens(watchlistMints) : Promise.resolve([]),
-                this.minoService.fetchNewPairsFromDexScreener()
+                this.minoService.fetchNewPairsFromDexScreener('solana'),
+                this.minoService.fetchNewPairsFromDexScreener('base')
             ]);
 
             // Deduplicate by mint
-            const allTokens = [...pumpTokens, ...dexTokens, ...birdTokens, ...watchlistTokens, ...minoTokens];
+            const allTokens = [...pumpTokens, ...dexTokens, ...birdTokens, ...watchlistTokens, ...minoSolana, ...minoBase];
             const uniqueTokens: Record<string, TokenSnapshot> = {};
             allTokens.forEach(t => uniqueTokens[t.mint] = t);
             const candidates = Object.values(uniqueTokens);
@@ -210,6 +213,20 @@ export class TokenScanJob {
 
                         // Mark as processed immediately to prevent re-entry in race conditions
                         this.processedCache.set(token.mint, Date.now());
+
+                        // 🛡️ FAIL FAST: HONEYPOT CHECK (GoPlus)
+                        // Note: Defaulting to 'solana' for ease, but should ideally sniff chain. 
+                        // TokenSnapshot doesn't explicitly store chainId but DexScreenerService filters 'solana'.
+                        // However, we just added Base support. We need to know the chain.
+                        // Hack: Inspect address length. Solana ~44 chars (base58). Base starts with 0x.
+                        const chain = token.mint.startsWith('0x') ? 'base' : 'solana';
+
+                        const isSafe = await this.goPlus.checkToken(token.mint, chain);
+
+                        if (!isSafe) {
+                            logger.warn(`[Security] 🚨 HONEYPOT/RISK DETECTED for ${token.symbol} (${token.mint}). SKIPPING ALL FURTHER CHECKS.`);
+                            return; // EXIT IMMEDIATELY
+                        }
 
                         // 2. Meme Match
                         let matchResult = this.matcher.match(token);
