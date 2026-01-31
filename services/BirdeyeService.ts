@@ -25,7 +25,8 @@ export class BirdeyeService {
                 headers: { ...this.headers, 'x-chain': chain },
                 params: {
                     limit,
-                    meme_platform_enabled: true // Focus on meme tokens
+                    meme_platform_enabled: true, // Focus on meme tokens
+                    min_liquidity: 5000 // Server-side pre-filtering
                 }
             });
 

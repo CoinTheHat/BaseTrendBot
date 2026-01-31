@@ -75,7 +75,7 @@ export class TokenScanJob {
                 this.birdeye.fetchNewListings('solana', 10)
             ]);
 
-            logger.info(`🦅 Scanning Solana Only (Base Paused)...`);
+            logger.info(`🦅 Scanning Solana Only (Base Paused) - Filter: Min Liq $5k...`);
 
             // Deduplicate
             const allTokens = [...pumpTokens, ...birdSolTokens];
@@ -122,11 +122,8 @@ export class TokenScanJob {
                         // Use 5m Volume, fallback to 1% of 24h volume if missing
                         const v5m = token.volume5mUsd || ((token.volume24hUsd || 0) / 100);
 
-                        // RULE A: Liquidity Floor ($5,000)
-                        if (liq < 5000) {
-                            logger.info(`[Filter] 🚫 Low Liq: ${token.symbol} ($${Math.floor(liq)}) < $5k. Skip.`);
-                            return;
-                        }
+                        // RULE A: Liquidity Floor ($5,000) - HANDLED BY API NOW
+                        // if (liq < 5000) { ... } -> Removed for optimization
 
                         // RULE B: MOMENTUM IMPULSE (The 1.5x Rule)
                         // Volume in last 5m MUST be > 1.5x Liquidity to prove breakout.
