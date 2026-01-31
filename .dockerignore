@@ -1,6 +1,13 @@
 node_modules
-npm-debug.log
-logs
-.git
-.env
 dist
+.env
+.git
+.gitignore
+*.log
+*.md
+debug-*.png
+screenshots
+.DS_Store
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
