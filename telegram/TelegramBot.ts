@@ -300,4 +300,11 @@ Güven Skoru: **${narrative.twitterStory.trustScore ?? 50}/100** (${(narrative.t
             logger.error(`[Telegram] Failed to send alert: ${err} `);
         }
     }
+
+    async stop() {
+        if (this.bot) {
+            logger.info('[Telegram] Stopping bot polling...');
+            await this.bot.stopPolling();
+        }
+    }
 }
