@@ -21,9 +21,10 @@ export const config = {
     TWITTER_AUTH_TOKEN: process.env.TWITTER_AUTH_TOKEN || '', // Legacy single
     TWITTER_CT0: process.env.TWITTER_CT0 || '', // Legacy single
 
-    // Twitter Account Pool - Parses comma-separated lists
-    TWITTER_AUTH_TOKENS: (process.env.TWITTER_AUTH_TOKENS || process.env.TWITTER_AUTH_TOKEN || '').split(',').map(t => t.trim()).filter(t => t),
-    TWITTER_CT0S: (process.env.TWITTER_CT0S || process.env.TWITTER_CT0 || '').split(',').map(t => t.trim()).filter(t => t),
+    // Cookie-Based Auth Pool (New System)
+    TWITTER_AUTH_TOKENS: (process.env.TWITTER_AUTH_TOKENS || '').split(',').map(t => t.trim()).filter(t => t),
+    TWITTER_CT0S: (process.env.TWITTER_CT0S || '').split(',').map(t => t.trim()).filter(t => t),
+    TWITTER_PROXIES: (process.env.TWITTER_PROXIES || '').split(',').map(t => t.trim()).filter(t => t), // NEW: Proxy Support
 
     // Primary Engine: xAI (Grok)
     XAI_API_KEY: process.env.XAI_API_KEY || process.env.GROK_API_KEY || '',

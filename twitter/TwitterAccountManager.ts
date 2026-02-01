@@ -11,7 +11,13 @@ export interface TwitterAccount {
     isBusy: boolean;
     lastBusyStart: number; // For Deadlock Detection
     cooldownUntil: number;
+    searchCount: number; // Track searches
+    lastWarmup: number;  // Track last warm-up timestamp
 }
+
+import { exec } from 'child_process';
+import util from 'util';
+const execAsync = util.promisify(exec);
 
 const USER_AGENTS = [
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -35,6 +41,8 @@ export class TwitterAccountManager {
         const ct0s = config.TWITTER_CT0S || [];
         const foundAccounts: TwitterAccount[] = [];
 
+        const proxies = config.TWITTER_PROXIES || [];
+
         // 1. Load Legacy List (Comma-Separated) - Priority 1
         const legacyCount = Math.min(tokens.length, ct0s.length);
         for (let i = 0; i < legacyCount; i++) {
@@ -43,9 +51,12 @@ export class TwitterAccountManager {
                 ct0: ct0s[i],
                 index: i,
                 userAgent: USER_AGENTS[i % USER_AGENTS.length],
+                proxy: proxies[i] || undefined, // Assign proxy if available
                 isBusy: false,
                 lastBusyStart: 0,
-                cooldownUntil: 0
+                cooldownUntil: 0,
+                searchCount: 0,
+                lastWarmup: 0
             });
         }
 
@@ -72,7 +83,9 @@ export class TwitterAccountManager {
                             userAgent: USER_AGENTS[foundAccounts.length % USER_AGENTS.length],
                             isBusy: false,
                             lastBusyStart: 0,
-                            cooldownUntil: 0
+                            cooldownUntil: 0,
+                            searchCount: 0,
+                            lastWarmup: 0
                         });
                         dynamicCount++;
                     }
@@ -87,148 +100,199 @@ export class TwitterAccountManager {
                 ct0: config.TWITTER_CT0,
                 index: 0,
                 userAgent: USER_AGENTS[0],
+                proxy: undefined,
                 isBusy: false,
                 lastBusyStart: 0,
-                cooldownUntil: 0
+                cooldownUntil: 0,
+                searchCount: 0,
+                lastWarmup: 0
             });
-        }
+        });
+    }
 
         this.accounts = foundAccounts;
-        logger.info(`[TwitterManager] Loaded ${this.accounts.length} accounts (Legacy: ${legacyCount}, Dynamic: ${dynamicCount}).`);
+logger.info(`[TwitterManager] Loaded ${this.accounts.length} accounts (Legacy: ${legacyCount}, Dynamic: ${dynamicCount}).`);
     }
 
-    /**
-     * Returns the next available account that is NOT busy and NOT on cooldown.
-     * Sets isBusy = true immediately.
-     */
-    getAvailableAccount(): TwitterAccount | null {
-        if (this.accounts.length === 0) return null;
+/**
+ * Returns the next available account that is NOT busy and NOT on cooldown.
+ * Sets isBusy = true immediately.
+ */
+getAvailableAccount(): TwitterAccount | null {
+    if (this.accounts.length === 0) return null;
 
-        const now = Date.now();
+    const now = Date.now();
 
-        // 🚨 DEADLOCK SAFETY CHECK 🚨
-        this.accounts.forEach(acc => {
-            if (acc.isBusy && acc.lastBusyStart > 0) {
-                const busyDuration = now - acc.lastBusyStart;
-                if (busyDuration > 180000) { // 3 Minutes
-                    logger.warn(`[TwitterManager] 🚨 DEADLOCK DETECTED on Account #${acc.index + 1}. Busy for ${(busyDuration / 1000).toFixed(1)}s. FORCE RELEASING.`);
-                    acc.isBusy = false;
-                    acc.lastBusyStart = 0;
-                    acc.cooldownUntil = now + 5000; // Small penalty
-                }
-            }
-        });
-
-        // Try accounts starting from currentIndex
-        for (let i = 0; i < this.accounts.length; i++) {
-            const ptr = (this.currentIndex + i) % this.accounts.length;
-            const account = this.accounts[ptr];
-
-            if (!account.isBusy && now > account.cooldownUntil) {
-                this.currentIndex = (ptr + 1) % this.accounts.length;
-                account.isBusy = true; // CLAIM IT
-                account.lastBusyStart = Date.now();
-                return account;
+    // 🚨 DEADLOCK SAFETY CHECK 🚨
+    this.accounts.forEach(acc => {
+        if (acc.isBusy && acc.lastBusyStart > 0) {
+            const busyDuration = now - acc.lastBusyStart;
+            if (busyDuration > 180000) { // 3 Minutes
+                logger.warn(`[TwitterManager] 🚨 DEADLOCK DETECTED on Account #${acc.index + 1}. Busy for ${(busyDuration / 1000).toFixed(1)}s. FORCE RELEASING.`);
+                acc.isBusy = false;
+                acc.lastBusyStart = 0;
+                acc.cooldownUntil = now + 5000; // Small penalty
             }
         }
+    });
 
-        // 🚨 FALLBACK: FORCE RELEASE OLDEST BUSY ACCOUNT 🚨
-        // If we reached here, ALL accounts are busy or on cooldown.
-        // We cannot return null (user requirement). We must pick the "least busy" or "oldest busy" account.
+    // Try accounts starting from currentIndex
+    for (let i = 0; i < this.accounts.length; i++) {
+        const ptr = (this.currentIndex + i) % this.accounts.length;
+        const account = this.accounts[ptr];
 
-        // Find the account that started being busy longest ago
-        let oldestBusyParams = { index: -1, time: Infinity };
-
-        this.accounts.forEach(acc => {
-            // Only consider busy ones, or if none busy (all cooldown), pick anyone?
-            // If all are on cooldown, we should probably pick the one with earliest cooldown expiry.
-            if (acc.isBusy) {
-                if (acc.lastBusyStart < oldestBusyParams.time) {
-                    oldestBusyParams = { index: acc.index, time: acc.lastBusyStart };
-                }
-            }
-        });
-
-        if (oldestBusyParams.index !== -1) {
-            const acc = this.accounts[oldestBusyParams.index];
-            logger.warn(`[TwitterManager] ⚠️ POOL EXHAUSTED (${this.accounts.length} accs). Forcing turnover of Account #${acc.index + 1}.`);
-
-            // Force reset stats for this new usage
-            acc.isBusy = true;
-            acc.lastBusyStart = Date.now();
-            return acc;
-        }
-
-        // If NO accounts are busy (meaning all are on cooldown), pick the one with nearest cooldown expiry.
-        let nearestCooldownParams = { index: -1, time: Infinity };
-        this.accounts.forEach(acc => {
-            if (acc.cooldownUntil < nearestCooldownParams.time) {
-                nearestCooldownParams = { index: acc.index, time: acc.cooldownUntil };
-            }
-        });
-
-        if (nearestCooldownParams.index !== -1) {
-            const acc = this.accounts[nearestCooldownParams.index];
-            logger.warn(`[TwitterManager] 🧊 ALL POOL COOLED DOWN. Early releasing Account #${acc.index + 1}.`);
-            acc.isBusy = true;
-            acc.lastBusyStart = Date.now();
-            return acc;
-        }
-
-        // If we have 0 accounts loaded at all
-        logger.error('[TwitterManager] CRITICAL: No accounts loaded in pool!');
-        return null;
-    }
-
-    /**
-     * Releases an account back to the pool.
-     * @param index Account index
-     * @param wasRateLimited If true, triggers 2m cooldown.
-     */
-    releaseAccount(index: number, wasRateLimited: boolean) {
-        const account = this.accounts.find(a => a.index === index);
-        if (account) {
-            account.isBusy = false;
-            account.lastBusyStart = 0;
-
-            if (wasRateLimited) {
-                // 🛑 RATE LIMIT HIT: 2 Minute Penalty (Reduced from 5m)
-                account.cooldownUntil = Date.now() + (2 * 60 * 1000);
-                logger.warn(`[TwitterManager] Account #${index + 1} hit Rate Limit. Cooldown 2m until ${new Date(account.cooldownUntil).toTimeString().substring(0, 8)}`);
-            } else {
-                // ✅ STANDARD CYCLE: 10 Second Rest (Aggressive)
-                account.cooldownUntil = Date.now() + (10 * 1000);
-                logger.debug(`[TwitterManager] Account #${index + 1} released. Resting 10s.`);
-            }
+        if (!account.isBusy && now > account.cooldownUntil) {
+            this.currentIndex = (ptr + 1) % this.accounts.length;
+            account.isBusy = true; // CLAIM IT
+            account.lastBusyStart = Date.now();
+            return account;
         }
     }
 
-    // Deprecated alias for compatibility
-    markUsed(account: TwitterAccount) {
-        this.releaseAccount(account.index, false);
+    // 🚨 FALLBACK: FORCE RELEASE OLDEST BUSY ACCOUNT 🚨
+    // If we reached here, ALL accounts are busy or on cooldown.
+    // We cannot return null (user requirement). We must pick the "least busy" or "oldest busy" account.
+
+    // Find the account that started being busy longest ago
+    let oldestBusyParams = { index: -1, time: Infinity };
+
+    this.accounts.forEach(acc => {
+        // Only consider busy ones, or if none busy (all cooldown), pick anyone?
+        // If all are on cooldown, we should probably pick the one with earliest cooldown expiry.
+        if (acc.isBusy) {
+            if (acc.lastBusyStart < oldestBusyParams.time) {
+                oldestBusyParams = { index: acc.index, time: acc.lastBusyStart };
+            }
+        }
+    });
+
+    if (oldestBusyParams.index !== -1) {
+        const acc = this.accounts[oldestBusyParams.index];
+        logger.warn(`[TwitterManager] ⚠️ POOL EXHAUSTED (${this.accounts.length} accs). Forcing turnover of Account #${acc.index + 1}.`);
+
+        // Force reset stats for this new usage
+        acc.isBusy = true;
+        acc.lastBusyStart = Date.now();
+        return acc;
     }
 
-    // Legacy generic getter (auto-busy)
-    getNextAccount(): TwitterAccount | null {
-        return this.getAvailableAccount();
+    // If NO accounts are busy (meaning all are on cooldown), pick the one with nearest cooldown expiry.
+    let nearestCooldownParams = { index: -1, time: Infinity };
+    this.accounts.forEach(acc => {
+        if (acc.cooldownUntil < nearestCooldownParams.time) {
+            nearestCooldownParams = { index: acc.index, time: acc.cooldownUntil };
+        }
+    });
+
+    if (nearestCooldownParams.index !== -1) {
+        const acc = this.accounts[nearestCooldownParams.index];
+        logger.warn(`[TwitterManager] 🧊 ALL POOL COOLED DOWN. Early releasing Account #${acc.index + 1}.`);
+        acc.isBusy = true;
+        acc.lastBusyStart = Date.now();
+        return acc;
     }
 
+    // If we have 0 accounts loaded at all
+    logger.error('[TwitterManager] CRITICAL: No accounts loaded in pool!');
+    return null;
+}
 
-    getAccountCount(): number {
-        return this.accounts.length;
+/**
+ * Releases an account back to the pool.
+ * @param index Account index
+ * @param wasRateLimited If true, triggers 2m cooldown.
+ */
+releaseAccount(index: number, wasRateLimited: boolean) {
+    const account = this.accounts.find(a => a.index === index);
+    if (account) {
+        account.isBusy = false;
+        account.lastBusyStart = 0;
+
+        if (wasRateLimited) {
+            // 🛑 RATE LIMIT HIT: 2 Minute Penalty (Reduced from 5m)
+            account.cooldownUntil = Date.now() + (2 * 60 * 1000);
+            logger.warn(`[TwitterManager] Account #${index + 1} hit Rate Limit. Cooldown 2m until ${new Date(account.cooldownUntil).toTimeString().substring(0, 8)}`);
+        } else {
+            // ✅ STANDARD CYCLE: 10 Second Rest (Aggressive)
+            account.cooldownUntil = Date.now() + (10 * 1000);
+            logger.debug(`[TwitterManager] Account #${index + 1} released. Resting 10s.`);
+        }
     }
+}
 
-    /**
-     * Resets locking capability for all accounts.
-     * Call this on bot startup to clear any ghost locks.
-     */
-    resetAllLocks() {
-        this.accounts.forEach(acc => {
-            acc.isBusy = false;
-            acc.lastBusyStart = 0;
-            acc.cooldownUntil = 0;
-        });
-        logger.info(`[TwitterManager] Force reset all ${this.accounts.length} account locks.`);
+// Deprecated alias for compatibility
+markUsed(account: TwitterAccount) {
+    this.releaseAccount(account.index, false);
+}
+
+// Legacy generic getter (auto-busy)
+getNextAccount(): TwitterAccount | null {
+    return this.getAvailableAccount();
+}
+
+
+getAccountCount(): number {
+    return this.accounts.length;
+}
+
+/**
+ * Resets locking capability for all accounts.
+ * Call this on bot startup to clear any ghost locks.
+ */
+resetAllLocks() {
+    this.accounts.forEach(acc => {
+        acc.isBusy = false;
+        acc.lastBusyStart = 0;
+        acc.cooldownUntil = 0;
+    });
+    logger.info(`[TwitterManager] Force reset all ${this.accounts.length} account locks.`);
+}
+    async performWarmup(account: TwitterAccount): Promise < void> {
+    try {
+        logger.info(`[Warmup] 🌡️ Warming up Account #${account.index + 1}...`);
+
+        // Random warm-up activities to mimic human behavior
+        const activities = [
+            () => this.fetchUserProfile(account, 'elonmusk'),
+            () => this.fetchUserProfile(account, 'CoinGecko'),
+            () => this.fetchUserProfile(account, 'solana'),
+            () => this.fetchUserProfile(account, 'ethereum'),
+            () => this.fetchUserProfile(account, 'VitalikButerin')
+        ];
+
+        // Execute random activity
+        const activity = activities[Math.floor(Math.random() * activities.length)];
+        await activity();
+
+            // Reset counters
+            account.lastWarmup = Date.now();
+        account.searchCount = 0;
+
+        logger.info(`[Warmup] ✅ Account #${account.index + 1} warm-up complete.`);
+    } catch(err) {
+        logger.warn(`[Warmup] Failed for Account #${account.index + 1}: ${err}`);
+    }
+}
+
+    private async fetchUserProfile(account: TwitterAccount, username: string): Promise < void> {
+    // Prepare Env
+    const env: any = {
+        ...process.env,
+        AUTH_TOKEN: account.authToken,
+        CT0: account.ct0
+    };
+
+    if(account.proxy) {
+    env.HTTP_PROXY = account.proxy;
+    env.HTTPS_PROXY = account.proxy;
+}
+
+// Use Bird CLI: npx @steipete/bird user [username]
+// Note: Bird CLI 'user' command might need checking if it exists/works same way. 
+// Assuming it does based on plan. If not, 'search from:user' is alternative.
+// Plan said: npx @steipete/bird user [username] --json
+const cmd = `npx @steipete/bird user "${username}" --json`;
+await execAsync(cmd, { env, timeout: 10000 });
     }
 }
 

@@ -172,9 +172,8 @@ export class TokenScanJob {
                         let tweets: string[] = [];
                         if (config.ENABLE_TWITTER_SCRAPING) {
                             try {
-                                const queries = QueryBuilder.build(token.name, token.symbol);
-                                // Fetch exactly 20 tweets using single account logic (handled in scraper)
-                                tweets = await this.scraper.fetchTokenTweets(queries);
+                                // Use new fallback system (passes token object)
+                                tweets = await this.scraper.fetchTokenTweets(token);
                             } catch (err) {
                                 logger.error(`[Job] Scraping failed for ${token.symbol}: ${err}`);
                             }

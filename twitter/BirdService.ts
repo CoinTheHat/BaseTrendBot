@@ -2,6 +2,7 @@ import { exec } from 'child_process';
 import util from 'util';
 import { logger } from '../utils/Logger';
 import { twitterAccountManager } from './TwitterAccountManager';
+import { QueryBuilder } from './QueryBuilder';
 
 const execAsync = util.promisify(exec);
 
@@ -22,6 +23,30 @@ export interface BirdTweet {
 
 export class BirdService {
 
+    async searchWithFallback(token: { symbol: string; name: string; mint: string }, limit: number = 20): Promise<BirdTweet[]> {
+        const queries = QueryBuilder.build(token.name, token.symbol, token.mint);
+
+        for (let i = 0; i < queries.length; i++) {
+            const query = queries[i];
+            // logger.info(`[Bird] 🛡️ Anti-Ban Strategy: Trying Tier ${i + 1} Query: ${query}`);
+
+            // Limit retry for fallback searches to avoid excessive account usage
+            // We expect the first or second tier to work usually.
+            const results = await this.search(query, limit);
+
+            if (results.length > 0) {
+                if (i > 0) logger.info(`[Bird] ✅ Fallback Success on Tier ${i + 1} (${query}) -> ${results.length} tweets`);
+                return results;
+            }
+
+            // If tier failed, continue
+            // logger.debug(`[Bird] ⚠️ Tier ${i + 1} returned 0 tweets, trying next...`);
+        }
+
+        logger.warn(`[Bird] ❌ All query tiers failed for ${token.symbol}. No social data found.`);
+        return [];
+    }
+
     /**
      * Executes bird CLI search command
      */
@@ -33,12 +58,28 @@ export class BirdService {
             return [];
         }
 
-        // Prepare Env with Tokens from the rotated account
-        const env = {
+        // ✅ WARM-UP CHECK (Phase 2)
+        // Run warm-up every 50 searches (if > 30 mins since last warm-up)
+        if (twitterAccountManager.performWarmup && account.searchCount >= 50 && Date.now() - account.lastWarmup > 30 * 60 * 1000) {
+            await twitterAccountManager.performWarmup(account);
+        }
+
+        // Increment search counter
+        account.searchCount++;
+
+        // Prepare Env with Tokens and Proxy
+        const env: any = {
             ...process.env,
             AUTH_TOKEN: account.authToken,
             CT0: account.ct0
         };
+
+        // ✅ PROXY SUPPORT (Phase 3)
+        if (account.proxy) {
+            env.HTTP_PROXY = account.proxy;
+            env.HTTPS_PROXY = account.proxy;
+            logger.debug(`[Bird] Using proxy for Account #${account.index + 1}`);
+        }
 
         // Log rotation (Optional, but good for debug)
         // logger.info(`[Bird] using Account #${account.index + 1}`); 

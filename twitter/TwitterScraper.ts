@@ -12,7 +12,7 @@ export class TwitterScraper {
         this.bird = new BirdService();
     }
 
-    async fetchTokenTweets(queries: string[]): Promise<string[]> {
+    async fetchTokenTweets(token: { symbol: string; name: string; mint: string }): Promise<string[]> {
         if (!config.ENABLE_TWITTER_SCRAPING) {
             return [];
         }
@@ -37,14 +37,13 @@ export class TwitterScraper {
                 try {
                     // logger.info(`[Scraper] Attempt ${attempts}: Using Account #${account.index + 1} for ${queries[0].substring(0, 15)}...`);
 
-                    // 2. Fetch
-                    for (const q of queries) {
-                        try {
-                            const results = await this.bird.search(q, this.birdLimit, account);
-                            results.forEach(t => allTexts.add(t.text));
-                        } catch (e) {
-                            logger.warn(`[Scraper] Search failed for ${q}: ${e}`);
-                        }
+                    // 2. Fetch using Fallback Strategy
+                    // Note: searchWithFallback handles retries across different query tiers.
+                    try {
+                        const results = await this.bird.searchWithFallback(token, this.birdLimit);
+                        results.forEach(t => allTexts.add(t.text));
+                    } catch (e) {
+                        logger.warn(`[Scraper] SearchWithFallback failed for ${token.symbol}: ${e}`);
                     }
 
                 } finally {
