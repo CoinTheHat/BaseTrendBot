@@ -107,7 +107,7 @@ export class TwitterAccountManager {
                 searchCount: 0,
                 lastWarmup: 0
             });
-        });
+        }
     }
 
         this.accounts = foundAccounts;
