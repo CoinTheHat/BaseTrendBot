@@ -213,7 +213,7 @@ export class DexScreenerService {
             const url = 'https://dexscreener.com/solana?rankBy=trendingScoreM5&order=desc';
             console.log(`[DexScreener Scraper] Navigating to ${url}...`);
 
-            await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
 
             // Wait for token cards/rows to load
             await page.waitForSelector('a[href^="/solana/"]', { timeout: 10000 });
