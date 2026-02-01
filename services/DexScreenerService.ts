@@ -42,13 +42,13 @@ export class DexScreenerService {
 
     /**
      * Fetch latest Solana profiles/pairs.
-     * Strategy: Combine Profiles + Search to get ~100 tokens
+     * Strategy: Profiles API (30) + Puppeteer Scraping (70) = 100 tokens
      */
     async getLatestPairs(): Promise<TokenSnapshot[]> {
         try {
             const allTokens: TokenSnapshot[] = [];
 
-            // Strategy 1: Use Token Profiles endpoint (usually ~30 tokens)
+            // Tier 1: Token Profiles API (usually ~30 tokens)
             const data = await this.makeRequest(this.profilesUrl);
             const profiles = data || [];
 
@@ -61,51 +61,28 @@ export class DexScreenerService {
                 allTokens.push(...profileTokens);
             }
 
-            // Strategy 2: Supplement with Search to reach ~100 total tokens
-            // Search for fresh Solana tokens using multiple queries
-            const searchQueries = ['solana', 'sol meme', 'pump'];
+            console.log(`[DexScreener] API fetched: ${allTokens.length} tokens`);
 
-            for (const query of searchQueries) {
-                if (allTokens.length >= 100) break; // Stop if we have 100
-
-                const searchResults = await this.search(query);
-
-                // Add only unique tokens (not already in allTokens)
-                const uniqueResults = searchResults.filter(
-                    (sr: TokenSnapshot) => !allTokens.some(at => at.mint === sr.mint)
-                );
-
-                allTokens.push(...uniqueResults);
-
-                // Small delay between searches to avoid rate limit
-                await new Promise(resolve => setTimeout(resolve, 500));
-            }
-
-            // Limit to 100 tokens
-            const finalTokens = allTokens.slice(0, 100);
-
-            console.log(`[DexScreener] API fetched: ${finalTokens.length} tokens`);
-
-            // Strategy 3: If still under 100, use Puppeteer scraping to fill the gap
-            if (finalTokens.length < 100) {
-                console.log(`[DexScreener] Using Puppeteer scraping to reach 100 tokens...`);
-                const scrapedTokens = await this.scrapeTrendingTokens(100 - finalTokens.length);
+            // Tier 2: Puppeteer scraping to reach 100 total
+            if (allTokens.length < 100) {
+                console.log(`[DexScreener] Using Puppeteer to scrape ${100 - allTokens.length} more tokens...`);
+                const scrapedTokens = await this.scrapeTrendingTokens(100 - allTokens.length);
 
                 // Add unique scraped tokens
                 const uniqueScraped = scrapedTokens.filter(
-                    st => !finalTokens.some(ft => ft.mint === st.mint)
+                    (st: TokenSnapshot) => !allTokens.some(at => at.mint === st.mint)
                 );
 
-                finalTokens.push(...uniqueScraped);
-                console.log(`[DexScreener] Added ${uniqueScraped.length} scraped tokens. Total: ${finalTokens.length}`);
+                allTokens.push(...uniqueScraped);
+                console.log(`[DexScreener] Added ${uniqueScraped.length} scraped tokens. Total: ${allTokens.length}`);
             }
 
-            return finalTokens.slice(0, 100);
+            return allTokens.slice(0, 100);
 
         } catch (error) {
             console.error('[DexScreener] Error fetching latest profiles:', error);
-            // Fallback on error - just search
-            return (await this.search("solana")).slice(0, 100);
+            // Fallback: scrape 100 tokens directly
+            return (await this.scrapeTrendingTokens(100));
         }
     }
 
