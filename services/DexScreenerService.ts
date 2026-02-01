@@ -154,6 +154,7 @@ export class DexScreenerService {
             volume5mUsd: pair.volume?.m5 || 0,
             volume24hUsd: pair.volume?.h24 || 0,
             priceChange5m: pair.priceChange?.m5 || 0,
+            txs5m: pair.txns?.m5 || { buys: 0, sells: 0 },
             createdAt: new Date(pair.pairCreatedAt || Date.now()),
             updatedAt: new Date(),
             links: {
