@@ -29,7 +29,7 @@ export class DexScreenerService {
 
         let browser;
         try {
-            logger.info('[DexScreener] 🌐 Launching Mass Scraper (30 tokens)...');
+            logger.info('[DexScreener] 🌐 Launching Mass Scraper (50+ tokens)...');
 
             browser = await puppeteer.launch({
                 headless: true,
@@ -43,9 +43,11 @@ export class DexScreenerService {
             logger.info('[DexScreener] 📄 Navigating to Trending...');
             await page.goto(this.trendingPageUrl, { waitUntil: 'networkidle2', timeout: 30000 });
 
-            // Wait and scroll to load lazy-loaded elements
+            // Wait and scroll to load lazy-loaded elements (MORE SCROLL FOR 50+ TOKENS)
             await page.waitForSelector('a[href^="/solana/"]', { timeout: 15000 }).catch(() => { });
             await page.evaluate(() => window.scrollBy(0, 5000));
+            await new Promise(r => setTimeout(r, 2000));
+            await page.evaluate(() => window.scrollBy(0, 5000)); // Extra scroll
             await new Promise(r => setTimeout(r, 2000));
 
             // EXTERNALLY SCRAPE PAIR ADDRESSES ONLY
@@ -61,7 +63,7 @@ export class DexScreenerService {
                         seen.add(match[1]);
                         addresses.push(match[1]);
                     }
-                    if (addresses.length >= 40) break; // Fetch a few more to filter
+                    if (addresses.length >= 80) break; // Fetch 80 pairs to get ~50 valid tokens
                 }
                 return addresses;
             });
