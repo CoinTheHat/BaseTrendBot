@@ -238,29 +238,30 @@ export class DexScreenerService {
                     const symbolMatch = cardText.match(/\$([A-Z0-9]+)/);
                     const symbol = symbolMatch ? symbolMatch[1] : 'UNKNOWN';
 
-                    // Extract numbers with K/M/B suffixes
+                    // Extract numbers with K/M/B suffixes (Case-insensitive)
                     const parseValue = (regex: RegExp): number => {
                         const match = cardText.match(regex);
                         if (!match) return 0;
 
-                        let value = parseFloat(match[1].replace(/,/g, ''));
-                        const suffix = match[2];
+                        let valStr = match[1].replace(/[$,\s]/g, '');
+                        let value = parseFloat(valStr);
+                        const suffix = (match[2] || '').toUpperCase();
 
                         if (suffix === 'K') value *= 1000;
                         else if (suffix === 'M') value *= 1000000;
                         else if (suffix === 'B') value *= 1000000000;
 
-                        return value;
+                        return value || 0;
                     };
 
-                    // Try to extract price (usually small decimal)
-                    const priceMatch = cardText.match(/\$0\.0+[0-9]+/);
-                    const priceUsd = priceMatch ? parseFloat(priceMatch[0].replace('$', '')) : 0;
+                    // Improved Regex for DexScreener Card Layout
+                    const liquidityUsd = parseValue(/Liq(?:uidity)?.*?\$?([0-9,.]+)([KMB]?)/i);
+                    const marketCapUsd = parseValue(/(?:MC|Cap|Market Cap).*?\$?([0-9,.]+)([KMB]?)/i);
+                    const volume5mUsd = parseValue(/(?:Vol|5m).*?\$?([0-9,.]+)([KMB]?)/i);
 
-                    // Extract Liquidity, MC, Volume
-                    const liquidityUsd = parseValue(/Liquidity.*?\$([0-9,.]+)([KMB]?)/i);
-                    const marketCapUsd = parseValue(/(?:MC|Market Cap).*?\$([0-9,.]+)([KMB]?)/i);
-                    const volume5mUsd = parseValue(/5m.*?\$([0-9,.]+)([KMB]?)/i);
+                    // Price parse (looks for $0.0... format or similar)
+                    const priceMatch = cardText.match(/\$?\s*([0-9]+\.[0-9]{2,12})/);
+                    const priceUsd = priceMatch ? parseFloat(priceMatch[1]) : 0;
 
                     results.push({
                         ca,

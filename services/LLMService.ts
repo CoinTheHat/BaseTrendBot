@@ -42,10 +42,10 @@ export class LLMService {
         const { systemPrompt, userContent } = this.buildPrompt(token, tweets, hasTweets);
 
         try {
-            logger.info(`[xAI Grok] Analyzing $${token.symbol} with ${config.XAI_MODEL || 'grok-4-1-fast-non-reasoning'}...`);
+            logger.info(`[xAI Grok] Analyzing $${token.symbol} with ${config.XAI_MODEL || 'grok-2-1212'}...`);
 
             const completion = await this.xai.chat.completions.create({
-                model: config.XAI_MODEL || "grok-4-1-fast-non-reasoning", // Ultra Low Cost Model
+                model: config.XAI_MODEL || "grok-2-1212", // Ultra Low Cost Model
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userContent }
@@ -186,7 +186,7 @@ If no gems found, return: { "gems": [] }
             logger.info(`[xAI Grok] Batch analyzing ${tweets.length} tweets...`);
 
             const completion = await this.xai.chat.completions.create({
-                model: config.XAI_MODEL || "grok-4-1-fast-non-reasoning", // Ultra Low Cost Model
+                model: config.XAI_MODEL || "grok-4-1-fast-non-reasoning",
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userContent }
