@@ -96,6 +96,9 @@ export class PostgresStorage {
             await this.pool.query(`UPDATE token_performance SET max_mc = ath_mc WHERE max_mc IS NULL;`);
             await this.pool.query(`UPDATE token_performance SET found_at = alert_timestamp WHERE found_at IS NULL;`);
 
+            // CLEAN: Remove "Unknown" tokens (User Request)
+            await this.pool.query(`DELETE FROM seen_tokens WHERE symbol IS NULL OR symbol = ''`);
+
             logger.info('[Postgres] Schema initialized.');
         } catch (err) {
             logger.error('[Postgres] Schema init failed', err);
