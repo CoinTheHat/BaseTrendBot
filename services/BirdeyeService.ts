@@ -252,6 +252,35 @@ export class BirdeyeService {
         }
     }
 
+    /**
+     * Get Token Peak Price (ATH) since a specific time
+     * precise: true -> uses 1m candles (limited range)
+     * precise: false -> uses 15m candles (wider range)
+     */
+    async getTokenPeakPrice(address: string, timeFrom: number, timeTo: number): Promise<number> {
+        if (!config.BIRDEYE_API_KEY) return 0;
+
+        try {
+            // Smart Interval Strategy
+            // If duration < 24 hours, use 1m for precision
+            // If duration > 24 hours, use 15m to avoid "entry too large"
+            const duration = timeTo - timeFrom;
+            const type = duration < 86400 ? '1m' : '15m';
+
+            const candles = await this.getHistoricalCandles(address, type, timeFrom, timeTo);
+
+            let maxHigh = 0;
+            for (const c of candles) {
+                if (c.h > maxHigh) maxHigh = c.h;
+            }
+
+            return maxHigh;
+        } catch (err: any) {
+            logger.warn(`[Birdeye] Peak Price check failed for ${address}: ${err.message}`);
+            return 0;
+        }
+    }
+
     // --- Helpers ---
 
     private mapListingToSnapshot(item: any, chain: 'solana' | 'base'): TokenSnapshot {
