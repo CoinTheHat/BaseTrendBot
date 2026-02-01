@@ -9,13 +9,14 @@ puppeteer.use(StealthPlugin());
 
 export class DexScreenerService {
     private baseUrl = 'https://api.dexscreener.com/latest/dex/tokens';
+    private pairsUrl = 'https://api.dexscreener.com/latest/dex/pairs/solana';
     private trendingPageUrl = 'https://dexscreener.com/solana?rankBy=trendingScoreM5&order=desc';
     private lastScanTime = 0;
     private readonly COOLDOWN_MS = 60000; // 60 seconds
 
     /**
      * Scrape trending tokens from DexScreener UI (Trending M5)
-     * ENHANCED: XHR interception + HTML fallback + debugging
+     * ENHANCED: Scrape Pair Addresses -> Resolve to Token Mints via API
      */
     async fetchTrendingM5(): Promise<TokenSnapshot[]> {
         const now = Date.now();
@@ -47,151 +48,38 @@ export class DexScreenerService {
             await page.evaluate(() => window.scrollBy(0, 5000));
             await new Promise(r => setTimeout(r, 2000));
 
-            const tokens = await page.evaluate(() => {
-                const parseVal = (s: string) => {
-                    if (!s || s === '-') return 0;
-                    const clean = s.replace(/[$,\s]/g, '').toUpperCase();
-                    let mult = 1;
-                    if (clean.endsWith('K')) mult = 1000;
-                    else if (clean.endsWith('M')) mult = 1000000;
-                    else if (clean.endsWith('B')) mult = 1000000000;
-                    else if (clean.endsWith('T')) mult = 1000000000000;
-                    const val = parseFloat(clean.replace(/[KMBT]/g, ''));
-                    return isNaN(val) ? 0 : val * mult;
-                };
-
-                const parseAgeMs = (s: string) => {
-                    if (!s) return 0;
-                    const m = s.match(/^(\d+)([mhd])$/);
-                    if (!m) return 0;
-                    const v = parseInt(m[1]);
-                    const u = m[2];
-                    if (u === 'm') return v * 60 * 1000;
-                    if (u === 'h') return v * 3600 * 1000;
-                    if (u === 'd') return v * 86400 * 1000;
-                    return 0;
-                };
-
-                const rows = Array.from(document.querySelectorAll('a.ds-dex-table-row, a[href^="/solana/"]'))
-                    .map(el => ({
-                        link: el,
-                        row: el.closest('tr') || el.closest('.ds-dex-table-row') || el.parentElement?.parentElement
-                    }))
-                    .filter(item => item.row && item.link.getAttribute('href')?.includes('/solana/'));
-
-                const results: any[] = [];
+            // EXTERNALLY SCRAPE PAIR ADDRESSES ONLY
+            const pairAddresses = await page.evaluate(() => {
                 const seen = new Set<string>();
+                const addresses: string[] = [];
 
-                for (const item of rows) {
-                    try {
-                        const href = item.link.getAttribute('href') || '';
-                        const match = href.match(/\/solana\/([A-Za-z0-9]+)/);
-                        if (!match || seen.has(match[1])) continue;
-
-                        const address = match[1];
-                        seen.add(address);
-
-                        const row = item.row as HTMLElement;
-                        const symbolEl = row.querySelector('.ds-dex-table-row-base-token-symbol') ||
-                            row.querySelector('[class*="symbol"]') ||
-                            item.link.querySelector('span');
-
-                        // 1. COLLECT ALL TEXTS
-                        const cells = Array.from(row.querySelectorAll('td, div.ds-dex-table-row-col, [class*="cell"]'));
-                        const texts = cells.map(c => c.textContent?.trim() || '').filter(t => t.length > 0);
-
-                        // 2. LOGIC-BASED PARSING
-                        let price = 0;
-                        let ageStr = '';
-                        let moneyValues: number[] = [];
-                        let txns = 0;
-
-                        for (const t of texts) {
-                            // Identify Money Values (Price, Vol, Liq, MC)
-                            if (t.startsWith('$')) {
-                                // Add to moneyValues list regardless of suffix (handling small Vol like $500)
-                                const val = parseVal(t);
-                                moneyValues.push(val); // Store ALL money values found
-
-                                // Heuristic for Price: usually the first one or small value? 
-                                // Actually, we can just rely on the fact Price is usually first.
-                                // We store `price` separately just in case, but moneyValues logic is robust for others.
-                                const numericVal = parseFloat(t.replace(/[$,]/g, ''));
-                                if (!isNaN(numericVal) && price === 0) price = numericVal;
-                            }
-
-                            // Txns: Integer, no $, no dots
-                            if (/^[\d,]+$/.test(t) && !t.includes('.')) {
-                                const val = parseInt(t.replace(/,/g, ''));
-                                if (val > 0) txns = val;
-                            }
-
-                            // Age: "5m", "1h", "24h"
-                            if (/^\d+[mhd]$/.test(t)) {
-                                ageStr = t;
-                            }
-                        }
-
-                        // 3. MAPPING STRATEGY (Right-to-Left)
-                        // Typically: Price ... Vol ... Liq ... MC
-                        // We assume the LAST money value is MC, then Liq, then Vol.
-                        // If we have Price, Vol, Liq, MC -> length 4.
-                        // If we have Price, Vol, MC (Liq hidden?) -> length 3. (Rare)
-
-                        // Robust Right-to-Left:
-                        // Standard: Price ($), Vol ($), Liq ($), MC ($) -> Length 4
-                        const mc = moneyValues.length >= 1 ? moneyValues[moneyValues.length - 1] : 0;
-                        const liq = moneyValues.length >= 2 ? moneyValues[moneyValues.length - 2] : 0;
-                        // Safety: Only extract Vol if we have at least 3 values (implied Price or Vol missing)
-                        // Actually, if Length 3: Could be Price, Liq, MC (Vol missing) OR Price, Vol, MC.
-                        // But usually Vol is the one missing in compact views.
-                        // If Length >= 4, we are sure index [length-3] is Vol (assuming Price is [0]).
-                        const vol = moneyValues.length >= 4 ? moneyValues[moneyValues.length - 3] : 0;
-
-                        // Security fallback: If Liq > MC (impossible usually), swap? 
-                        // No, mostly accurate.
-
-                        // Price logic fix: If we collected Price in moneyValues, it's likely index 0.
-                        // But we already extracted `price` above.
-
-                        results.push({
-                            address,
-                            symbol: symbolEl?.textContent?.trim() || 'UNKNOWN',
-                            price,
-                            volume: vol,
-                            liquidity: liq,
-                            marketCap: mc,
-                            ageMs: parseAgeMs(ageStr)
-                        });
-
-                        if (results.length >= 30) break;
-                    } catch (e) { }
+                const links = Array.from(document.querySelectorAll('a[href^="/solana/"]'));
+                for (const link of links) {
+                    const href = link.getAttribute('href') || '';
+                    const match = href.match(/\/solana\/([A-Za-z0-9]+)/);
+                    if (match && !seen.has(match[1])) {
+                        seen.add(match[1]);
+                        addresses.push(match[1]);
+                    }
+                    if (addresses.length >= 40) break; // Fetch a few more to filter
                 }
-                return results;
+                return addresses;
             });
 
             await browser.close();
             this.lastScanTime = Date.now();
-            logger.info(`[DexScreener] ✅ Scraped ${tokens.length} tokens.`);
 
-            return tokens.map((item: any) => ({
-                source: 'dexscreener',
-                chain: 'solana' as const,
-                mint: String(item.address),
-                name: item.symbol,
-                symbol: item.symbol,
-                priceUsd: item.price || 0,
-                liquidityUsd: item.liquidity || 0,
-                marketCapUsd: item.marketCap || 0,
-                volume5mUsd: 0,
-                volume24hUsd: item.volume || 0,
-                priceChange5m: 0,
-                createdAt: item.ageMs ? new Date(Date.now() - item.ageMs) : new Date(),
-                updatedAt: new Date(),
-                links: {
-                    dexScreener: `https://dexscreener.com/solana/${item.address}`
-                }
-            }));
+            if (pairAddresses.length === 0) {
+                logger.warn('[DexScreener] No pairs found on page.');
+                return [];
+            }
+
+            logger.info(`[DexScreener] Found ${pairAddresses.length} pairs. Resolving to Tokens via API...`);
+
+            // RESOLVE PAIRS TO TOKENS VIA API
+            const tokens = await this.getPairs(pairAddresses);
+            logger.info(`[DexScreener] ✅ Resolved ${tokens.length} valid tokens.`);
+            return tokens;
 
         } catch (error: any) {
             if (browser) await browser.close();
@@ -199,6 +87,32 @@ export class DexScreenerService {
             this.lastScanTime = Date.now();
             return [];
         }
+    }
+
+    // NEW: Fetch Pair Data to get Base Token Address (Real CA)
+    async getPairs(pairAddresses: string[]): Promise<TokenSnapshot[]> {
+        if (pairAddresses.length === 0) return [];
+
+        const chunks = this.chunkArray(pairAddresses, 30); // Max 30 per call usually safe
+        const allTokens: TokenSnapshot[] = [];
+
+        for (const chunk of chunks) {
+            try {
+                // Endpoint: /latest/dex/pairs/solana/pair1,pair2
+                const url = `${this.pairsUrl}/${chunk.join(',')}`;
+                const response = await axios.get(url, { timeout: 10000 });
+
+                if (response.data?.pairs) {
+                    const mapped = response.data.pairs.map((pair: any) => this.mapPairToSnapshot(pair));
+                    allTokens.push(...mapped);
+                }
+            } catch (err: any) {
+                logger.warn(`[DexScreener] API Pair fetch failed: ${err.message}`);
+            }
+            await new Promise((r) => setTimeout(r, 200));
+        }
+
+        return allTokens;
     }
 
     async getTokens(mints: string[]): Promise<TokenSnapshot[]> {
@@ -229,7 +143,7 @@ export class DexScreenerService {
         return {
             source: 'dexscreener',
             chain: 'solana',
-            mint: pair.baseToken?.address || '',
+            mint: pair.baseToken?.address || '', // <--- THIS IS THE FIX (Actual CA)
             name: pair.baseToken?.name || 'Unknown',
             symbol: pair.baseToken?.symbol || '???',
             priceUsd: parseFloat(pair.priceUsd || '0') || 0,
@@ -241,7 +155,9 @@ export class DexScreenerService {
             createdAt: new Date(pair.pairCreatedAt || Date.now()),
             updatedAt: new Date(),
             links: {
-                dexScreener: pair.url || `https://dexscreener.com/solana/${pair.baseToken?.address}`
+                dexScreener: pair.url || `https://dexscreener.com/solana/${pair.pairAddress}`, // Link to Pair usually
+                birdeye: `https://birdeye.so/token/${pair.baseToken?.address}?chain=solana`,
+                pumpfun: pair.baseToken?.address?.endsWith('pump') ? `https://pump.fun/${pair.baseToken?.address}` : undefined
             }
         };
     }
