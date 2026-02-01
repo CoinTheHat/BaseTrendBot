@@ -72,11 +72,22 @@ export class LLMService {
     }
 
     private buildPrompt(token: TokenSnapshot, tweets: string[], hasTweets: boolean): { systemPrompt: string; userContent: string } {
+        // TRT Time Calculation (UTC+3)
+        const now = new Date();
+        const trtOffset = 3 * 60 * 60 * 1000;
+        const trtTime = new Date(now.getTime() + trtOffset);
+        const trtHour = trtTime.getUTCHours(); // getUTCHours because we manually added offset to timestamp? No, wait.
+        // Actually simplest way to get TRT hour:
+        const trtDateStr = new Date().toLocaleString("en-US", { timeZone: "Europe/Istanbul" });
+        const trtDate = new Date(trtDateStr);
+        const currentTrtHour = trtDate.getHours();
+
         const systemPrompt = `
 Sen Kıdemli bir Kripto Degen Analistisin (xAI Grok tabanlı). Görevin, piyasa verilerine ve son tweetlere dayanarak Solana meme tokenlarını analiz etmek.
 Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. Asla jenerik cevaplar verme.
 
 **Giriş Verileri:**
+- Şu An (TRT): Saat ${currentTrtHour}:00
 - Sembol: ${token.symbol}
 - Fiyat: $${token.priceUsd}
 - Likidite: $${token.liquidityUsd}
@@ -104,6 +115,12 @@ Bu kuralları puan verirken KESİNLİKLE uygula:
 - **EĞER > %30 ARTIŞ VARSA:** 🚨 **TEHLİKE.** Token dikine (vertical) gidiyor.
   - **AKSİYON:** Final puandan 1-2 puan düş.
   - **UYARI:** Strateji kısmına ŞUNU YAZ: "⚠️ DİKKAT: Son 5 dakikada %${token.priceChange5m} pump yaptı. RSI şişmiş olabilir, tepeden alma. Geri çekilme (Retrace) bekle."
+
+### 3. 🌙 GECE VAKTİ KURALI (Düşük Hacim)
+- **Saat Kontrolü:** Şu An (TRT) verisine bak.
+- **EĞER SAAT 03:00 - 09:00 ARASINDAYSA:** 📉 **ÖLÜ SAATLER.**
+  - **KURAL:** Global hacim düşük olduğu için, ne kadar iyi olursa olsun final puandan **OTOMATİK OLARAK 1 PUAN DÜŞ**.
+  - **UYARI:** "Gece saatlerinde hacimsizlik riski var, dikkatli ol." şeklinde not düş.
 
 **Analiz Gereksinimleri:**
 0. **Dil ve Üslup:** Türkçe kripto jargonunu doğal ve profesyonel kullan.
