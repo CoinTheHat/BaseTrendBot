@@ -462,6 +462,21 @@ export class PostgresStorage {
         }
     }
 
+    async updateMaxMC(mint: string, maxMc: number) {
+        try {
+            await this.pool.query(
+                `UPDATE token_performance 
+                 SET max_mc = $1, last_updated = NOW() 
+                 WHERE mint = $2`,
+                [maxMc, mint]
+            );
+            logger.info(`[Postgres] Updated Max MC for ${mint}: $${maxMc}`);
+        } catch (err) {
+            logger.error(`[Postgres] updateMaxMC failed for ${mint}`, err);
+            throw err;
+        }
+    }
+
     async archiveToken(mint: string) {
         try {
             await this.pool.query(

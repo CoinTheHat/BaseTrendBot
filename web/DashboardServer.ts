@@ -9,6 +9,7 @@ export class DashboardServer {
 
     constructor(private storage: PostgresStorage, port: number = 3000) {
         this.app = express();
+        this.app.use(express.json());
         this.port = process.env.PORT ? parseInt(process.env.PORT) : port;
 
         // AUTHENTICATION
@@ -113,6 +114,24 @@ export class DashboardServer {
                 res.json(tokens);
             } catch (error) {
                 logger.error(`[API] /api/tokens error: ${error}`);
+                res.status(500).json({ error: 'Internal Server Error' });
+            }
+        });
+
+        // NEW: Manual Max MC Update
+        this.app.post('/api/tokens/:mint/max-mc', async (req, res) => {
+            try {
+                const { mint } = req.params;
+                const { maxMc } = req.body;
+
+                if (maxMc === undefined || isNaN(Number(maxMc))) {
+                    return res.status(400).json({ error: 'Invalid maxMc value' });
+                }
+
+                await this.storage.updateMaxMC(mint, Number(maxMc));
+                res.json({ success: true });
+            } catch (error) {
+                logger.error(`[API] Update Max MC failed: ${error}`);
                 res.status(500).json({ error: 'Internal Server Error' });
             }
         });
