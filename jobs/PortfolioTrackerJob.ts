@@ -4,7 +4,7 @@ import { logger } from '../utils/Logger';
 
 export class PortfolioTrackerJob {
     private isRunning = false;
-    private readonly INTERVAL_MS = 30 * 1000; // 30 seconds (User request)
+    private readonly INTERVAL_MS = 60 * 60 * 1000; // 1 Hour (API Safety)
     private readonly MAX_AGE_MS = 72 * 60 * 60 * 1000; // 3 days
 
     constructor(
@@ -14,7 +14,7 @@ export class PortfolioTrackerJob {
 
     start() {
         this.isRunning = true;
-        logger.info('[PortfolioTracker] Starting 30-second monitoring job...');
+        logger.info('[PortfolioTracker] Starting 1-hour monitoring job...');
         this.runLoop();
     }
 
