@@ -25,12 +25,12 @@ export class CooldownManager {
         if (tokenData && tokenData.lastAlertAt) {
             const minutesSince = (now - tokenData.lastAlertAt) / 60000;
 
-            // STRICT RULE: 4 Hours Cooldown (240m)
-            // If the token has been alerted before, we MUST wait 4 hours before re-alerting.
-            const STRICT_COOLDOWN = 240;
+            // STRICT RULE: 2 Hours Cooldown (120m)
+            // Same token won't be alerted again within 2 hours.
+            const STRICT_COOLDOWN = 120;
 
             if (minutesSince < STRICT_COOLDOWN) {
-                return { allowed: false, reason: `Strict Cooldown (${minutesSince.toFixed(1)}m < 4h)` };
+                return { allowed: false, reason: `Strict Cooldown (${minutesSince.toFixed(1)}m < 2h)` };
             }
         }
 
