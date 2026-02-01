@@ -235,8 +235,8 @@ Vibe: ${this.escapeMarkdown(narrative.vibeCheck || narrative.vibe || "Nötr")}`;
 
         // Link Section - URLs don't need escaping usually if using [text](url), but text part does.
         const dexLink = `[DexScreener](${token.links.dexScreener})`;
-        const pumpLink = token.links.pumpfun ? ` | [PumpFun](${token.links.pumpfun})` : "";
-        const birdLink = token.links.birdeye ? ` | [Birdeye](${token.links.birdeye})` : "";
+        const pumpLink = token.links.pumpfun ? ` \\| [PumpFun](${token.links.pumpfun})` : "";
+        const birdLink = token.links.birdeye ? ` \\| [Birdeye](${token.links.birdeye})` : "";
 
         message += `\n\n${dexLink}${pumpLink}${birdLink}
 
