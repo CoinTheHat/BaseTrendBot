@@ -139,28 +139,22 @@ export class TokenScanJob {
                             return;
                         }
 
-                        // FILTER 2: Market Cap (Max $5M - We want early gems)
-                        if (mc > 5000000) {
-                            logger.debug(`[Filter] 🐳 Too Big: ${token.symbol} (MC: $${(mc / 1000000).toFixed(1)}M)`);
-                            return;
-                        }
+                        // REMOVED: Max Market Cap Filter (Allow High Cap Runners)
+                        // REMOVED: Max Age Filter (Allow Old Revivals)
 
-                        // FILTER 3: Age (Max 24h - We want fresh trends)
-                        if (ageHours > 24) {
-                            logger.debug(`[Filter] 👴 Too Old: ${token.symbol} (${Math.floor(ageHours)}h)`);
-                            return;
-                        }
+                        // FILTER 2: Momentum (24h Volume / Liquidity)
+                        // New Logic: 24h Vol must be at least 50% of Liquidity
+                        const volume24h = token.volume24hUsd || 0;
+                        const momentum = volume24h / (liq || 1);
 
-                        // FILTER 4: Impulse/Momentum (Vol/Liq Ratio > 0.5x)
-                        const impulseRatio = v1h / (liq || 1);
-                        if (impulseRatio < 0.5) {
+                        if (momentum < 0.5) {
                             weakMomentumCount++;
-                            logger.debug(`[Filter] 💤 Weak Momentum: ${token.symbol} (${impulseRatio.toFixed(2)}x, needs >0.5x)`);
+                            logger.debug(`[Filter] 💤 Weak Momentum: ${token.symbol} (${momentum.toFixed(2)}x, needs >0.5x)`);
                             return;
                         }
 
                         const ageDisplay = ageHours < 1 ? `${Math.floor(ageHours * 60)}m` : `${Math.floor(ageHours)}h`;
-                        logger.info(`[Sniper] 💎 GEM DETECTED: ${token.symbol} | MC: $${Math.floor(mc)} | Age: ${ageDisplay} | Ratio: ${impulseRatio.toFixed(2)}x`);
+                        logger.info(`[Sniper] 💎 GEM DETECTED: ${token.symbol} | MC: $${Math.floor(mc)} | Age: ${ageDisplay} | Vol/Liq: ${momentum.toFixed(2)}x`);
 
 
                         // --- STEP 3: TWITTER SCAN (Safe Mode) ---

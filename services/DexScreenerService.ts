@@ -139,9 +139,14 @@ export class DexScreenerService {
                         // If we have Price, Vol, MC (Liq hidden?) -> length 3. (Rare)
 
                         // Robust Right-to-Left:
+                        // Standard: Price ($), Vol ($), Liq ($), MC ($) -> Length 4
                         const mc = moneyValues.length >= 1 ? moneyValues[moneyValues.length - 1] : 0;
                         const liq = moneyValues.length >= 2 ? moneyValues[moneyValues.length - 2] : 0;
-                        const vol = moneyValues.length >= 3 ? moneyValues[moneyValues.length - 3] : 0;
+                        // Safety: Only extract Vol if we have at least 3 values (implied Price or Vol missing)
+                        // Actually, if Length 3: Could be Price, Liq, MC (Vol missing) OR Price, Vol, MC.
+                        // But usually Vol is the one missing in compact views.
+                        // If Length >= 4, we are sure index [length-3] is Vol (assuming Price is [0]).
+                        const vol = moneyValues.length >= 4 ? moneyValues[moneyValues.length - 3] : 0;
 
                         // Security fallback: If Liq > MC (impossible usually), swap? 
                         // No, mostly accurate.

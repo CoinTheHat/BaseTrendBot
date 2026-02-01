@@ -4,7 +4,7 @@ import { logger } from '../utils/Logger';
 
 export class PortfolioTrackerJob {
     private isRunning = false;
-    private readonly INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+    private readonly INTERVAL_MS = 60 * 60 * 1000; // 60 minutes
     private readonly MAX_AGE_MS = 72 * 60 * 60 * 1000; // 3 days
 
     constructor(
@@ -14,7 +14,7 @@ export class PortfolioTrackerJob {
 
     start() {
         this.isRunning = true;
-        logger.info('[PortfolioTracker] Starting 30-minute monitoring job...');
+        logger.info('[PortfolioTracker] Starting 60-minute monitoring job...');
         this.runLoop();
     }
 
@@ -75,9 +75,9 @@ export class PortfolioTrackerJob {
 
                     const supply = foundMc / entryPrice;
 
-                    // 2. Fetch Market Data (1m Candles for last 30 mins to catch spikes)
+                    // 2. Fetch Market Data (1m Candles for last 60 mins to catch spikes)
                     const timeTo = Math.floor(now / 1000);
-                    const timeFrom = timeTo - (30 * 60); // 30 mins ago
+                    const timeFrom = timeTo - (60 * 60); // 60 mins ago
 
                     const candles = await this.birdeye.getHistoricalCandles(token.mint, '1m', timeFrom, timeTo);
 
