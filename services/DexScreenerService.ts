@@ -77,13 +77,19 @@ export class DexScreenerService {
         for (const chunk of chunks) {
             try {
                 const url = `${this.apiUrl}/tokens/${chunk.join(',')}`;
+                console.log(`[DexScreener API] Requesting ${chunk.length} tokens...`);
+
                 const data = await this.makeRequest(url);
                 const pairs = data?.pairs || [];
+
+                console.log(`[DexScreener API] Received ${pairs.length} pairs from API`);
 
                 // Strict filtering is done inside normalizePair
                 const validPairs = pairs
                     .map((p: any) => this.normalizePair(p))
                     .filter((p: TokenSnapshot | null): p is TokenSnapshot => p !== null);
+
+                console.log(`[DexScreener API] After filtering: ${validPairs.length} valid tokens`);
 
                 results.push(...validPairs);
 
@@ -161,6 +167,7 @@ export class DexScreenerService {
     /**
      * Scrape DexScreener's M5 Trending page using Puppeteer
      * https://dexscreener.com/solana?rankBy=trendingScoreM5&order=desc
+     * Scrapes full token data directly from pair pages (no API needed)
      */
     private async scrapeTrendingTokens(limit: number = 50): Promise<TokenSnapshot[]> {
         let browser;
@@ -184,47 +191,127 @@ export class DexScreenerService {
             // Wait for token cards to load
             await page.waitForSelector('a[href^="/solana/"]', { timeout: 10000 });
 
-            // Extract token data from the page
-            const tokens = await page.evaluate((maxTokens) => {
-                const tokenLinks = Array.from(document.querySelectorAll('a[href^="/solana/"]'));
-                const results: any[] = [];
+            // Extract pair URLs
+            const pairUrls = await page.evaluate((maxTokens) => {
+                const links = Array.from(document.querySelectorAll('a[href^="/solana/"]'));
+                const uniqueUrls = new Set<string>();
 
-                for (let i = 0; i < Math.min(tokenLinks.length, maxTokens); i++) {
-                    const link = tokenLinks[i] as HTMLAnchorElement;
-                    const card = link.closest('div');
-
-                    if (!card) continue;
-
-                    // Extract token address from href
-                    const href = link.getAttribute('href') || '';
-                    const match = href.match(/\/solana\/([A-Za-z0-9]+)/);
-                    if (!match) continue;
-
-                    const tokenAddress = match[1];
-
-                    // Extract text content (symbol, price, liquidity, etc.)
-                    const textContent = card.textContent || '';
-
-                    // Try to extract basic info (this is a best-effort approach)
-                    results.push({
-                        tokenAddress,
-                        textContent: textContent.substring(0, 200) // Limit text for safety
-                    });
+                for (const link of links) {
+                    const href = (link as HTMLAnchorElement).getAttribute('href');
+                    if (href && href.match(/^\/solana\/[A-Za-z0-9]+$/)) {
+                        uniqueUrls.add('https://dexscreener.com' + href);
+                        if (uniqueUrls.size >= maxTokens) break;
+                    }
                 }
 
-                return results;
+                return Array.from(uniqueUrls);
             }, limit);
 
-            console.log(`[DexScreener Scraper] Scraped ${tokens.length} tokens from page`);
+            console.log(`[DexScreener Scraper] Found ${pairUrls.length} unique pair URLs`);
 
-            // Convert to TokenSnapshot format
-            // Get full details using API for these tokens
-            const mints = tokens.map((t: any) => t.tokenAddress).filter(Boolean);
-            const fullTokenData = await this.getTokens(mints);
+            const tokens: TokenSnapshot[] = [];
+
+            // Visit each pair page and scrape data
+            for (let i = 0; i < pairUrls.length; i++) {
+                try {
+                    const pairUrl = pairUrls[i];
+                    console.log(`[DexScreener Scraper] [${i + 1}/${pairUrls.length}] Scraping ${pairUrl.split('/').pop()}...`);
+
+                    await page.goto(pairUrl, { waitUntil: 'networkidle2', timeout: 15000 });
+
+                    // Extract all data from pair page
+                    const tokenData = await page.evaluate(() => {
+                        // Find CA (contract address) - usually in a link or button
+                        let ca = '';
+                        const caLinks = Array.from(document.querySelectorAll('a[href*="solscan.io"], a[href*="explorer.solana.com"]'));
+                        for (const link of caLinks) {
+                            const href = (link as HTMLAnchorElement).href;
+                            const match = href.match(/address\/([A-Za-z0-9]{32,44})/);
+                            if (match) {
+                                ca = match[1];
+                                break;
+                            }
+                        }
+
+                        // Fallback: try to find CA in page text or meta tags
+                        if (!ca) {
+                            const bodyText = document.body.textContent || '';
+                            const caMatch = bodyText.match(/[A-Za-z0-9]{32,44}/);
+                            ca = caMatch ? caMatch[0] : '';
+                        }
+
+                        // Extract metrics from the page (these are usually visible)
+                        const getText = (selector: string): string => {
+                            const el = document.querySelector(selector);
+                            return el?.textContent?.trim() || '';
+                        };
+
+                        // Symbol, name are usually in header
+                        const headerText = document.querySelector('h1, h2, .pair-header')?.textContent || '';
+                        const symbolMatch = headerText.match(/\$([A-Z0-9]+)/);
+                        const symbol = symbolMatch ? symbolMatch[1] : 'UNKNOWN';
+
+                        // Try to extract price, liquidity, MC from visible elements
+                        // DexScreener shows these prominently
+                        const allText = document.body.textContent || '';
+
+                        return {
+                            ca,
+                            symbol,
+                            name: symbol,
+                            fullText: allText.substring(0, 5000) // Grab text for parsing
+                        };
+                    });
+
+                    if (!tokenData.ca || tokenData.ca.length < 32) {
+                        console.log(`[DexScreener Scraper] ⚠️ No valid CA found, skipping...`);
+                        continue;
+                    }
+
+                    // Parse metrics from text (fallback approach)
+                    const text = tokenData.fullText;
+
+                    const extractNumber = (pattern: RegExp): number => {
+                        const match = text.match(pattern);
+                        if (!match) return 0;
+                        const numStr = match[1].replace(/[,$]/g, '');
+                        return parseFloat(numStr) || 0;
+                    };
+
+                    const priceUsd = extractNumber(/Price.*?\$([0-9.]+)/i) || 0;
+                    const liquidityUsd = extractNumber(/Liquidity.*?\$([0-9,.]+[KMB]?)/i) || 0;
+                    const marketCapUsd = extractNumber(/Market Cap.*?\$([0-9,.]+[KMB]?)/i) || 0;
+                    const volume5mUsd = extractNumber(/5m.*?\$([0-9,.]+[KMB]?)/i) || 0;
+
+                    tokens.push({
+                        source: 'dexscreener',
+                        mint: tokenData.ca,
+                        name: tokenData.name,
+                        symbol: tokenData.symbol,
+                        priceUsd,
+                        marketCapUsd,
+                        liquidityUsd,
+                        volume5mUsd,
+                        updatedAt: new Date(),
+                        links: {
+                            dexScreener: pairUrl,
+                            pumpfun: `https://pump.fun/${tokenData.ca}`,
+                            birdeye: `https://birdeye.so/token/${tokenData.ca}?chain=solana`
+                        }
+                    });
+
+                    // Small delay to avoid hammering the server
+                    await new Promise(resolve => setTimeout(resolve, 500));
+
+                } catch (error) {
+                    console.error(`[DexScreener Scraper] Error scraping pair:`, error);
+                }
+            }
 
             await browser.close();
 
-            return fullTokenData;
+            console.log(`[DexScreener Scraper] Successfully scraped ${tokens.length} tokens`);
+            return tokens;
 
         } catch (error) {
             console.error('[DexScreener Scraper] Error:', error);
