@@ -243,11 +243,11 @@ export class BirdeyeService {
             return {
                 price: data.price || 0,
                 mc: data.mc || data.marketCap || 0,
-                supply: data.supply || 0,
+                supply: data.circulatingSupply || data.supply || 0, // Try circulatingSupply first
                 liquidity: data.liquidity || 0
             };
-        } catch (error) {
-            // logger.warn(`[Birdeye] Overview failed for ${address}`);
+        } catch (error: any) {
+            logger.warn(`[Birdeye] Overview failed for ${address}: ${error.message}`);
             return null;
         }
     }
