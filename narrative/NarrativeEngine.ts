@@ -28,7 +28,7 @@ export class NarrativeEngine {
         let narrativeText = ""; // Will build this up
         let vibeCheck = "Analyzing...";
         let aiRisk = "";
-        let finalAiScore: number | undefined = undefined;
+        let finalAiScore: number = 0;
         let finalAiApproved = false;
         let finalAiReason: string | undefined = undefined;
 
@@ -82,9 +82,25 @@ export class NarrativeEngine {
                 const strategy = aiResult.strategy || (aiResult.advice || "Veri yok.");
 
                 finalAiScore = aiResult.score;
-                // FIX: Derive approval from score (Threshold: 7/10)
-                finalAiApproved = finalAiScore >= 7;
+
+                // TIME-BASED THRESHOLD (Night Mode)
+                // TRT is UTC+3. We want stricter rules between 03:00 and 09:00 TRT.
+                // 03:00 TRT = 00:00 UTC
+                // 09:00 TRT = 06:00 UTC
+                const now = new Date();
+                const utcHour = now.getUTCHours();
+
+                // Night Mode: 00:00 UTC to 06:00 UTC (03:00 - 09:00 TRT)
+                const isNightMode = utcHour >= 0 && utcHour < 6;
+                const approvalThreshold = isNightMode ? 8 : 7;
+
+                // FIX: Derive approval from score with dynamic threshold
+                finalAiApproved = finalAiScore >= approvalThreshold;
                 finalAiReason = aiResult.riskReason;
+
+                if (isNightMode && !finalAiApproved && finalAiScore >= 7) {
+                    finalAiReason += " [Night Mode Rejected (Req: 8)]";
+                }
 
                 // HEADER LOGIC (DISCIPLINE)
                 const safeScore = finalAiScore || 0;
