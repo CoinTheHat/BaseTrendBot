@@ -1,172 +1,164 @@
 import axios from 'axios';
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
-import { logger } from '../utils/Logger';
 import { TokenSnapshot } from '../models/types';
 
-// Add stealth plugin to avoid Cloudflare detection
-puppeteer.use(StealthPlugin());
-
 export class DexScreenerService {
-    private baseUrl = 'https://api.dexscreener.com/latest/dex/tokens';
-    private pairsUrl = 'https://api.dexscreener.com/latest/dex/pairs/solana';
-    private trendingPageUrl = 'https://dexscreener.com/solana?rankBy=trendingScoreM5&order=desc';
-    private lastScanTime = 0;
-    private readonly COOLDOWN_MS = 60000; // 60 seconds
+    private apiUrl = 'https://api.dexscreener.com/latest/dex';
+    private profilesUrl = 'https://api.dexscreener.com/token-profiles/latest/v1'; // Check docs for actual latest-token endpoints
 
     /**
-     * Scrape trending tokens from DexScreener UI (Trending M5)
-     * ENHANCED: Scrape Pair Addresses -> Resolve to Token Mints via API
+     * Fetch latest Solana profiles/pairs.
+     * DexScreener API is versatile. We might use `search` or specific specialized endpoints.
+     * For this V1, we will assume we want to search for 'Solana' new pairs or similar.
      */
-    async fetchTrendingM5(): Promise<TokenSnapshot[]> {
-        const now = Date.now();
-        const timeSinceLastScan = now - this.lastScanTime;
-        if (timeSinceLastScan < this.COOLDOWN_MS) {
-            const waitTime = Math.ceil((this.COOLDOWN_MS - timeSinceLastScan) / 1000);
-            logger.warn(`[DexScreener] Cooldown active. Wait ${waitTime}s`);
-            return [];
-        }
+    private userAgents = [
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/605.1.15',
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
+    ];
 
-        let browser;
+    private getRandomUserAgent() {
+        return this.userAgents[Math.floor(Math.random() * this.userAgents.length)];
+    }
+
+    private async makeRequest(url: string): Promise<any> {
         try {
-            logger.info('[DexScreener] 🌐 Launching Mass Scraper (50+ tokens)...');
-
-            browser = await puppeteer.launch({
-                headless: true,
-                args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-gpu', '--window-size=1920,1080']
+            const response = await axios.get(url, {
+                headers: { 'User-Agent': this.getRandomUserAgent() }
             });
-
-            const page = await browser.newPage();
-            await page.setViewport({ width: 1920, height: 1080 });
-            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-
-            logger.info('[DexScreener] 📄 Navigating to Trending...');
-            await page.goto(this.trendingPageUrl, { waitUntil: 'networkidle2', timeout: 30000 });
-
-            // Wait and scroll to load lazy-loaded elements (MORE SCROLL FOR 50+ TOKENS)
-            await page.waitForSelector('a[href^="/solana/"]', { timeout: 15000 }).catch(() => { });
-            await page.evaluate(() => window.scrollBy(0, 5000));
-            await new Promise(r => setTimeout(r, 2000));
-            await page.evaluate(() => window.scrollBy(0, 5000)); // Extra scroll
-            await new Promise(r => setTimeout(r, 2000));
-
-            // EXTERNALLY SCRAPE PAIR ADDRESSES ONLY
-            const pairAddresses = await page.evaluate(() => {
-                const seen = new Set<string>();
-                const addresses: string[] = [];
-
-                const links = Array.from(document.querySelectorAll('a[href^="/solana/"]'));
-                for (const link of links) {
-                    const href = link.getAttribute('href') || '';
-                    const match = href.match(/\/solana\/([A-Za-z0-9]+)/);
-                    if (match && !seen.has(match[1])) {
-                        seen.add(match[1]);
-                        addresses.push(match[1]);
-                    }
-                    if (addresses.length >= 80) break; // Fetch 80 pairs to get ~50 valid tokens
-                }
-                return addresses;
-            });
-
-            await browser.close();
-            this.lastScanTime = Date.now();
-
-            if (pairAddresses.length === 0) {
-                logger.warn('[DexScreener] No pairs found on page.');
-                return [];
-            }
-
-            logger.info(`[DexScreener] Found ${pairAddresses.length} pairs. Resolving to Tokens via API...`);
-
-            // RESOLVE PAIRS TO TOKENS VIA API
-            const tokens = await this.getPairs(pairAddresses);
-            logger.info(`[DexScreener] ✅ Resolved ${tokens.length} valid tokens.`);
-            return tokens;
-
+            return response.data;
         } catch (error: any) {
-            if (browser) await browser.close();
-            logger.error(`[DexScreener] Scraping failed: ${error.message}`);
-            this.lastScanTime = Date.now();
-            return [];
-        }
-    }
-
-    // NEW: Fetch Pair Data to get Base Token Address (Real CA)
-    async getPairs(pairAddresses: string[]): Promise<TokenSnapshot[]> {
-        if (pairAddresses.length === 0) return [];
-
-        const chunks = this.chunkArray(pairAddresses, 30); // Max 30 per call usually safe
-        const allTokens: TokenSnapshot[] = [];
-
-        for (const chunk of chunks) {
-            try {
-                // Endpoint: /latest/dex/pairs/solana/pair1,pair2
-                const url = `${this.pairsUrl}/${chunk.join(',')}`;
-                const response = await axios.get(url, { timeout: 10000 });
-
-                if (response.data?.pairs) {
-                    const mapped = response.data.pairs.map((pair: any) => this.mapPairToSnapshot(pair));
-                    allTokens.push(...mapped);
-                }
-            } catch (err: any) {
-                logger.warn(`[DexScreener] API Pair fetch failed: ${err.message}`);
+            if (error.response?.status === 429) {
+                console.warn('[DexScreener] 🚨 Rate Limit! 60 saniye soğumaya alınıyor...');
+                await new Promise(resolve => setTimeout(resolve, 60000));
+                return null; // Return null to indicate skip
             }
-            await new Promise((r) => setTimeout(r, 200));
+            throw error;
         }
-
-        return allTokens;
     }
 
+    /**
+     * Fetch latest Solana profiles/pairs.
+     */
+    async getLatestPairs(): Promise<TokenSnapshot[]> {
+        try {
+            // Strategy: Use Token Profiles endpoint to get truly NEW tokens
+            const data = await this.makeRequest(this.profilesUrl);
+            const profiles = data || []; // Handle null/empty
+
+            // 1. Strict Chain Filtering
+            const solanaProfiles = profiles.filter((p: any) => p.chainId === 'solana');
+
+            if (solanaProfiles.length === 0) {
+                // If profiles failed/empty (or rate limited returned null -> empty arr), fallback.
+                console.log(`[DexScreener] 0 profiles/RateLimit. Switching to fallback search...`);
+
+                // Fallback 1: Search "solana"
+                return await this.search("solana");
+            }
+
+            console.log(`[DexScreener] Found ${solanaProfiles.length} new Solana profiles.`);
+
+            // 2. Extract Mints to fetch full pair data
+            const mints = solanaProfiles.map((p: any) => p.tokenAddress);
+
+            // 3. Fetch Pair Details (Prices, Liq, Vol)
+            return await this.getTokens(mints);
+
+        } catch (error) {
+            console.error('[DexScreener] Error fetching latest profiles:', error);
+            // Fallback on error
+            return await this.search("solana");
+        }
+    }
+
+    /**
+     * Get specific token data by Mint Address(es)
+     */
     async getTokens(mints: string[]): Promise<TokenSnapshot[]> {
         if (mints.length === 0) return [];
 
+        // DexScreener allows up to 30 addresses per call
         const chunks = this.chunkArray(mints, 30);
-        const allTokens: TokenSnapshot[] = [];
+        const results: TokenSnapshot[] = [];
 
         for (const chunk of chunks) {
             try {
-                const url = `${this.baseUrl}/${chunk.join(',')}`;
-                const response = await axios.get(url, { timeout: 10000 });
+                const url = `${this.apiUrl}/tokens/${chunk.join(',')}`;
+                const data = await this.makeRequest(url);
+                const pairs = data?.pairs || [];
 
-                if (response.data?.pairs) {
-                    const mapped = response.data.pairs.map((pair: any) => this.mapPairToSnapshot(pair));
-                    allTokens.push(...mapped);
-                }
-            } catch {
-                logger.warn(`[DexScreener] Batch fetch failed for ${chunk.length} tokens`);
+                // Strict filtering is done inside normalizePair
+                const validPairs = pairs
+                    .map((p: any) => this.normalizePair(p))
+                    .filter((p: TokenSnapshot | null): p is TokenSnapshot => p !== null);
+
+                results.push(...validPairs);
+
+            } catch (error) {
+                console.error(`[DexScreener] Error fetching tokens chunk:`, error);
             }
-            await new Promise((r) => setTimeout(r, 100));
         }
 
-        return allTokens;
+        return results;
     }
 
-    private mapPairToSnapshot(pair: any): TokenSnapshot {
+    async search(query: string): Promise<TokenSnapshot[]> {
+        try {
+            // Encode query to avoid issues
+            const safeQuery = encodeURIComponent(query);
+            const data = await this.makeRequest(`${this.apiUrl}/search?q=${safeQuery}`);
+            const pairs = data?.pairs || []; // If rate limited (null), pairs is []
+
+            // Strict filtering via normalizePair
+            return pairs
+                .map((p: any) => this.normalizePair(p))
+                .filter((p: TokenSnapshot | null): p is TokenSnapshot => p !== null);
+        } catch (error) {
+            console.error(`[DexScreener] Search failed for '${query}':`, error);
+            return [];
+        }
+    }
+
+    private normalizePair(pair: any): TokenSnapshot | null {
+        // Strict Filtering: Chain ID must be 'solana'
+        if (pair?.chainId !== 'solana') {
+            return null;
+        }
+
+        // Strict Filtering: Block 0x... addresses (Base/ETH)
+        // Usually dexScreener returns token objects.
+        const tokenAddress = pair.baseToken?.address || '';
+        if (tokenAddress.startsWith('0x')) {
+            return null;
+        }
+
         return {
             source: 'dexscreener',
-            chain: 'solana',
-            mint: pair.baseToken?.address || '', // <--- THIS IS THE FIX (Actual CA)
+            mint: tokenAddress,
             name: pair.baseToken?.name || 'Unknown',
-            symbol: pair.baseToken?.symbol || '???',
-            priceUsd: parseFloat(pair.priceUsd || '0') || 0,
+            symbol: pair.baseToken?.symbol || 'Unknown',
+            priceUsd: Number(pair.priceUsd) || 0,
+            marketCapUsd: pair.marketCap || pair.fdv || 0, // Priority: marketCap -> fdv -> 0
             liquidityUsd: pair.liquidity?.usd || 0,
-            marketCapUsd: pair.marketCap || pair.fdv || 0,
             volume5mUsd: pair.volume?.m5 || 0,
-            volume24hUsd: pair.volume?.h24 || 0,
+            volume30mUsd: (pair.volume?.m5 || 0) + (pair.volume?.h1 ? pair.volume.h1 / 2 : 0),
             priceChange5m: pair.priceChange?.m5 || 0,
-            txs5m: pair.txns?.m5 || { buys: 0, sells: 0 },
-            createdAt: new Date(pair.pairCreatedAt || Date.now()),
+            txs5m: {
+                buys: pair.txns?.m5?.buys || 0,
+                sells: pair.txns?.m5?.sells || 0
+            },
+            createdAt: pair.pairCreatedAt ? new Date(pair.pairCreatedAt) : undefined,
             updatedAt: new Date(),
             links: {
-                dexScreener: pair.url || `https://dexscreener.com/solana/${pair.pairAddress}`, // Link to Pair usually
-                birdeye: `https://birdeye.so/token/${pair.baseToken?.address}?chain=solana`,
-                pumpfun: pair.baseToken?.address?.endsWith('pump') ? `https://pump.fun/${pair.baseToken?.address}` : undefined
+                dexScreener: pair.url,
+                pumpfun: pair.url?.includes('pump') ? pair.url : `https://pump.fun/${tokenAddress}`,
+                birdeye: `https://birdeye.so/token/${tokenAddress}?chain=solana`
             }
         };
     }
 
-    private chunkArray<T>(arr: T[], size: number): T[][] {
-        const res: T[][] = [];
+    private chunkArray(arr: string[], size: number): string[][] {
+        const res: string[][] = [];
         for (let i = 0; i < arr.length; i += size) {
             res.push(arr.slice(i, i + size));
         }

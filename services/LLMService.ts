@@ -16,7 +16,6 @@ export interface AIAnalysisResult {
     riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'DANGEROUS';
     riskReason: string;
     score: number; // 0-10
-    isApproved: boolean; // Computed from score >= 7
     verdict: 'APE' | 'WATCH' | 'FADE';
     displayEmoji: string;
     recommendation?: string;
@@ -43,8 +42,10 @@ export class LLMService {
         const { systemPrompt, userContent } = this.buildPrompt(token, tweets, hasTweets);
 
         try {
+            logger.info(`[xAI Grok] Analyzing $${token.symbol} with ${config.XAI_MODEL || 'grok-4-1-fast-non-reasoning'}...`);
+
             const completion = await this.xai.chat.completions.create({
-                model: config.XAI_MODEL || "grok-4-1-fast-reasoning",
+                model: config.XAI_MODEL || "grok-4-1-fast-non-reasoning", // Ultra Low Cost Model
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userContent }
@@ -55,144 +56,94 @@ export class LLMService {
 
             const content = completion.choices[0].message.content;
             if (!content) throw new Error('Empty response from xAI');
-            return this.normalizeResult(JSON.parse(content));
+
+            const result = JSON.parse(content);
+            return this.normalizeResult(result);
 
         } catch (error: any) {
             logger.error(`[xAI Grok] Analysis failed for $${token.symbol}: ${error.message}`);
+
+            if (error.status === 401 || error.message.includes('API key')) {
+                logger.error('[xAI Grok] FATAL: Invalid API Key. Please check config.');
+                // Don't exit process, just stop analysis
+            }
             return null;
         }
     }
 
     private buildPrompt(token: TokenSnapshot, tweets: string[], hasTweets: boolean): { systemPrompt: string; userContent: string } {
-        // SNIPER MATH: Pre-calculate Ratios
-        const mc = token.marketCapUsd || 0;
-        const liq = token.liquidityUsd || 1;
-        const vol = token.volume24hUsd || 0;
-
-        // Transaction Stats
-        const buys5m = token.txs5m?.buys || 0;
-        const sells5m = token.txs5m?.sells || 0;
-        const txCount = buys5m + sells5m;
-
-        // Age Calculation (Hours)
-        const ageHours = token.createdAt ? (Date.now() - token.createdAt.getTime()) / (3600 * 1000) : 0;
-
-        const volLiqRatio = (vol / liq).toFixed(2);
-        const liqMcRatio = mc > 0 ? (liq / mc).toFixed(2) : "0";
-
-        // GHOST PROTOCOL INSTRUCTION
-        const ghostInstruction = !hasTweets
-            ? "\n🚨 **GHOST PROTOCOL:** NO TWEETS FOUND. SCORE MUST BE MAX 4. REJECT IMMEDIATELY."
-            : "";
-
-        // NEW PERSONA: ON-CHAIN RISK ANALYST
         const systemPrompt = `
-# KİMLİK VE GÖREV
-Sen, Solana ekosisteminde uzmanlaşmış, duygusuz ve aşırı titiz bir "Zincir Üstü (On-Chain) Risk Analisti"sin.
-Mevcut Görevin: DexScreener "M5 Trending" listesine giren bir tokenı incelemek ve kullanıcıyı "Tepeden Mal Alma" (Buying the Top/Exit Liquidity) riskinden korumak.
+Sen Kıdemli bir Kripto Degen Analistisin (xAI Grok tabanlı). Görevin, piyasa verilerine ve son tweetlere dayanarak Solana meme tokenlarını analiz etmek.
+Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. Asla jenerik cevaplar verme.
 
-# KRİTİK BAĞLAM
-Bu token şu an trend listesinde, yani fiyatı zaten yükselmiş durumda. Senin işin, bu yükselişin devam edecek sağlam bir "Momentum" mu, yoksa sona ermek üzere olan bir "Tuzak" mı olduğunu ayırt etmek.
+**Giriş Verileri:**
+- Sembol: ${token.symbol}
+- Fiyat: $${token.priceUsd}
+- Likidite: $${token.liquidityUsd}
+- Market Cap: $${token.marketCapUsd}
+- Hacim (5dk): $${token.volume5mUsd}
+- Top 10 Holder: ${token.top10HoldersSupply ? token.top10HoldersSupply.toFixed(2) + '%' : 'Bilinmiyor'}
 
-# ANALİZ KURALLARI (Adım Adım Uygula)
+**Görev:**
+JSON formatında derinlemesine ve yapılandırılmış bir analiz sun. TÜM ÇIKTILAR %100 TÜRKÇE OLMALIDIR.
 
-## 1. ALIM/SATIM BASKISI TESTİ (En Kritik Aşama)
-- Verilen verilerdeki son 5 dakikalık (M5) Alım (Buy) ve Satım (Sell) sayılarını kıyasla.
-- EĞER (M5 Sells > M5 Buys) İSE: Trend terse dönüyor demektir. "Satış baskısı yüksek" diyerek puanı ciddi şekilde KIR (Maksimum 4 puan ver).
-- EĞER (M5 Buys >> M5 Sells) İSE: İştah devam ediyor, bu olumlu bir sinyaldir.
+**Analiz Gereksinimleri:**
+1. **Analist Özeti**: Bu token neden radarımızda? (2-3 cümle ile özetle)
+2. **Teknik Görünüm**: Likidite/MC oranını analiz et. Hacim organik mi? Likidite, piyasa değerini destekliyor mu?
+3. **Sosyal Vibe**: Tweetler bot gibi mi yoksa gerçek bir topluluk mu var? Kimler konuşuyor?
+4. **Risk Analizi**: Eğer Top 10 Holder oranı %30'un üzerindeyse "YÜKSEK BALİNA RİSKİ" uyarısı ver. Rug pull ihtimalini değerlendir.
+5. **Strateji**: Net bir aksiyon öner (Örn: "Düşüşü bekle", "Ufak bir miktar gir", "Uzak dur").
+6. **Puan (0-10)**:
+   - 0-4: Çöp / Rug Riski
+   - 5-6: İzleme Listesi (Metrikler iyi ama henüz sessiz)
+   - 7-8: Potansiyel Gem (İyi hacim + aktif sosyal)
+   - 9-10: Güçlü Alım (Hype + Likidite + Trend fırtınası)
 
-## 2. YAŞA GÖRE DİNAMİK DEĞERLENDİRME
-- Token GENÇ ise (Age < 6 Saat):
-  - Saf Hype ve Hacim ara. Risk yüksektir ama kazanç potansiyeli de yüksektir. Hacim/Likidite oranı yüksekse ONAYLA.
-- Token OLGUN ise (6 Saat - 24 Saat):
-  - "Neden şimdi?" sorusunu sor. Fiyat yataydan çıkıp patlama mı yapmış? Yoksa yavaş yavaş mı düşüyor? Düşüş trendindeyse REDDET.
-- Token ESKİ ise (Age > 24 Saat):
-  - ÇOK KATI OL. Eski bir tokenın trende girmesi için "Yeni ATH" yapıyor olması veya çok güçlü bir haber/olay olması gerekir.
-  - Grafik "Ölü Kedi Sıçraması" gibi duruyorsa veya sebepsiz bir pumpsa direkt REDDET.
-
-## 3. SOSYAL VERİ KONTROLÜ (Twitter)
-- Eğer Tweet verisi VARSA:
-  - Sadece "$TOKEN" yazan bot spamlerini göz ardı et. Gerçek insanların yorumlarını ve tartışmalarını ara.
-  - Bot spam'i çoksa, puanı düşür.
-- Eğer Tweet verisi YOKSA (Veri çekilemediyse):
-  - "Sosyal Veri Eksik" uyarısı ver.
-  - Kararını %90 oranında TEKNİK VERİLERE (Hacim, Likidite, Tx Sayısı) dayandır ve risk skorunu artır.
-
-## 4. MATEMATİKSEL SAĞLAMA
-- Likidite / MarketCap oranı (< 0.15) İSE (Örn: 100k MC için <5k Liq) bu bir tuzaktır. REDDET.
-- İşlem Sayısı (Tx Count): Son 5 dakikada işlem sayısı çok düşükse (sadece 3-5 kişi) hacim sahtedir. REDDET.
-
-${ghostInstruction}
-
-# ÇIKTI FORMATI VE KURALLARI (JSON)
-Cevabın SADECE aşağıdaki JSON formatında olmalı. Alanlar arasındaki farklara kesinlikle uy:
-
+**JSON Çıktı Formatı (KESİN):**
 {
-  "aiScore": number, // 1-10 arası puan (7 ve üzeri ONAY demektir)
-  "aiApproved": boolean, // Puan >= 7 ise true, değilse false
-
-  // KURAL 1: ANALİST ÖZETİ (Durum Tespiti)
-  // Rakamları tekrar etme! Piyasanın ruh halini anlat.
-  // Örn: "Satıcılar yoruldu, alıcılar tahtayı domine ediyor. Hype organik görünüyor."
-  "analystSummary": "string",
-
-  // KURAL 2: RİSK ANALİZİ (Tehlikeler)
-  // ASLA strateji verme. Sadece 'Neyin ters gidebileceğini' yaz.
-  // Örn: "Likidite market cap'e göre düşük, sert satış yerse toparlayamaz." veya "Twitter hype'ı tamamen bot, suni yükseliş."
-  "riskAnalysis": "string",
-
-  // KURAL 3: STRATEJİ (Eylem Planı)
-  // ASLA riskten bahsetme. Sadece 'Ne yapmalı?' sorusuna emir kipiyle cevap ver.
-  // Örn: "Hemen giriş yapma, %10 geri çekilme bekle." veya "Momentum çok güçlü, stop-loss koyarak market buy atılabilir."
-  "strategy": "string",
-  
-  "headline": "Kısa, emoji içeren vurucu başlık"
+    "headline": "Kısa ve Çarpıcı Başlık",
+    "narrative": "Tokenin ruhunu anlatan genel açıklama.",
+    "analystSummary": "Analistin Türkçe özeti...",
+    "technicalOutlook": "Teknik görünüm yorumu...",
+    "socialVibe": "Sosyal ortam yorumu...",
+    "riskAnalysis": "Risk analizi detayları...",
+    "strategy": "Strateji önerisi...",
+    "analysis": ["Madde 1", "Madde 2"],
+    "riskLevel": "LOW" | "MEDIUM" | "HIGH" | "DANGEROUS",
+    "riskReason": "Kısa risk nedeni",
+    "score": number, 
+    "verdict": "APE" | "WATCH" | "FADE",
+    "displayEmoji": "Emoji",
+    "recommendation": "Tavsiye",
+    "advice": "Kısa tavsiye",
+    "vibe": "Kısa vibe"
 }
-
-# YASAKLI KELİMELER:
-- "Momentum güçlü" ifadesini her yere kopyalama.
-- Risk ve Strateji alanları ASLA aynı cümleyi içeremez.
 `;
-        const userContent = `
-TOKEN: $${token.symbol} (${token.name})
-AGE: ${ageHours.toFixed(1)} Hours
-STATS: 
-- MC: $${mc.toLocaleString()}
-- Liq: $${liq.toLocaleString()} (Ratio: ${liqMcRatio})
-- 24h Vol: $${vol.toLocaleString()}
-- M5 Txns: ${buys5m} BUYS vs ${sells5m} SELLS (Total: ${txCount})
-
-TWITTER DATA (${tweets.length} tweets found):
-${hasTweets ? tweets.slice(0, 30).join('\n') : "NO TWITTER DATA AVAILABLE"}
-
-GÖREV: Yukarıdaki kurallara göre analiz et ve JSON çıktısını üret.
-`;
+        const userContent = hasTweets
+            ? `Tweets:\n${tweets.slice(0, 20).map(t => `- ${t.replace(/\n/g, ' ')}`).join('\n')}`
+            : `Twitter verisi yok. Sadece teknik verileri analiz et. Risk seviyesini yüksek tut.`;
 
         return { systemPrompt, userContent };
     }
 
     private normalizeResult(result: any): AIAnalysisResult {
-        // Map new JSON format to internal AIAnalysisResult interface
-        const score = typeof result.aiScore === 'number' ? result.aiScore : 4;
-
         return {
-            headline: result.headline || `⚠️ ANALYZING`,
-            narrative: result.analystSummary || "No narrative generated.", // Analist Özeti -> Narrative
-            analystSummary: result.analystSummary || "No summary.",
-            technicalOutlook: result.analystSummary ? "AI Analyzed" : "No Data",
-            socialVibe: "Twitter Data Analyzed",
-            riskAnalysis: result.riskAnalysis || "Check Risk",
-            strategy: result.strategy || "WATCH",
-            analysis: [],
-            riskLevel: 'HIGH', // Default to High for manual review
-            riskReason: result.riskAnalysis || '', // Risk nedeni buraya
-            score: score,
-            isApproved: result.aiApproved === true,
-            verdict: score >= 7 ? 'APE' : 'FADE',
-            displayEmoji: score >= 7 ? '🚀' : '⚠️',
-            recommendation: score >= 7 ? 'AL' : 'PAS',
-            advice: result.strategy || '',
-            vibe: result.headline || ''
+            headline: result.headline || `🚨 ANALYZING`,
+            narrative: result.narrative || "Trend analizi yapılamadı.",
+            analystSummary: result.analystSummary || "Özet yok.",
+            technicalOutlook: result.technicalOutlook || "Teknik veri yok.",
+            socialVibe: result.socialVibe || "Vibe verisi yok.",
+            riskAnalysis: result.riskAnalysis || "Risk analizi yok.",
+            strategy: result.strategy || "Strateji yok.",
+            analysis: result.analysis || ["Veri yetersiz."],
+            riskLevel: result.riskLevel || 'MEDIUM',
+            riskReason: result.riskReason || '',
+            score: typeof result.score === 'number' ? result.score : 5,
+            verdict: result.verdict || 'WATCH',
+            displayEmoji: result.displayEmoji || '🤖',
+            recommendation: result.recommendation || 'DİKKATLİ İZLE',
+            advice: result.advice || '',
+            vibe: result.vibe || ''
         };
     }
 
