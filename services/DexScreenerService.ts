@@ -42,47 +42,24 @@ export class DexScreenerService {
 
     /**
      * Fetch latest Solana profiles/pairs.
-     * Strategy: Profiles API (30) + Puppeteer Scraping (70) = 100 tokens
+     * Strategy: Pure Puppeteer Scraping (100 tokens from M5 trending)
      */
     async getLatestPairs(): Promise<TokenSnapshot[]> {
         try {
-            const allTokens: TokenSnapshot[] = [];
+            console.log(`[DexScreener] Using Puppeteer to scrape 100 tokens from M5 trending...`);
 
-            // Tier 1: Token Profiles API (usually ~30 tokens)
-            const data = await this.makeRequest(this.profilesUrl);
-            const profiles = data || [];
+            // Direct scraping - no API profiles
+            const scrapedTokens = await this.scrapeTrendingTokens(100);
 
-            const solanaProfiles = profiles.filter((p: any) => p.chainId === 'solana');
+            console.log(`[DexScreener] Scraped ${scrapedTokens.length} tokens from M5 trending page`);
 
-            if (solanaProfiles.length > 0) {
-                console.log(`[DexScreener] Found ${solanaProfiles.length} new Solana profiles.`);
-                const mints = solanaProfiles.map((p: any) => p.tokenAddress);
-                const profileTokens = await this.getTokens(mints);
-                allTokens.push(...profileTokens);
-            }
-
-            console.log(`[DexScreener] API fetched: ${allTokens.length} tokens`);
-
-            // Tier 2: Puppeteer scraping to reach 100 total
-            if (allTokens.length < 100) {
-                console.log(`[DexScreener] Using Puppeteer to scrape ${100 - allTokens.length} more tokens...`);
-                const scrapedTokens = await this.scrapeTrendingTokens(100 - allTokens.length);
-
-                // Add unique scraped tokens
-                const uniqueScraped = scrapedTokens.filter(
-                    (st: TokenSnapshot) => !allTokens.some(at => at.mint === st.mint)
-                );
-
-                allTokens.push(...uniqueScraped);
-                console.log(`[DexScreener] Added ${uniqueScraped.length} scraped tokens. Total: ${allTokens.length}`);
-            }
-
-            return allTokens.slice(0, 100);
+            return scrapedTokens;
 
         } catch (error) {
-            console.error('[DexScreener] Error fetching latest profiles:', error);
-            // Fallback: scrape 100 tokens directly
-            return (await this.scrapeTrendingTokens(100));
+            console.error('[DexScreener] Scraping failed:', error);
+            // Fallback: try search API as last resort
+            console.log('[DexScreener] Falling back to search API...');
+            return (await this.search("solana")).slice(0, 100);
         }
     }
 
