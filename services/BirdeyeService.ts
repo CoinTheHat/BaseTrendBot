@@ -207,6 +207,33 @@ export class BirdeyeService {
         }
     }
 
+    /**
+     * Get Token Overview (Price, MC, Supply, etc.)
+     * Endpoint: /defi/token_overview
+     */
+    async getTokenOverview(address: string): Promise<{ price: number, mc: number, supply: number, liquidity: number } | null> {
+        try {
+            const chain = 'solana'; // Default
+            const response = await axios.get(`${this.baseUrl}/defi/token_overview`, {
+                headers: { ...this.headers, 'x-chain': chain },
+                params: { address }
+            });
+
+            const data = response.data?.data;
+            if (!data) return null;
+
+            return {
+                price: data.price || 0,
+                mc: data.mc || data.marketCap || 0,
+                supply: data.supply || 0,
+                liquidity: data.liquidity || 0
+            };
+        } catch (error) {
+            // logger.warn(`[Birdeye] Overview failed for ${address}`);
+            return null;
+        }
+    }
+
     // --- Helpers ---
 
     private mapListingToSnapshot(item: any, chain: 'solana' | 'base'): TokenSnapshot {

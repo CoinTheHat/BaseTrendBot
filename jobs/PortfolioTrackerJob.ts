@@ -4,7 +4,7 @@ import { logger } from '../utils/Logger';
 
 export class PortfolioTrackerJob {
     private isRunning = false;
-    private readonly INTERVAL_MS = 60 * 60 * 1000; // 60 minutes
+    private readonly INTERVAL_MS = 60 * 1000; // 1 minute (Aggressive)
     private readonly MAX_AGE_MS = 72 * 60 * 60 * 1000; // 3 days
 
     constructor(
@@ -14,7 +14,7 @@ export class PortfolioTrackerJob {
 
     start() {
         this.isRunning = true;
-        logger.info('[PortfolioTracker] Starting 60-minute monitoring job...');
+        logger.info('[PortfolioTracker] Starting 1-minute monitoring job...');
         this.runLoop();
     }
 
@@ -62,18 +62,27 @@ export class PortfolioTrackerJob {
                         continue;
                     }
 
-                    // 1. Calculate Supply (Crucial for MC calculation)
-                    const entryPrice = Number(token.entry_price || 0);
-                    const foundMc = Number(token.found_mc || 0);
+                    // 1. Calculate Supply & Heal Missing Data
+                    let entryPrice = Number(token.entry_price || 0);
+                    let foundMc = Number(token.found_mc || 0);
+                    let supply = 0;
 
                     if (entryPrice <= 0 || foundMc <= 0) {
-                        // Cannot track MC without reference points. Skip update, or try to fix?
-                        // Just log current state for dashboard
-                        logger.debug(`[PortfolioTracker] ⚠️ Skipping update for ${token.symbol}: Missing entry data (Price: ${entryPrice}, MC: ${foundMc})`);
-                        continue;
-                    }
+                        // SELF-HEALING: Fetch fresh data if DB is missing entry points
+                        const overview = await this.birdeye.getTokenOverview(token.mint);
+                        if (overview) {
+                            entryPrice = overview.price;
+                            foundMc = overview.mc; // Re-baseline to now
+                            supply = overview.supply;
 
-                    const supply = foundMc / entryPrice;
+                            logger.info(`[PortfolioTracker] 🩹 Healed missing data for ${token.symbol} (MC: $${Math.floor(foundMc)})`);
+                        } else {
+                            logger.debug(`[PortfolioTracker] ⚠️ Skipping update for ${token.symbol}: Missing entry data`);
+                            continue;
+                        }
+                    } else {
+                        supply = foundMc / entryPrice;
+                    }
 
                     // 2. Fetch Market Data (1m Candles for last 60 mins to catch spikes)
                     const timeTo = Math.floor(now / 1000);
