@@ -168,13 +168,18 @@ export class AlphaSearchService {
         let query: string;
 
         // --- SINGLE SHOT LOGIC ---
-        // If Symbol > 3 chars (e.g. $BONK) -> Use Cashtag
-        if (token.symbol.length > 3) {
-            query = `$${token.symbol.toUpperCase()}`;
-        } else {
-            // Else (short/generic) -> Use "Name solana"
-            query = `"${token.name}" solana`;
-        }
+        // --- SINGLE SHOT LOGIC (STRICT SOLANA CONTEXT) ---
+        // Refined Query to avoid Cross-Chain Confusion (e.g. Clanker on Base vs Solana)
+
+        const symbolPart = `$${token.symbol.toUpperCase()}`;
+
+        // Construct: ($SYMBOL "solana") OR ($SYMBOL "sol") OR ($SYMBOL "mint")
+        const inclusions = `(${symbolPart} "solana") OR (${symbolPart} "sol") OR (${symbolPart} "mint")`;
+
+        // Exclusions: -base -eth -bsc -tron -"base chain" -"ethereum"
+        const exclusions = `-base -eth -bsc -tron -"base chain" -"ethereum"`;
+
+        query = `${inclusions} ${exclusions}`;
 
         const searchUrl = `https://twitter.com/search?q=${encodeURIComponent(query)}&f=live`;
 

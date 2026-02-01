@@ -93,15 +93,21 @@ Translate all tech terms (Liquidity -> Likidite, Cap -> Değer) but keep common 
 
 **INTERPRETATION RULES (QUALITY OVER QUANTITY):**
 
-1. **BOT CHECK (Spam Filter):**
+1. **SECURITY CHECK (Chain Mismatch is FATAL):**
+   - We are scanning tokens on the **SOLANA** chain.
+   - Analyze the tweets carefully. If the tweets mention "Base Chain", "ETH", "ERC20", or "Tron", but our token is Solana, this is a **COPYCAT/SCAM**.
+   - If you detect a chain mismatch (e.g. Tweets say "Best token on Base" but our token is Solana), GIVE A SCORE OF **0/10**.
+   - Label it as: "🚨 SAHTE TOKEN UYARISI: Tweetler başka bir ağdaki (Base/ETH) orijinal projeye ait."
+
+2. **BOT CHECK (Spam Filter):**
    - Read the tweets. Are they identical "CA: ..." spam?
    - If YES -> **SCORE: 1 (REJECT)**. Do not pass go.
 
-2. **NARRATIVE CHECK:**
+3. **NARRATIVE CHECK:**
    - Is there a specific story? (e.g. "AI Agent", "TikTok Trend", "Founder History").
    - If YES -> **+3 POINTS**.
 
-3. **ORGANIC VIBE:**
+4. **ORGANIC VIBE:**
    - Do tweets use slang, memes, or show genuine excitement?
    - If YES -> **+2 POINTS**.
 
