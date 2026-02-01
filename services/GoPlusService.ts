@@ -16,7 +16,7 @@ export class GoPlusService {
             }
 
             const response = await axios.get(url, { timeout: 10000 });
-            const data = response.data?.result?.[address.toLowerCase()] || response.data?.result?.[address];
+            const data = response.data?.result?.[address];
 
             if (!data) {
                 // If checking failed (API error or empty), default to SAFE (TRUE) to avoid blocking fresh tokens.
