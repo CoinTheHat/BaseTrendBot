@@ -84,8 +84,8 @@ export class TokenScanJob {
 
             for (const token of dexTokens) {
                 const lastProcessed = this.processedCache.get(token.mint);
-                // ANTI-SPAM: Ignore if seen in last 15 mins
-                if (lastProcessed && (now - lastProcessed < 15 * 60 * 1000)) {
+                // ANTI-SPAM: Ignore if seen in last 4 hours (Hard Mode)
+                if (lastProcessed && (now - lastProcessed < 4 * 60 * 60 * 1000)) {
                     cachedCount++;
                     continue;
                 }
@@ -128,9 +128,16 @@ export class TokenScanJob {
 
                         // --- STEP 2: PREMIUM FILTERS ---
                         const liq = token.liquidityUsd || 0;
-                        const v1h = (token.volume24hUsd || 0) / 24;
                         const mc = token.marketCapUsd || 0;
                         const ageHours = token.createdAt ? (Date.now() - token.createdAt.getTime()) / (3600 * 1000) : 0;
+
+                        // NEW: ZEMİN KONTROLÜ (Hard Filter: Strong Floor %20)
+                        const liqMcRatio = liq / (mc || 1);
+                        if (liqMcRatio < 0.20) {
+                            lowLiqCount++;
+                            logger.debug(`[Filter] 🏚️ Weak Floor: ${token.symbol} (Ratio: ${liqMcRatio.toFixed(2)}, needs >0.20)`);
+                            return;
+                        }
 
                         // FILTER 1: Liquidity (Min $5k)
                         if (liq < 5000) {
@@ -139,16 +146,13 @@ export class TokenScanJob {
                             return;
                         }
 
-                        // FILTER 2: Market Cap (Max $5M - reinstated)
+                        // FILTER 2: Market Cap (Max $5M)
                         if (mc > 5000000) {
                             logger.debug(`[Filter] 🐳 Too Big: ${token.symbol} (MC: $${(mc / 1000000).toFixed(1)}M)`);
                             return;
                         }
 
-                        // REMOVED: Max Age Filter (Allow Old Revivals)
-
                         // FILTER 2: Momentum (24h Volume / Liquidity)
-                        // New Logic: 24h Vol must be at least 50% of Liquidity
                         const volume24h = token.volume24hUsd || 0;
                         const momentum = volume24h / (liq || 1);
 
@@ -159,7 +163,7 @@ export class TokenScanJob {
                         }
 
                         const ageDisplay = ageHours < 1 ? `${Math.floor(ageHours * 60)}m` : `${Math.floor(ageHours)}h`;
-                        logger.info(`[Sniper] 💎 GEM DETECTED: ${token.symbol} | MC: $${Math.floor(mc)} | Age: ${ageDisplay} | Vol/Liq: ${momentum.toFixed(2)}x`);
+                        logger.info(`[Sniper] 💎 GEM DETECTED: ${token.symbol} | MC: $${Math.floor(mc)} | Age: ${ageDisplay} | Vol/Liq: ${momentum.toFixed(2)}x | Floor: ${liqMcRatio.toFixed(2)}`);
 
 
                         // --- STEP 3: TWITTER SCAN (Safe Mode) ---

@@ -89,35 +89,38 @@ Translate all tech terms (Liquidity -> Likidite, Cap -> Değer) but keep common 
 **INPUT DATA CONTEXT:**
 - Likidite: $${liq.toLocaleString()}
 - MC: $${mc.toLocaleString()}
-- **Likidite/MC Oranı:** ${liqMcRatio} (Kritik Metrik: 1.00 = Tam Destek, < 0.10 = İnce Tahta/Risk)
-- 24s Hacim: $${vol.toLocaleString()} (Hacim sadece momentumu/ilgiyi doğrular).
+- **Likidite/MC Oranı:** ${liqMcRatio} (ZEMİN KONTROLÜ: 0.20 Altı ELENİR, 0.20-0.40 Altın Oran)
+- 24s Hacim: $${vol.toLocaleString()}
+
+**KRİTİK PUANLAMA KURALLARI (ACIMASIZ MOD):**
+
+1. **BAŞLANGIÇ VE FADE (Puan 5-6):**
+   - Varsayılan puanın **5**'tir. Puan yükseltmek için ÇOK GEÇERLİ sebeplerin olmalı.
+   - Eğer hikaye sıradansa (Yine bir kedi/köpek/pepe, ekstra bir olay yok), topluluk sadece 'LFG' diyorsa -> **PUAN: MAX 6 (FADE).**
+
+2. **İYİ PROJE (Puan 7 - ZOR):**
+   - Sadece **EŞSİZ (UNIQUE)** bir hikaye kancası varsa 7 verilir.
+   - Sıradan Meme coinler asla 7 alamaz.
+   - Eğer Hacim < Likidite (Ratio < 1.0) ise, puanı **MAX 6** ile sınırla. (Yüksek puan için Momentum şart).
+
+3. **GEM (Puan 8+ - İMKANSIZ MOD):**
+   - Hacim, Likiditenin en az **3 KATI** olmalı (> 3x).
+   - Tweetlerde yüksek prodüksiyonlu **VİDEO veya SANAT** olmalı.
+   - Metin içinde bilinen bir 'Alpha Caller'ın onayı tespit edilmeli.
+
+4. **KOPYA KATİLİ (DERIVATIVE KILLER):**
+   - Eğer token ismi o an trend olan başka bir coinin kopyasıysa (Örn: 'Molt' trendken 'MoltMint'), puanı **MAX 6**'da tut.
+   - Asla türev/kopya projelere alarm atma.
 
 **INTERPRETATION RULES:**
 
-1. **SECURITY CHECK (Chain Mismatch is FATAL):**
-   - We are scanning tokens on the **SOLANA** chain.
-   - Analyze the tweets carefully. If the tweets mention "Base Chain", "ETH", "ERC20", or "Tron", but our token is Solana, this is a **COPYCAT/SCAM**.
-   - If you detect a chain mismatch (e.g. Tweets say "Best token on Base" but our token is Solana), GIVE A SCORE OF **0/10**.
-   - Label it as: "🚨 SAHTE TOKEN UYARISI: Tweetler başka bir ağdaki (Base/ETH) orijinal projeye ait."
+1. **SECURITY CHECK:**
+   - We are on **SOLANA**. If tweets mention "Base", "ETH", "ERC20", but CA is Solana -> **SCORE 0/10 (SCAM)**.
 
-2. **PRIMARY METRIC: LIQUIDITY / MC RATIO:**
-   - **< 0.10:** DANGEROUS. Price is unsupported. High Rug Risk.
-   - **0.10 - 0.20:** TRICKY. Needs massive volume to justify.
-   - **0.20 - 0.40:** **GOLDEN RATIO (ALTIN ORAN).** Perfect balance of safety & pump potential. (IDEAL GEM).
-   - **> 0.50:** VERY SAFE but **HEAVY (Hantal)**. Hard to pump fast. (Score limit: 7).
-
-3. **SECONDARY METRIC: VOLUME & NARRATIVE (VIBE CHECK):**
-   - **Do not be impressed by basic existence.** Being "safe" is not enough for a Gem.
-   - Look for **HYPE** and **ORIGINALITY**. If it's boring, REJECT IT.
-   - Use volume to confirm "Organic Action".
-   - Narrative (AI, Tiba, Trumps) gives the upside potential.
-
-**CRITICAL SCORING RULES (RUTHLESS):**
-- **STARTING SCORE:** Assume the token is a **5/10**. It must EARN points to go higher.
-- **SCORE 5-6 (MEDIOCRE):** Good liquidity/volume, but generic narrative (e.g., just another dog/cat with no twist) or weak engagement. -> **RESULT: FADE (Do Not Alert)**.
-- **SCORE 7 (GOOD):** Needs a CLEAR Narrative Hook (Unique art, funny concept, or strong cult vibe) AND Organic Tweets (Not just 'LFG' spam).
-- **SCORE 8+ (GEM):** Needs 'God Mode' metrics (Vol > 2x Liq) AND High Quality Memes/Video content mentioned in tweets.
-- **DERIVATIVES:** If the token is a blatant copy of a trending token (e.g., 'MoltMint' vs 'Molt'), **CAP SCORE AT 6** unless metrics are insane.
+2. **LIQUIDITY / MC RATIO:**
+   - **< 0.20:** DISCARDED BY SYSTEM (Should not even reach you, but if it does, score low).
+   - **0.20 - 0.40:** **GOLDEN RATIO (ALTIN ORAN).** Ideal balance.
+   - **> 0.50:** VERY SAFE but **HEAVY (Hantal)**. Score limit: 7.
 
 **FINAL DECISION:**
 - If Score < 7, Verdict MUST be "FADE".
@@ -125,15 +128,15 @@ Translate all tech terms (Liquidity -> Likidite, Cap -> Değer) but keep common 
 
 ${ghostInstruction}
 
-**JSON OUTPUT FORMAT (ALL VALUES MUST BE TURKISH STRINGS):**
+**JSON OUTPUT FORMAT (TURKISH STRINGS):**
 {
-    "headline": "Kısa, çarpıcı 1 satırlık kanca (Örn: Accelerando: AI Lobsters Hype'ı ile 4x Patladı...)",
+    "headline": "Kısa, çarpıcı 1 satırlık kanca",
     "analystSummary": "Hikaye, katalizör ve hacim hakkında kısa özet.",
-    "technicalOutlook": "ÖZELLİKLE Likidite/MC oranını yorumla. Fiyatı destekliyor mu? Hacim organik mi?",
-    "socialVibe": "KOL'lar, topluluk hissiyatı, bot vs insan oranı.",
-    "riskAnalysis": "Likidite derinliği, Holder dağılımı ve Rug ihtimali.",
-    "strategy": "Net bir eylem planı (Örn: Ufak gir, 2x'te ana parayı al).",
-    "vibe": "1 satırlık eğlenceli durum özeti + emojiler (Örn: 🚀🦞 Hızlanan lobster hype'ı...)",
+    "technicalOutlook": "Likidite/MC oranını ve momentumu yorumla.",
+    "socialVibe": "KOL'lar, topluluk hissiyatı, video/sanat kalitesi.",
+    "riskAnalysis": "Likidite derinliği ve kopyacılık riski.",
+    "strategy": "Net bir eylem planı.",
+    "vibe": "1 satırlık eğlenceli durum özeti + emojiler",
     "score": number, 
     "verdict": "APE" | "WATCH" | "FADE",
     "displayEmoji": "💎",
