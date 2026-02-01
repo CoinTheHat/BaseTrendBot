@@ -181,7 +181,8 @@ export class ScandexBot {
      */
     private escapeMarkdown(text: string): string {
         if (!text) return "";
-        return text.replace(/[_*[\]()~>#+\-=|{}.!]/g, '\\$&');
+        // Escape ALL MarkdownV2 special characters: _ * [ ] ( ) ~ ` > # + - = | { } . ! \
+        return text.replace(/([_*\[\]()~`>#\+\-=|{}.!\\])/g, '\\$1');
     }
 
     async sendAlert(narrative: Narrative, token: TokenSnapshot, score: ScoreResult) {
