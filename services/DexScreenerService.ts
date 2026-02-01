@@ -42,24 +42,49 @@ export class DexScreenerService {
 
     /**
      * Fetch latest Solana profiles/pairs.
-     * Strategy: Pure Puppeteer Scraping (100 tokens from M5 trending)
+     * Strategy: Scrape 100 pair addresses from M5 trending, then fetch full data via API.
+     * This is fast (1 page load) and 100% accurate (API metrics).
      */
     async getLatestPairs(): Promise<TokenSnapshot[]> {
         try {
-            console.log(`[DexScreener] Using Puppeteer to scrape 100 tokens from M5 trending...`);
+            console.log(`[DexScreener] Scraping 100 pair addresses from M5 trending...`);
 
-            // Direct scraping - no API profiles
-            const scrapedTokens = await this.scrapeTrendingTokens(100);
+            // 1. Get 100 pair addresses from the trending page
+            const pairAddresses = await this.scrapePairAddresses(100);
 
-            console.log(`[DexScreener] Scraped ${scrapedTokens.length} tokens from M5 trending page`);
+            if (pairAddresses.length === 0) {
+                console.log(`[DexScreener] Found 0 pairs via scraping. Falling back to search...`);
+                return (await this.search("solana")).slice(0, 100);
+            }
 
-            return scrapedTokens;
+            console.log(`[DexScreener] Found ${pairAddresses.length} pairs. Fetching full data via API...`);
+
+            // 2. Fetch full data for these pairs (API supports bulk pair lookup)
+            const results: TokenSnapshot[] = [];
+            const chunks = this.chunkArray(pairAddresses, 30);
+
+            for (const chunk of chunks) {
+                try {
+                    const url = `${this.apiUrl}/pairs/solana/${chunk.join(',')}`;
+                    const data = await this.makeRequest(url);
+                    const pairs = data?.pairs || [];
+
+                    const validTokens = pairs
+                        .map((p: any) => this.normalizePair(p))
+                        .filter((p: TokenSnapshot | null): p is TokenSnapshot => p !== null);
+
+                    results.push(...validTokens);
+                } catch (err) {
+                    console.error(`[DexScreener] Error fetching pair chunk:`, err);
+                }
+            }
+
+            console.log(`[DexScreener] Successfully retrieved ${results.length} tokens with accurate metrics`);
+            return results;
 
         } catch (error) {
-            console.error('[DexScreener] Scraping failed:', error);
-            // Fallback: try search API as last resort
-            console.log('[DexScreener] Falling back to search API...');
-            return (await this.search("solana")).slice(0, 100);
+            console.error('[DexScreener] Hybrid fetching failed:', error);
+            return [];
         }
     }
 
@@ -165,14 +190,13 @@ export class DexScreenerService {
     }
 
     /**
-     * Scrape DexScreener's M5 Trending page using Puppeteer
+     * Scrape DexScreener's M5 Trending page to get pair addresses
      * https://dexscreener.com/solana?rankBy=trendingScoreM5&order=desc
-     * Extracts all token data from token cards on the trending page
      */
-    private async scrapeTrendingTokens(limit: number = 50): Promise<TokenSnapshot[]> {
+    private async scrapePairAddresses(limit: number = 100): Promise<string[]> {
         let browser;
         try {
-            console.log(`[DexScreener Scraper] Launching browser to scrape ${limit} tokens...`);
+            console.log(`[DexScreener Scraper] Launching browser to get ${limit} pair addresses...`);
 
             browser = await puppeteer.launch({
                 headless: true,
@@ -188,122 +212,33 @@ export class DexScreenerService {
 
             await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
 
-            // Wait for token cards to load
+            // Wait for token cards/rows to load
             await page.waitForSelector('a[href^="/solana/"]', { timeout: 10000 });
 
-            // Extract all token data from cards on the page
-            const tokens = await page.evaluate((maxTokens) => {
-                const results: any[] = [];
-                const processedPairs = new Set<string>();
+            // Extract pair addresses from hrefs
+            const pairAddresses = await page.evaluate((maxPairs) => {
+                const links = Array.from(document.querySelectorAll('a[href^="/solana/"]'));
+                const addresses = new Set<string>();
 
-                // Find all pair links
-                const pairLinks = Array.from(document.querySelectorAll('a[href^="/solana/"]'));
-
-                for (const link of pairLinks) {
-                    if (results.length >= maxTokens) break;
-
+                for (const link of links) {
                     const href = (link as HTMLAnchorElement).getAttribute('href') || '';
-                    const pairMatch = href.match(/^\/solana\/([A-Za-z0-9]+)$/);
-                    if (!pairMatch) continue;
-
-                    const pairAddress = pairMatch[1];
-                    if (processedPairs.has(pairAddress)) continue;
-                    processedPairs.add(pairAddress);
-
-                    // Find the parent card containing all token info
-                    const card = (link as HTMLElement).closest('a, div[class*="token"], div[class*="pair"]');
-                    if (!card) continue;
-
-                    const cardText = card.textContent || '';
-
-                    // Try to extract CA from links within or near the card
-                    let ca = '';
-                    const caLinks = Array.from((card as Element).querySelectorAll('a[href*="solscan"], a[href*="explorer.solana"]'));
-                    for (const caLink of caLinks) {
-                        const caHref = (caLink as HTMLAnchorElement).href;
-                        const caMatch = caHref.match(/address\/([A-Za-z0-9]{32,44})/);
-                        if (caMatch) {
-                            ca = caMatch[1];
-                            break;
-                        }
+                    const match = href.match(/^\/solana\/([A-Za-z0-9]+)$/);
+                    if (match && match[1]) {
+                        addresses.add(match[1]);
+                        if (addresses.size >= maxPairs) break;
                     }
-
-                    // Fallback: extract potential CA from text
-                    if (!ca) {
-                        const caMatch = cardText.match(/([A-Za-z0-9]{32,44})/);
-                        ca = caMatch ? caMatch[1] : pairAddress;
-                    }
-
-                    // Extract symbol (usually has $)
-                    const symbolMatch = cardText.match(/\$([A-Z0-9]+)/);
-                    const symbol = symbolMatch ? symbolMatch[1] : 'UNKNOWN';
-
-                    // Extract numbers with K/M/B suffixes (Case-insensitive)
-                    const parseValue = (regex: RegExp): number => {
-                        const match = cardText.match(regex);
-                        if (!match) return 0;
-
-                        let valStr = match[1].replace(/[$,\s]/g, '');
-                        let value = parseFloat(valStr);
-                        const suffix = (match[2] || '').toUpperCase();
-
-                        if (suffix === 'K') value *= 1000;
-                        else if (suffix === 'M') value *= 1000000;
-                        else if (suffix === 'B') value *= 1000000000;
-
-                        return value || 0;
-                    };
-
-                    // Improved Regex for DexScreener Card Layout
-                    const liquidityUsd = parseValue(/Liq(?:uidity)?.*?\$?([0-9,.]+)([KMB]?)/i);
-                    const marketCapUsd = parseValue(/(?:MC|Cap|Market Cap).*?\$?([0-9,.]+)([KMB]?)/i);
-                    const volume5mUsd = parseValue(/(?:Vol|5m).*?\$?([0-9,.]+)([KMB]?)/i);
-
-                    // Price parse (looks for $0.0... format or similar)
-                    const priceMatch = cardText.match(/\$?\s*([0-9]+\.[0-9]{2,12})/);
-                    const priceUsd = priceMatch ? parseFloat(priceMatch[1]) : 0;
-
-                    results.push({
-                        ca,
-                        symbol,
-                        name: symbol,
-                        priceUsd,
-                        liquidityUsd,
-                        marketCapUsd,
-                        volume5mUsd,
-                        pairUrl: 'https://dexscreener.com' + href
-                    });
                 }
 
-                return results;
+                return Array.from(addresses);
             }, limit);
 
+            console.log(`[DexScreener Scraper] Successfully extracted ${pairAddresses.length} pair addresses`);
+
             await browser.close();
-
-            console.log(`[DexScreener Scraper] Scraped ${tokens.length} tokens from M5 trending page`);
-
-            // Convert to TokenSnapshot format
-            const tokenSnapshots: TokenSnapshot[] = tokens.map((t: any) => ({
-                source: 'dexscreener' as const,
-                mint: t.ca,
-                name: t.name,
-                symbol: t.symbol,
-                priceUsd: t.priceUsd,
-                marketCapUsd: t.marketCapUsd,
-                liquidityUsd: t.liquidityUsd,
-                volume5mUsd: t.volume5mUsd,
-                updatedAt: new Date(),
-                links: {
-                    dexScreener: t.pairUrl,
-                    pumpfun: `https://pump.fun/${t.ca}`,
-                    birdeye: `https://birdeye.so/token/${t.ca}?chain=solana`
-                }
-            }));
-
-            return tokenSnapshots;
+            return pairAddresses;
 
         } catch (error) {
-            console.error('[DexScreener Scraper] Error:', error);
+            console.error('[DexScreener Scraper] Error scraping addresses:', error);
             if (browser) await browser.close();
             return [];
         }
