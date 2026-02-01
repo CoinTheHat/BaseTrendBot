@@ -102,8 +102,8 @@ Translate all tech terms (Liquidity -> Likidite, Cap -> Değer) but keep common 
 
 2. **PRIMARY METRIC: LIQUIDITY / MC RATIO:**
    - **< 0.10:** DANGEROUS. Price is unsupported. High Rug Risk. (Score penalty).
-   - **0.10 - 0.20:** WEAK but typical for pumps.
-   - **> 0.20:** HEALTHY. Good floor support.
+   - **0.10 - 0.25:** ACCEPTABLE but requires high volume to justify.
+   - **> 0.25:** PREFERRED (SAĞLAM). Good floor support. (Bonus Points).
    - **> 0.50:** VERY STRONG. Unruggable vibes.
 
 3. **SECONDARY METRIC: VOLUME & NARRATIVE:**
@@ -113,8 +113,8 @@ Translate all tech terms (Liquidity -> Likidite, Cap -> Değer) but keep common 
 **SCORING RUBRIC (STRICT):**
 - **1-4 (REJECT):** Bot Spam OR Chain Mismatch OR Liq/MC < 0.05.
 - **5-6 (MID):** Decent metrics but boring.
-- **7-8 (BUY):** Good Liq/MC (>0.15) + High Volume + Real Human Tweets.
-- **9-10 (GEM):** Perfect Liq/MC (>0.30) + Viral Narrative + God Candle.
+- **7-8 (BUY):** Good Liq/MC (>0.20) + High Volume + Real Human Tweets.
+- **9-10 (GEM):** Excellent Liq/MC (>0.25) + Viral Narrative + God Candle.
 
 **FINAL DECISION:**
 - If Score < 7, Verdict MUST be "FADE".
