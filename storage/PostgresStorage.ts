@@ -421,7 +421,7 @@ export class PostgresStorage {
             const res = await this.pool.query(
                 `SELECT 
                     mint, symbol, found_mc, max_mc, current_mc, 
-                    status, found_at, last_updated
+                    status, found_at, last_updated, entry_price
                 FROM token_performance 
                 WHERE status = 'TRACKING'
                 ORDER BY found_at DESC`
@@ -433,15 +433,16 @@ export class PostgresStorage {
         }
     }
 
-    async updateTokenMC(mint: string, currentMc: number) {
+    // UPDATED: Supports explicit batch high for ATH protection
+    async updateTokenMC(mint: string, currentMc: number, potentialMaxMc: number) {
         try {
             await this.pool.query(
                 `UPDATE token_performance 
                 SET current_mc = $1,
-                    max_mc = GREATEST(COALESCE(max_mc, 0), $1),
+                    max_mc = GREATEST(COALESCE(max_mc, 0), $2),
                     last_updated = NOW()
-                WHERE mint = $2`,
-                [currentMc, mint]
+                WHERE mint = $3`,
+                [currentMc, potentialMaxMc, mint]
             );
         } catch (err) {
             logger.error(`[Postgres] updateTokenMC failed for ${mint}`, err);

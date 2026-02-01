@@ -62,19 +62,61 @@ export class PortfolioTrackerJob {
                         continue;
                     }
 
-                    // NOTE: BirdEye Public API doesn't have a direct MC Overview endpoint
-                    // We'll rely on the MC stored when the token was first found
-                    // For now, keep tracking to show on dashboard but don't update MC
+                    // 1. Calculate Supply (Crucial for MC calculation)
+                    const entryPrice = Number(token.entry_price || 0);
+                    const foundMc = Number(token.found_mc || 0);
 
-                    const currentMc = token.current_mc || token.found_mc || 0;
-                    const maxMc = token.max_mc || currentMc;
-                    const multiplier = token.found_mc > 0 ? (maxMc / token.found_mc) : 1;
+                    if (entryPrice <= 0 || foundMc <= 0) {
+                        // Cannot track MC without reference points. Skip update, or try to fix?
+                        // Just log current state for dashboard
+                        logger.debug(`[PortfolioTracker] ⚠️ Skipping update for ${token.symbol}: Missing entry data (Price: ${entryPrice}, MC: ${foundMc})`);
+                        continue;
+                    }
 
-                    logger.info(`[PortfolioTracker] 📊 ${token.symbol} | Found MC: $${Math.floor(token.found_mc || 0)} | Max: $${Math.floor(maxMc)} | ${multiplier.toFixed(2)}x`);
+                    const supply = foundMc / entryPrice;
+
+                    // 2. Fetch Market Data (1m Candles for last 30 mins to catch spikes)
+                    const timeTo = Math.floor(now / 1000);
+                    const timeFrom = timeTo - (30 * 60); // 30 mins ago
+
+                    const candles = await this.birdeye.getHistoricalCandles(token.mint, '1m', timeFrom, timeTo);
+
+                    let currentPrice = entryPrice;
+                    let batchHighPrice = entryPrice;
+
+                    if (candles.length > 0) {
+                        // Find Highs and Close
+                        const lastCandle = candles[candles.length - 1];
+                        currentPrice = lastCandle.c;
+
+                        // Find max high in this batch
+                        for (const c of candles) {
+                            if (c.h > batchHighPrice) batchHighPrice = c.h;
+                        }
+                    } else {
+                        // Fallback to simple price check if no candles
+                        currentPrice = await this.birdeye.getTokenPrice(token.mint, 'solana'); // Defaulting solana for simplicity
+                        if (currentPrice > batchHighPrice) batchHighPrice = currentPrice;
+                    }
+
+                    // 3. Calculate MCs
+                    const currentMc = currentPrice * supply;
+                    const batchMaxMc = batchHighPrice * supply;
+
+                    // 4. Update DB (Safe Update: Max MC only increases)
+                    // We pass `batchMaxMc` as the potential new high. DB `GREATEST()` handles the rest.
+                    await this.storage.updateTokenMC(token.mint, currentMc, batchMaxMc);
                     updated++;
 
+                    // 5. Log Performance
+                    const dbMax = Number(token.max_mc || 0);
+                    const realMax = Math.max(dbMax, batchMaxMc); // Visual only
+                    const multiplier = (realMax / foundMc);
+
+                    logger.info(`[PortfolioTracker] 📊 ${token.symbol} | Now: $${Math.floor(currentMc)} | ATH: $${Math.floor(realMax)} (${multiplier.toFixed(2)}x)`);
+
                     // Rate limit protection
-                    await new Promise(r => setTimeout(r, 100));
+                    await new Promise(r => setTimeout(r, 200));
 
                 } catch (err) {
                     logger.error(`[PortfolioTracker] Error tracking ${token.symbol}: ${err}`);
