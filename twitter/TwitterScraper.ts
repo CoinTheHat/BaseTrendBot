@@ -6,7 +6,7 @@ import { twitterAccountManager } from './TwitterAccountManager';
 export class TwitterScraper {
     private browser: any = null;
     private bird: BirdService;
-    private birdLimit = 20;
+    private birdLimit = 30;
 
     constructor() {
         this.bird = new BirdService();
