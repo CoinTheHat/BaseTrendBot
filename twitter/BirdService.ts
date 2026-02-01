@@ -153,12 +153,22 @@ export class BirdService {
             // if (err.stderr) logger.error(`[Bird STDERR]: ${err.stderr.substring(0, 200)}`);
 
             // Special handling for rate limits or auth errors
-            if (msg.includes('429')) {
-                logger.warn(`[Bird] ⚠️ RATE LIMIT (429) on Account #${account.index + 1}.`);
-            } else if (msg.includes('401')) {
-                logger.warn(`[Bird] ⚠️ UNAUTHORIZED (401) on Account #${account.index + 1}. Check credentials.`);
-            } else {
+            if (status === 1 || msg.includes('401') || msg.includes('403')) {
+                // If we have stderr, log it to see valid reason (e.g., "ct0 missing", "auth expired")
+                if (err.stderr) {
+                    logger.error(`[Bird] stderr: ${err.stderr}`);
+                }
+                if (err.stdout) {
+                    logger.error(`[Bird] stdout (partial): ${err.stdout.substring(0, 200)}`);
+                }
+
                 logger.error(`[Bird] Error Code: ${status} on Account #${account.index + 1}`);
+                this.handleRateLimit(account);
+            } else if (msg.includes('Rate limit') || msg.includes('Too Many Requests') || msg.includes('429')) {
+                logger.warn(`[Bird] 🛑 Rate Limit Hit on Account #${account.index + 1}`);
+                this.handleRateLimit(account, true);
+            } else {
+                logger.error(`[Bird] Unexpected Error on Account #${account.index + 1}: ${msg}`);
             }
 
             return [];
