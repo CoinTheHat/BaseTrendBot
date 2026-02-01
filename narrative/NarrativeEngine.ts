@@ -37,7 +37,7 @@ export class NarrativeEngine {
         const dataSection =
             `• MC: $${(token.marketCapUsd || 0).toLocaleString()}\n` +
             `• Liq: $${(token.liquidityUsd ?? 0).toLocaleString()}\n` +
-            `• Vol (5m): $${(token.volume5mUsd ?? 0).toLocaleString()}\n` +
+            `• Vol (24h): $${(token.volume24hUsd ?? 0).toLocaleString()}\n` +
             `• Buyers (5m): ${token.buyers5m ?? 'Veri Alınamadı'}\n` +
             `• ${twitterStatus}`;
 

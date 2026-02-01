@@ -67,7 +67,7 @@ export class LLMService {
         // SNIPER MATH: Pre-calculate Ratios
         const mc = token.marketCapUsd || 0;
         const liq = token.liquidityUsd || 1;
-        const vol = token.volume5mUsd || 0;
+        const vol = token.volume24hUsd || 0;
 
         const volLiqRatio = (vol / liq).toFixed(2); // Critical Sniper Metric
         const liqMcRatio = mc > 0 ? (liq / mc).toFixed(4) : "0";
@@ -88,8 +88,8 @@ Translate all tech terms (Liquidity -> Likidite, Cap -> Değer) but keep common 
 
 **INPUT DATA CONTEXT:**
 - Likidite: $${liq.toLocaleString()}
-- 5m Hacim: $${vol.toLocaleString()}
-- **Vol/Liq Oranı:** ${volLiqRatio}x (If > 1.5x, this is a BREAKOUT signal).
+- 24s Hacim: $${vol.toLocaleString()}
+- **Vol/Liq Oranı:** ${volLiqRatio}x (If > 0.5x, this is HEALTHY. If > 2.0x, it's ON FIRE).
 
 **INTERPRETATION RULES (QUALITY OVER QUANTITY):**
 
@@ -114,8 +114,8 @@ Translate all tech terms (Liquidity -> Likidite, Cap -> Değer) but keep common 
 **SCORING RUBRIC (STRICT):**
 - **1-4 (REJECT):** Bot Spam OR Ghost Protocol OR Low Momentum.
 - **5-6 (MID):** Metrics okay but boring community. (User does NOT want these).
-- **7-8 (BUY):** Breakout Momentum (>1.5x) + Real Human Tweets.
-- **9-10 (GEM):** "God Candle" Metrics + Viral Narrative.
+- **7-8 (BUY):** Healthy Volume (>0.5x) + Real Human Tweets.
+- **9-10 (GEM):** "God Candle" Metrics (>2.0x Vol/Liq) + Viral Narrative.
 
 **FINAL DECISION:**
 - If Score < 7, Verdict MUST be "FADE".
@@ -127,7 +127,7 @@ ${ghostInstruction}
 {
     "headline": "Kısa, çarpıcı 1 satırlık kanca (Örn: Accelerando: AI Lobsters Hype'ı ile 4x Patladı...)",
     "analystSummary": "Hikaye, katalizör ve hacim hakkında kısa özet.",
-    "technicalOutlook": "Likidite/MC oranı, organik vs sahte hacim ve grafik formasyonları tartış.",
+    "technicalOutlook": "Likidite/MC oranı, 24s Hacim gücü ve grafik formasyonları tartış.",
     "socialVibe": "KOL'lar, topluluk hissiyatı, bot vs insan oranı.",
     "riskAnalysis": "Holder dağılımı, Dev hareketleri (sattı/tuttu) ve Rug ihtimali.",
     "strategy": "Net bir eylem planı (Örn: Ufak gir, 2x'te ana parayı al).",
@@ -141,7 +141,7 @@ ${ghostInstruction}
         const userContent = `
 TOKEN: $${token.symbol} (${token.name})
 CA: ${token.mint}
-Stats: Liq $${liq.toLocaleString()} | MC $${mc.toLocaleString()} | 5m Vol $${vol.toLocaleString()}
+Stats: Liq $${liq.toLocaleString()} | MC $${mc.toLocaleString()} | 24h Vol $${vol.toLocaleString()}
 
 TWEETS (${tweets.length}):
 ${hasTweets ? tweets.slice(0, 30).join('\n') : "VERİ YOK"}
