@@ -139,7 +139,12 @@ export class TokenScanJob {
                             return;
                         }
 
-                        // REMOVED: Max Market Cap Filter (Allow High Cap Runners)
+                        // FILTER 2: Market Cap (Max $5M - reinstated)
+                        if (mc > 5000000) {
+                            logger.debug(`[Filter] 🐳 Too Big: ${token.symbol} (MC: $${(mc / 1000000).toFixed(1)}M)`);
+                            return;
+                        }
+
                         // REMOVED: Max Age Filter (Allow Old Revivals)
 
                         // FILTER 2: Momentum (24h Volume / Liquidity)
