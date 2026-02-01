@@ -139,11 +139,20 @@ export class TokenScanJob {
 
                         const ageHours = token.createdAt ? (Date.now() - token.createdAt.getTime()) / (3600 * 1000) : 0;
 
-                        // NEW: ZEMİN KONTROLÜ (Hard Filter: Strong Floor %20)
+                        // NEW: DYNAMIC FLOOR STRATEGY (Adaptive Ratio)
+                        let minRatio = 0.15; // Default for low caps (<500k)
+
+                        if (mc > 5000000) {
+                            minRatio = 0.02; // High Cap (>5M): Expect >2% liquidity
+                        } else if (mc > 500000) {
+                            minRatio = 0.08; // Mid Cap (500k-5M): Expect >8% liquidity
+                        }
+                        // Else Low Cap (<500k): Keep 15% (0.15) for safety
+
                         const liqMcRatio = liq / (mc || 1);
-                        if (liqMcRatio < 0.20) {
+                        if (liqMcRatio < minRatio) {
                             lowLiqCount++;
-                            logger.warn(`[REJECT-DEBUG] 🏚️ Weak Floor: ${token.symbol} | Ratio: ${liqMcRatio.toFixed(2)} | Liq: $${liq} | MC: $${mc} | Threshold: 0.20`);
+                            logger.warn(`[REJECT-DEBUG] 🏚️ Weak Floor: ${token.symbol} | Ratio: ${liqMcRatio.toFixed(2)} | Required: ${minRatio} | MC: $${mc}`);
                             return;
                         }
 

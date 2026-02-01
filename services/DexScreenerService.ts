@@ -156,7 +156,7 @@ export class DexScreenerService {
             return null;
         }
 
-        return {
+        const result: TokenSnapshot = {
             source: 'dexscreener',
             mint: tokenAddress,
             name: pair.baseToken?.name || 'Unknown',
@@ -164,6 +164,7 @@ export class DexScreenerService {
             priceUsd: Number(pair.priceUsd) || 0,
             marketCapUsd: pair.marketCap || pair.fdv || 0, // Priority: marketCap -> fdv -> 0
             liquidityUsd: pair.liquidity?.usd || 0,
+            volume24hUsd: pair.volume?.h24 || pair.volume?.h6 || (pair.volume?.h1 ? pair.volume.h1 * 24 : 0) || 0,
             volume5mUsd: pair.volume?.m5 || 0,
             volume30mUsd: (pair.volume?.m5 || 0) + (pair.volume?.h1 ? pair.volume.h1 / 2 : 0),
             priceChange5m: pair.priceChange?.m5 || 0,
@@ -179,6 +180,11 @@ export class DexScreenerService {
                 birdeye: `https://birdeye.so/token/${tokenAddress}?chain=solana`
             }
         };
+
+        // TODO: Remove this debug log after verifying the fix
+        console.log(`[DEBUG-VOL] ${pair.baseToken?.symbol} | Vol24h: $${result.volume24hUsd} | Raw:`, JSON.stringify(pair.volume));
+
+        return result;
     }
 
     private chunkArray(arr: string[], size: number): string[][] {
