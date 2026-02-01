@@ -28,7 +28,7 @@ export class DexScreenerService {
 
         let browser;
         try {
-            logger.info('[DexScreener] 🌐 Launching Mass Scraper (100 tokens)...');
+            logger.info('[DexScreener] 🌐 Launching Mass Scraper (30 tokens)...');
 
             browser = await puppeteer.launch({
                 headless: true,
@@ -164,7 +164,7 @@ export class DexScreenerService {
                             ageMs: parseAgeMs(ageStr)
                         });
 
-                        if (results.length >= 100) break;
+                        if (results.length >= 30) break;
                     } catch (e) { }
                 }
                 return results;
