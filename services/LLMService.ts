@@ -101,10 +101,10 @@ Translate all tech terms (Liquidity -> Likidite, Cap -> Değer) but keep common 
    - Label it as: "🚨 SAHTE TOKEN UYARISI: Tweetler başka bir ağdaki (Base/ETH) orijinal projeye ait."
 
 2. **PRIMARY METRIC: LIQUIDITY / MC RATIO:**
-   - **< 0.10:** DANGEROUS. Price is unsupported. High Rug Risk. (Score penalty).
-   - **0.10 - 0.25:** ACCEPTABLE but requires high volume to justify.
-   - **> 0.25:** PREFERRED (SAĞLAM). Good floor support. (Bonus Points).
-   - **> 0.50:** VERY STRONG. Unruggable vibes.
+   - **< 0.10:** DANGEROUS. Price is unsupported. High Rug Risk.
+   - **0.10 - 0.20:** TRICKY. Needs massive volume to justify.
+   - **0.20 - 0.40:** **GOLDEN RATIO (ALTIN ORAN).** Perfect balance of safety & pump potential. (IDEAL GEM).
+   - **> 0.50:** VERY SAFE but **HEAVY (Hantal)**. Hard to pump fast. (Score limit: 7).
 
 3. **SECONDARY METRIC: VOLUME & NARRATIVE (VIBE CHECK):**
    - **Do not be impressed by basic existence.** Being "safe" is not enough for a Gem.
