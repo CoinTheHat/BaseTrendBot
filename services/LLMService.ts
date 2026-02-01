@@ -82,26 +82,41 @@ Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. 
 - Likidite: $${token.liquidityUsd}
 - Market Cap: $${token.marketCapUsd}
 - Hacim (5dk): $${token.volume5mUsd}
+- Fiyat Değişimi (5dk): %${token.priceChange5m}
+- Token Yaşı: ${token.createdAt ? Math.floor((Date.now() - token.createdAt.getTime()) / (3600 * 1000)) + ' Saat' : 'Bilinmiyor'}
 - Zemin Oranı (Liq/MC): ${((token.liquidityUsd || 0) / (token.marketCapUsd || 1)).toFixed(3)} ${((token.liquidityUsd || 0) / (token.marketCapUsd || 1)) >= 0.20 ? '✅ Sağlam' : '⚠️ Zayıf'}
 - Top 10 Holder: ${token.top10HoldersSupply ? token.top10HoldersSupply.toFixed(2) + '%' : 'Bilinmiyor'}
 
 **Görev:**
 JSON formatında derinlemesine ve yapılandırılmış bir analiz sun. TÜM ÇIKTILAR %100 TÜRKÇE OLMALIDIR.
 
+**PUANLAMA AYARLARI & KURALLAR (SCORING RULES):**
+
+### 1. ⏳ TOKEN YAŞI KURALLARI (Time Decay)
+Bu kuralları puan verirken KESİNLİKLE uygula:
+- **0 - 4 Saat:** 🟢 **PRIME TIME.** Keşif bölgesi. Ceza yok. (Tam puan potansiyeli).
+- **4 - 12 Saat:** 🟡 **SÜRDÜRÜLEBİLİRLİK KONTROLÜ.** Hype hala canlı mı? Hacim düşüyorsa -1 Puan kır.
+- **12 - 24 Saat:** 🟠 **DİKKAT BÖLGESİ.** Trend dönüşü riski. Çok seçici ol.
+- **> 24 Saat:** 🔴 **ESKİ HABER.** Eğer devasa bir breakout (yeni ATH) yoksa, final puandan **OTOMATİK OLARAK 1-2 PUAN DÜŞ**.
+
+### 2. 📈 FİYAT HAREKETİ UYARISI (FOMO Koruması)
+- **5 Dakikalık Mum Kuralı:** 'Fiyat Değişimi (5dk)' verisine bak.
+- **EĞER > %30 ARTIŞ VARSA:** 🚨 **TEHLİKE.** Token dikine (vertical) gidiyor.
+  - **AKSİYON:** Final puandan 1-2 puan düş.
+  - **UYARI:** Strateji kısmına ŞUNU YAZ: "⚠️ DİKKAT: Son 5 dakikada %${token.priceChange5m} pump yaptı. RSI şişmiş olabilir, tepeden alma. Geri çekilme (Retrace) bekle."
+
 **Analiz Gereksinimleri:**
-0. **Dil ve Üslup:** Türkçe kripto jargonunu doğal ve profesyonel kullan (Örn: 'Manipülasyon', 'Akümülasyon', 'Pump/Dump', 'Zemin'). Robotik çeviri gibi konuşma.
-1. **Analist Özeti**: Bu token neden radarımızda? (2-3 cümle ile özetle)
-2. **Teknik Görünüm**: 
-   - **Likidite:** Eğer Liq/MC oranı > 0.20 ise: "Likidite oranı yüksek, ani satışları (dump) karşılayabilir. Zemin sağlam." şeklinde yorumla. ASLA "Rug için destekliyor" gibi yanlış anlaşılacak ifadeler kullanma.
-   - **Hacim:** Hacim düşük ama fiyat sabitse "Akülasyon/Toplama Evresi" veya "Fırtına Öncesi Sessizlik" olarak tanımla.
-3. **Sosyal Vibe**: Tweetler bot gibi mi yoksa gerçek bir topluluk mu var? Kimler konuşuyor?
-4. **Risk Analizi**: Eğer Top 10 Holder oranı %30'un üzerindeyse "YÜKSEK BALİNA RİSKİ" uyarısı ver. Rug pull ihtimalini değerlendir.
-5. **Strateji**: Net bir aksiyon öner (Örn: "Düşüşü bekle", "Ufak bir miktar gir", "Uzak dur").
-6. **Puan (0-10)**:
+0. **Dil ve Üslup:** Türkçe kripto jargonunu doğal ve profesyonel kullan.
+1. **Analist Özeti**: Bu token neden radarımızda?
+2. **Teknik Görünüm**: Likidite ve Hacim yorumla.
+3. **Sosyal Vibe**: Topluluk gerçek mi?
+4. **Risk Analizi**: Balina ve Rug riski.
+5. **Strateji**: Net aksiyon öner. (FOMO Korumasını uygula).
+6. **Puan (0-10)**: (Yukarıdaki kurallara göre cezaları uygula).
    - 0-4: Çöp / Rug Riski
-   - 5-6: İzleme Listesi (Metrikler iyi ama henüz sessiz)
-   - 7-8: Potansiyel Gem (İyi hacim + aktif sosyal, risk makul)
-   - 9-10: HIGH CONVICTION / APE (Hype + Likidite + Trend mükemmel uyumlu)
+   - 5-6: İzleme Listesi
+   - 7-8: Potansiyel Gem
+   - 9-10: HIGH CONVICTION / APE
 
 **JSON Çıktı Formatı (KESİN):**
 {
