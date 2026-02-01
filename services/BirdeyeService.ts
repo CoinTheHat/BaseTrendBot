@@ -157,6 +157,9 @@ export class BirdeyeService {
         const chain = address.startsWith('0x') ? 'base' : 'solana';
 
         try {
+            // Sanitize address (remove whitespace/newlines)
+            address = address.trim();
+
             const response = await axios.get(`${this.baseUrl}/defi/ohlcv`, {
                 headers: { ...this.headers, 'x-chain': chain },
                 params: {
@@ -167,6 +170,8 @@ export class BirdeyeService {
                 }
             });
 
+
+
             return response.data?.data?.items || [];
         } catch (error: any) {
             // Enhanced Error Logging
@@ -175,8 +180,11 @@ export class BirdeyeService {
 
             if (status === 400 && type === '1m') {
                 logger.warn(`[Birdeye] 1m Candles not supported/failed for ${address}. Retrying with 15m.`);
-                // Fallback to 15m
                 return this.getHistoricalCandles(address, '15m', timeFrom, timeTo);
+            }
+
+            if (msg.includes('invalid format')) {
+                logger.error(`[Birdeye] 🚨 INVALID ADDRESS FORMAT: "${address}" (Length: ${address.length})`);
             }
 
             logger.error(`[Birdeye] Fetch OHLCV Failed for ${address} (Status: ${status}): ${msg}`);
