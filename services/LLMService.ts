@@ -69,6 +69,14 @@ export class LLMService {
         const liq = token.liquidityUsd || 1;
         const vol = token.volume24hUsd || 0;
 
+        // Transaction Stats
+        const buys5m = token.txs5m?.buys || 0;
+        const sells5m = token.txs5m?.sells || 0;
+        const txCount = buys5m + sells5m;
+
+        // Age Calculation (Hours)
+        const ageHours = token.createdAt ? (Date.now() - token.createdAt.getTime()) / (3600 * 1000) : 0;
+
         const volLiqRatio = (vol / liq).toFixed(2);
         const liqMcRatio = mc > 0 ? (liq / mc).toFixed(2) : "0";
 
@@ -77,106 +85,97 @@ export class LLMService {
             ? "\n🚨 **GHOST PROTOCOL:** NO TWEETS FOUND. SCORE MUST BE MAX 4. REJECT IMMEDIATELY."
             : "";
 
-        // WOLF SYSTEM PROMPT (TURKISH MODE - ACCELERANDO STYLE)
+        // NEW PERSONA: ON-CHAIN RISK ANALYST
         const systemPrompt = `
-YOU ARE "THE WOLF" (Crypto Sniper & Narrative Interpreter) for the TURKISH Market.
-Your job is to find 100x GEMS and ruthlessly filter out TRASH.
-You analyze Technical Health (Liq/MC) + Social Quality and explain it in Turkish.
+# KİMLİK VE GÖREV
+Sen, Solana ekosisteminde uzmanlaşmış, duygusuz ve aşırı titiz bir "Zincir Üstü (On-Chain) Risk Analisti"sin.
+Mevcut Görevin: DexScreener "M5 Trending" listesine giren bir tokenı incelemek ve kullanıcıyı "Tepeden Mal Alma" (Buying the Top/Exit Liquidity) riskinden korumak.
 
-**CRITICAL RULE: YOU MUST REPLY IN TURKISH LANGUAGE ONLY.**
-Translate all tech terms (Liquidity -> Likidite, Cap -> Değer) but keep common slang (Rug, Pump, Gem) explaining context.
+# KRİTİK BAĞLAM
+Bu token şu an trend listesinde, yani fiyatı zaten yükselmiş durumda. Senin işin, bu yükselişin devam edecek sağlam bir "Momentum" mu, yoksa sona ermek üzere olan bir "Tuzak" mı olduğunu ayırt etmek.
 
-**INPUT DATA CONTEXT:**
-- Likidite: $${liq.toLocaleString()}
-- MC: $${mc.toLocaleString()}
-- **Likidite/MC Oranı:** ${liqMcRatio} (ZEMİN KONTROLÜ: 0.20 Altı ELENİR, 0.20-0.40 Altın Oran)
-- 24s Hacim: $${vol.toLocaleString()}
+# ANALİZ KURALLARI (Adım Adım Uygula)
 
-**KRİTİK PUANLAMA KURALLARI (ACIMASIZ MOD):**
+## 1. ALIM/SATIM BASKISI TESTİ (En Kritik Aşama)
+- Verilen verilerdeki son 5 dakikalık (M5) Alım (Buy) ve Satım (Sell) sayılarını kıyasla.
+- EĞER (M5 Sells > M5 Buys) İSE: Trend terse dönüyor demektir. "Satış baskısı yüksek" diyerek puanı ciddi şekilde KIR (Maksimum 4 puan ver).
+- EĞER (M5 Buys >> M5 Sells) İSE: İştah devam ediyor, bu olumlu bir sinyaldir.
 
-1. **BAŞLANGIÇ VE FADE (Puan 5-6):**
-   - Varsayılan puanın **5**'tir. Puan yükseltmek için ÇOK GEÇERLİ sebeplerin olmalı.
-   - Eğer hikaye sıradansa (Yine bir kedi/köpek/pepe, ekstra bir olay yok), topluluk sadece 'LFG' diyorsa -> **PUAN: MAX 6 (FADE).**
+## 2. YAŞA GÖRE DİNAMİK DEĞERLENDİRME
+- Token GENÇ ise (Age < 6 Saat):
+  - Saf Hype ve Hacim ara. Risk yüksektir ama kazanç potansiyeli de yüksektir. Hacim/Likidite oranı yüksekse ONAYLA.
+- Token OLGUN ise (6 Saat - 24 Saat):
+  - "Neden şimdi?" sorusunu sor. Fiyat yataydan çıkıp patlama mı yapmış? Yoksa yavaş yavaş mı düşüyor? Düşüş trendindeyse REDDET.
+- Token ESKİ ise (Age > 24 Saat):
+  - ÇOK KATI OL. Eski bir tokenın trende girmesi için "Yeni ATH" yapıyor olması veya çok güçlü bir haber/olay olması gerekir.
+  - Grafik "Ölü Kedi Sıçraması" gibi duruyorsa veya sebepsiz bir pumpsa direkt REDDET.
 
-2. **İYİ PROJE (Puan 7 - ZOR):**
-   - Sadece **EŞSİZ (UNIQUE)** bir hikaye kancası varsa 7 verilir.
-   - Sıradan Meme coinler asla 7 alamaz.
-   - Eğer Hacim < Likidite (Ratio < 1.0) ise, puanı **MAX 6** ile sınırla. (Yüksek puan için Momentum şart).
+## 3. SOSYAL VERİ KONTROLÜ (Twitter)
+- Eğer Tweet verisi VARSA:
+  - Sadece "$TOKEN" yazan bot spamlerini göz ardı et. Gerçek insanların yorumlarını ve tartışmalarını ara.
+  - Bot spam'i çoksa, puanı düşür.
+- Eğer Tweet verisi YOKSA (Veri çekilemediyse):
+  - "Sosyal Veri Eksik" uyarısı ver.
+  - Kararını %90 oranında TEKNİK VERİLERE (Hacim, Likidite, Tx Sayısı) dayandır ve risk skorunu artır.
 
-3. **GEM (Puan 8+ - İMKANSIZ MOD):**
-   - Hacim, Likiditenin en az **3 KATI** olmalı (> 3x).
-   - Tweetlerde yüksek prodüksiyonlu **VİDEO veya SANAT** olmalı.
-   - Metin içinde bilinen bir 'Alpha Caller'ın onayı tespit edilmeli.
-
-4. **KOPYA KATİLİ (DERIVATIVE KILLER):**
-   - Eğer token ismi o an trend olan başka bir coinin kopyasıysa (Örn: 'Molt' trendken 'MoltMint'), puanı **MAX 6**'da tut.
-   - Asla türev/kopya projelere alarm atma.
-
-**INTERPRETATION RULES:**
-
-1. **SECURITY CHECK:**
-   - We are on **SOLANA**. If tweets mention "Base", "ETH", "ERC20", but CA is Solana -> **SCORE 0/10 (SCAM)**.
-
-2. **LIQUIDITY / MC RATIO:**
-   - **< 0.20:** DISCARDED BY SYSTEM (Should not even reach you, but if it does, score low).
-   - **0.20 - 0.40:** **GOLDEN RATIO (ALTIN ORAN).** Ideal balance.
-   - **> 0.50:** VERY SAFE but **HEAVY (Hantal)**. Score limit: 7.
-
-**FINAL DECISION:**
-- If Score < 7, Verdict MUST be "FADE".
-- If Score >= 7, Verdict MUST be "APE" or "WATCH".
+## 4. MATEMATİKSEL SAĞLAMA
+- Likidite / MarketCap oranı (< 0.15) İSE (Örn: 100k MC için <5k Liq) bu bir tuzaktır. REDDET.
+- İşlem Sayısı (Tx Count): Son 5 dakikada işlem sayısı çok düşükse (sadece 3-5 kişi) hacim sahtedir. REDDET.
 
 ${ghostInstruction}
 
-**JSON OUTPUT FORMAT (TURKISH STRINGS):**
+# ÇIKTI FORMATI (JSON)
+Yanıtın SADECE aşağıdaki JSON formatında olmalı, başka hiçbir metin içermemeli:
+
 {
-    "headline": "Kısa, çarpıcı 1 satırlık kanca",
-    "analystSummary": "META ANALİZİ. Sadece meme'i anlatma; piyasa psikolojisine uygun mu? (Örn: 'Kızıl piyasada ilaç gibi gelen relatable hikaye'). Neden şimdi hype oldu?",
-    "technicalOutlook": "Likidite/MC oranını ve momentumu yorumla.",
-    "socialVibe": "KOL'lar, topluluk hissiyatı, video/sanat kalitesi.",
-    "riskAnalysis": "SERT GERÇEKLER. Balina Hakimiyeti uyarısı yap (Top 10 > %50 ise 'Çöküş Riski' de). Likidite 'Sığ' mı 'Tank' gibi mi? Holder sayısı 'Insider' mı gösteriyor?",
-    "strategy": "TAKTİKSEL OYUN PLANI. Genel konuşma. 1. Giriş Bölgesi (Örn: '90k-100k arası topla'). 2. Hedefler (Örn: '200k Psikolojik direnç, yarısını sat'). 3. Stop Loss (Örn: 'Likidite bozulursa kaç').",
-    "vibe": "1 satırlık eğlenceli durum özeti + emojiler",
-    "score": number, 
-    "verdict": "APE" | "WATCH" | "FADE",
-    "displayEmoji": "💎",
-    "recommendation": "AL / PAS"
+  "aiScore": number, // 1-10 arası puan (7 ve üzeri ONAY demektir)
+  "aiApproved": boolean, // Puan >= 7 ise true, değilse false
+  "aiReason": "Kararının 1 cümlelik teknik özeti (Örn: Satış baskısı alıcılardan fazla, riskli.)",
+  "riskLevel": "Düşük" | "Orta" | "Yüksek" | "Aşırı Yüksek",
+  "tradeSuggestion": "Giriş stratejisi (Örn: 'Momentum güçlü, girilebilir' veya 'Sadece izle, alma')",
+  "headline": "Telegram başlığı için kısa, vurucu slogan (Örn: 🔥 Momentum Patlaması veya ⚠️ Satış Baskısı Uyarısı)"
 }
 `;
         const userContent = `
 TOKEN: $${token.symbol} (${token.name})
-CA: ${token.mint}
-Stats: Liq $${liq.toLocaleString()} | MC $${mc.toLocaleString()} | 24h Vol $${vol.toLocaleString()}
+AGE: ${ageHours.toFixed(1)} Hours
+STATS: 
+- MC: $${mc.toLocaleString()}
+- Liq: $${liq.toLocaleString()} (Ratio: ${liqMcRatio})
+- 24h Vol: $${vol.toLocaleString()}
+- M5 Txns: ${buys5m} BUYS vs ${sells5m} SELLS (Total: ${txCount})
 
-TWEETS (${tweets.length}):
-${hasTweets ? tweets.slice(0, 30).join('\n') : "VERİ YOK"}
+TWITTER DATA (${tweets.length} tweets found):
+${hasTweets ? tweets.slice(0, 30).join('\n') : "NO TWITTER DATA AVAILABLE"}
 
-ÖNEMLİ: YANITIN TAMAMI %100 TÜRKÇE OLMALIDIR. İNGİLİZCE KELİME KULLANMA.
+GÖREV: Yukarıdaki kurallara göre analiz et ve JSON çıktısını üret.
 `;
 
         return { systemPrompt, userContent };
     }
 
     private normalizeResult(result: any): AIAnalysisResult {
-        const score = typeof result.score === 'number' ? result.score : 4;
+        // Map new JSON format to internal AIAnalysisResult interface
+        const score = typeof result.aiScore === 'number' ? result.aiScore : 4;
+
         return {
-            headline: result.headline || `🚨 ANALYZING`,
-            narrative: result.narrative || "No narrative.",
-            analystSummary: result.analystSummary || "No summary.",
-            technicalOutlook: result.technicalOutlook || "No tech data.",
-            socialVibe: result.socialVibe || "No vibe data.",
-            riskAnalysis: result.riskAnalysis || "No risk data.",
-            strategy: result.strategy || "WATCH",
-            analysis: result.analysis || [],
-            riskLevel: result.riskLevel || 'MEDIUM',
-            riskReason: result.riskReason || '',
+            headline: result.headline || `⚠️ ANALYZING`,
+            narrative: result.aiReason || "No narrative generated.", // Mapping Reason to Narrative
+            analystSummary: result.aiReason || "No summary.",        // Mapping Reason to Summary
+            technicalOutlook: `M5 Data Analysis`,                    // Placeholder or derived
+            socialVibe: "Twitter Data Analyzed",                     // Placeholder
+            riskAnalysis: result.tradeSuggestion || "Check Risk",    // Mapping Trade Suggestion here
+            strategy: result.tradeSuggestion || "WATCH",
+            analysis: [],
+            riskLevel: (result.riskLevel as any) || 'HIGH',
+            riskReason: result.aiReason || '',
             score: score,
-            isApproved: score >= 7,
-            verdict: result.verdict || 'FADE',
-            displayEmoji: result.displayEmoji || '🤖',
-            recommendation: result.recommendation || 'PASS',
-            advice: result.advice || '',
-            vibe: result.vibe || ''
+            isApproved: result.aiApproved === true,
+            verdict: score >= 7 ? 'APE' : 'FADE',
+            displayEmoji: score >= 7 ? '🚀' : '⚠️',
+            recommendation: score >= 7 ? 'AL' : 'PAS',
+            advice: result.tradeSuggestion || '',
+            vibe: result.headline || ''
         };
     }
 
