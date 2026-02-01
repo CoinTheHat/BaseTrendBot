@@ -67,11 +67,11 @@ export class TokenScanJob {
         this.isScanning = true;
 
         try {
-            logger.info('[Job] 🔍 Starting DexScreener M5 Scan...');
+            logger.info('[Job] 🔍 Starting DexScreener Scan...');
 
-            // 1. Fetch Candidates (DexScreener 5-Minute Trending)
-            const dexTokens = await this.dexScreener.fetchTrendingM5();
-            logger.info(`[Fetch] 📡 Received ${dexTokens.length} tokens from DexScreener M5`);
+            // 1. Fetch Candidates (DexScreener Latest Pairs)
+            const dexTokens = await this.dexScreener.getLatestPairs();
+            logger.info(`[Fetch] 📡 Received ${dexTokens.length} tokens from DexScreener`);
 
             if (dexTokens.length === 0) {
                 logger.info(`[Scan] ⚠️ No trending tokens from DexScreener. Cooldown may be active.`);

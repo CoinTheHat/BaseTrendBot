@@ -1,3 +1,4 @@
+
 import { TrendItem, TrendTokenMatch } from '../models/types';
 
 export class TrendDigest {

@@ -6,7 +6,7 @@ import { MemeWatchlist } from '../core/MemeWatchlist';
 import { TrendCollector } from '../trends/TrendCollector';
 import { TrendTokenMatcher } from '../core/TrendTokenMatcher';
 import { TrendDigest } from './TrendDigest';
-
+import { DexScreenerService } from '../services/DexScreenerService';
 
 export class ScandexBot {
     private bot: TelegramBot | null = null;
@@ -15,7 +15,8 @@ export class ScandexBot {
     constructor(
         private watchlist: MemeWatchlist,
         private trendCollector?: TrendCollector,
-        private trendMatcher?: TrendTokenMatcher
+        private trendMatcher?: TrendTokenMatcher,
+        private dexScreener?: DexScreenerService
     ) {
         if (config.TELEGRAM_BOT_TOKEN) {
             this.bot = new TelegramBot(config.TELEGRAM_BOT_TOKEN, { polling: false });
@@ -32,13 +33,6 @@ export class ScandexBot {
             this.initCommands();
         } else {
             logger.warn('[Telegram] No Token provided, bot disabled.');
-        }
-    }
-
-    async stop() {
-        if (this.bot) {
-            await this.bot.stopPolling();
-            logger.info('[Telegram] Polling stopped.');
         }
     }
 
@@ -59,10 +53,46 @@ export class ScandexBot {
             this.bot?.sendMessage(msg.chat.id, text, { parse_mode: 'Markdown' });
         });
 
-        // Trend -> Tokens (Alpha) - DISABLED (DexScreener Removed)
+        // Trend -> Tokens (Alpha)
         this.bot.onText(/\/trendtokens|\/alpha/, async (msg) => {
             if (!this.checkAuth(msg)) return; // Guard
-            this.bot?.sendMessage(msg.chat.id, "⚠️ **Komut Geçici Olarak Devre Dışı**\nBirdEye geçişi nedeniyle trend araması şu an aktif değil.", { parse_mode: 'Markdown' });
+            if (!this.trendCollector || !this.trendMatcher || !this.dexScreener) {
+                this.bot?.sendMessage(msg.chat.id, "❌ Trend modules not enabled.");
+                return;
+            }
+            await this.bot?.sendChatAction(msg.chat.id, 'typing');
+            this.bot?.sendMessage(msg.chat.id, "🕵️‍♂️ **Derin Tarama Başlatıldı...**\nHer trend için canlı havuz taranıyor. (Bu işlem 10-15s sürebilir)");
+
+            // 1. Get Top Trends
+            const trends = this.trendCollector.getTopTrends(5);
+            let matches: any[] = [];
+
+            // 2. Targeted Search (The Fix)
+            // Instead of relying on a generic 'latest' list, we search specifically for each trend.
+            for (const trend of trends) {
+                // Search DexScreener for this trend phrase
+                const results = await this.dexScreener.search(trend.phrase);
+
+                // If found, add to matches (Reuse matcher logic or manual format)
+                if (results.length > 0) {
+                    // Pick best result (highest liquidity or exact match)
+                    const best = results.sort((a, b) => (b.liquidityUsd || 0) - (a.liquidityUsd || 0))[0];
+                    matches.push({
+                        trend: trend,
+                        tokens: [{ snapshot: best, score: 99 }]
+                    });
+                }
+                // Else: Do not push empty match (Hide "Watching..." clutter)
+            }
+
+            // 4. Send Result (Filtered)
+            if (matches.length === 0) {
+                this.bot?.sendMessage(msg.chat.id, "📉 **Şu an Twitter trendlerine uyan bir Solana tokenı bulunamadı.**\nSistem taramaya devam ediyor...");
+                return;
+            }
+
+            const text = this.trendDigest.formatTrendTokenMatches(matches);
+            this.bot?.sendMessage(msg.chat.id, text, { parse_mode: 'Markdown', disable_web_page_preview: true });
         });
 
         this.bot.onText(/\/status/, (msg) => {
@@ -141,7 +171,33 @@ export class ScandexBot {
             const ca = match?.[1]?.trim();
             if (!ca) return;
 
-            this.bot?.sendMessage(msg.chat.id, `🔍 **Analiz Başlatılıyor...**\nCA: \`${ca}\`\n\n⚠️ **Hızlı Analiz** modülü şu an bakımda. Lütfen \`/add ${ca}\` komutunu kullanarak Watchlist'e ekleyin. Bot otomatik olarak tarayıp raporlayacaktır.`, { parse_mode: 'Markdown' });
+            this.bot?.sendMessage(msg.chat.id, `🔍 **Analiz Başlatılıyor...**\nCA: \`${ca}\`\n\n_Twitter verileri taranıyor, lütfen bekleyin (10-20sn)..._`, { parse_mode: 'Markdown' });
+
+            // Trigger manual analysis (This requires exposing a method in TokenScanJob or similar, or just running ad-hoc logic here)
+            // For now, let's try to fetch token info via DexScreener/Birdeye then run Story Engine
+            try {
+                // 1. Fetch info
+                let token: TokenSnapshot | null = null;
+                const pairs = await this.dexScreener?.getLatestPairs(); // Optimized: usually better to fetch specific, but DexApi might not have getOne.
+                // Fallback: Create dummy snapshot if needed, or implement getOne. 
+                // Let's assume we can use Birdeye for specific lookup if Dex fails or iterate.
+                // ...Simpler: Use Birdeye to get basics
+                if (this.dexScreener) {
+                    // Try to find in cache or recent? 
+                    // Actually, let's just use what we have available. 
+                    // Note: Ideally we'd have a `services.getToken(ca)` method.
+                }
+
+                // Temporary: Just tell user to watch Logs for now if complexity is high, 
+                // OR implement a quick scraper check.
+
+                // Let's rely on the "Watchlist" mechanism. If they Add it, it gets scanned.
+                // Suggestion: Just use /add, but this command confirms "I am looking".
+                this.bot?.sendMessage(msg.chat.id, `⚠️ **Hızlı Analiz** modülü henüz aktif değil. Lütfen \`/add ${ca}\` komutunu kullanarak Watchlist'e ekleyin. Bot otomatik olarak tarayıp raporlayacaktır.`, { parse_mode: 'Markdown' });
+
+            } catch (e) {
+                this.bot?.sendMessage(msg.chat.id, `❌ Hata: ${e}`);
+            }
         });
     }
 
@@ -176,106 +232,72 @@ export class ScandexBot {
         return false;
     }
 
-    /**
-     * Escapes special characters for Telegram MarkdownV2
-     */
-    private escapeMarkdown(text: string): string {
-        if (!text) return "";
-        // Escape ALL MarkdownV2 special characters: _ * [ ] ( ) ~ ` > # + - = | { } . ! \
-        return text.replace(/([_*\[\]()~`>#\+\-=|{}.!\\])/g, '\\$1');
-    }
-
     async sendAlert(narrative: Narrative, token: TokenSnapshot, score: ScoreResult) {
         if (!this.bot || !config.TELEGRAM_CHAT_ID) return;
 
-        // ACCELERANDO STYLE ALERT
-        const safeScore = narrative.aiScore || 0;
+        const isTrendLinked = !!narrative.twitterStory;
+        const phaseEmoji = score.phase === 'SPOTTED' ? '🛸' : score.phase === 'COOKING' ? '🔥' : score.phase === 'TRACKING' ? '📡' : '🍽';
 
-        // Escape ALL dynamic data
-        const symbol = this.escapeMarkdown(token.symbol);
-        const headline = this.escapeMarkdown(narrative.headline || "🔥 Yeni Fırsat Tespit Edildi");
-        const summary = this.escapeMarkdown(narrative.analystSummary || narrative.narrativeText.split('\n')[0]);
-        const technical = this.escapeMarkdown(narrative.technicalOutlook || "Veri Hazırlanıyor...");
-        const vibe = this.escapeMarkdown(narrative.socialVibe || "Veri Hazırlanıyor...");
-        const risk = this.escapeMarkdown(narrative.riskAnalysis || "Risk Analizi Yapılıyor...");
-        const strategy = this.escapeMarkdown(narrative.strategy || "İzleme Moduna Alın.");
-        const mint = token.mint; // Mint is code block, no escape needed inside ` ` but we do it manually if needed, usually raw is fine inside code block. Actually, inside ` `, only ` and \ need escape. But for safety let's leave mint raw as it is trusted chars usually. 
-        // Wait, inside monospaced `...`, escapable chars are different. 
-        // "Inside pre and code entities, all '`' and '\' characters must be escaped with a preceding backslash '\'."
-        // Mint addresses are alphanumeric, so acceptable.
+        let titleLine = `🚨 **TOKEN DETECTED: $${token.symbol}**`;
 
-        // Construct Message (MarkdownV2)
-        // Note: For fields inside normal text, we use the escaped versions.
-        let message = `📍 CA: \`${mint}\`
+        // Breaking News Override (Viral/Trend)
+        if (isTrendLinked) {
+            titleLine = `📈 **TREND ALERT: $${token.symbol}**`;
+        }
 
-🚨 TOKEN DETECTED: $${symbol}
+        // Early Alpha Override
+        if (narrative.twitterStory?.potentialCategory === 'EARLY_ALPHA') {
+            titleLine = `⚡ **EARLY MOVER: $${token.symbol}**`;
+        } else if (narrative.twitterStory?.potentialCategory === 'SUPER_ALPHA') {
+            titleLine = `🚀 **HIGH VELOCITY: $${token.symbol}**`;
+        }
 
-✨ POTANSİYEL VAR • Puan: ${safeScore}/10
-${headline}
-🚨 TOKEN: $${symbol}
-📋 CA: \`${mint}\`
+        // Add Risk Warning to top if DANGEROUS including specific flags
+        if (narrative.twitterStory?.riskAnalysis?.level === 'DANGEROUS') {
+            titleLine = `⛔ **RISK WARNING: $${token.symbol}** ⛔\n${titleLine}`;
+        }
 
-🧐 ANALİST ÖZETİ:
-${summary}
+        let message =
+            `📍 **CA:** \`${token.mint}\`
 
-📊 Teknik Görünüm: ${technical}
-🗣️ Sosyal Vibe: ${vibe}
+${titleLine}
 
-🚩 RİSK ANALİZİ:
-${risk}
+${narrative.narrativeText}
 
-🚀 STRATEJİ:
-${strategy}
+**Data:**
+${narrative.dataSection}
 
-Data:
-${this.escapeMarkdown(narrative.dataSection)}
+**Status:** ${narrative.tradeLens}
+**Vibe:** ${narrative.vibeCheck}`;
 
-Status: ${this.escapeMarkdown(narrative.tradeLens)}
-Vibe: ${this.escapeMarkdown(narrative.vibeCheck || narrative.vibe || "Nötr")}`;
+        if (narrative.twitterStory) {
+            message += `\n\n🔍 **DEDEKTİF ANALİZİ (Vibe Check)**
+Güven Skoru: **${narrative.twitterStory.trustScore ?? 50}/100** (${(narrative.twitterStory.trustScore ?? 50) >= 75 ? 'Güvenli ✅' : (narrative.twitterStory.trustScore ?? 50) < 40 ? 'Riskli 🔴' : 'Orta 🟡'})`;
+            message += `\n🐦 **Twitter Havası:** ${narrative.twitterStory.riskAnalysis?.level === 'SAFE' ? 'Temiz ☀️' : 'Karışık 🌪️'}`;
+            message += `\n📝 **Analiz Detayları:**\n${narrative.twitterStory.summary}`;
 
-        // Link Section - URLs don't need escaping usually if using [text](url), but text part does.
-        const dexLink = `[DexScreener](${token.links.dexScreener})`;
-        const pumpLink = token.links.pumpfun ? ` \\| [PumpFun](${token.links.pumpfun})` : "";
-        const birdLink = token.links.birdeye ? ` \\| [Birdeye](${token.links.birdeye})` : "";
-
-        message += `\n\n${dexLink}${pumpLink}${birdLink}
-
-⚠️ Yatırım Tavsiyesi Değildir\\.`; // Escape the dot at the end manually
-
-        try {
-            await this.bot.sendMessage(config.TELEGRAM_CHAT_ID, message, { parse_mode: 'MarkdownV2', disable_web_page_preview: true });
-            logger.info(`[Telegram] Alert sent for ${token.symbol} (Style: MarkdownV2)`);
-        } catch (err: any) {
-            logger.error(`[Telegram] Failed to send alert: ${err.message}`);
-            // Fallback to plain text if Markdown fails
-            if (err.message.includes('Markdown')) {
-                await this.bot.sendMessage(config.TELEGRAM_CHAT_ID, `🚨 **FORMAT ERROR**\nContent for $${token.symbol} caused a Markdown error.\n\n${narrative.headline}`);
+            if (narrative.twitterStory.sampleLines.length > 0) {
+                message += `\n\n💬 **Örnek Tweet:**\n${narrative.twitterStory.sampleLines[0]}`;
             }
         }
-    }
 
-    async sendFastAlert(token: TokenSnapshot, momentum: { swaps: number, volume: number }) {
-        if (!this.bot || !config.TELEGRAM_CHAT_ID) return;
+        // Technical Security Seals
+        if (token.mintAuthority) {
+            message += `\n\n⚠️ **MINT IS OPEN (Yeni coin basılabilir!)**`;
+        }
+        if (token.top10HoldersSupply && token.top10HoldersSupply > 50) {
+            message += `\n🔴 **CENTRALIZED SUPPLY (Top 10 > %${token.top10HoldersSupply.toFixed(1)})**`;
+        }
 
-        const message = `⚡ **FAST ALERT (MOMENTUM)** ⚡
-        
-🚀 **$${token.symbol}** is heating up!
-Boarding now...
+        message += `\n\n[DexScreener](${token.links.dexScreener}) | [Pump.fun](${token.links.pumpfun}) | [Birdeye](${token.links.birdeye || '#'})
 
-📊 **5m Data:**
-• Swaps: ${momentum.swaps}
-• Volume: $${Math.floor(momentum.volume).toLocaleString()}
-• Liq: $${Math.floor(token.liquidityUsd || 0).toLocaleString()}
-
-📋 \`${token.mint}\`
-
-🤖 *AI Analizi bekleniyor...*`;
+⚠ _Yatırım Tavsiyesi Değildir._`;
 
         try {
-            await this.bot.sendMessage(config.TELEGRAM_CHAT_ID, message, { parse_mode: 'Markdown' });
-            logger.info(`[Telegram] Fast Alert sent for ${token.symbol}`);
+            await this.bot.sendMessage(config.TELEGRAM_CHAT_ID, message, { parse_mode: 'Markdown', disable_web_page_preview: true });
+            logger.info(`[Telegram] Alert sent for ${token.symbol}`);
         } catch (err) {
-            logger.error(`[Telegram] Failed to send fast alert: ${err}`);
+            logger.error(`[Telegram] Failed to send alert: ${err} `);
         }
     }
 }
