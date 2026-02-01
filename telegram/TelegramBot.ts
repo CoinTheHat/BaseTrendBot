@@ -176,55 +176,80 @@ export class ScandexBot {
         return false;
     }
 
+    /**
+     * Escapes special characters for Telegram MarkdownV2
+     */
+    private escapeMarkdown(text: string): string {
+        if (!text) return "";
+        return text.replace(/[_*[\]()~>#+\-=|{}.!]/g, '\\$&');
+    }
+
     async sendAlert(narrative: Narrative, token: TokenSnapshot, score: ScoreResult) {
         if (!this.bot || !config.TELEGRAM_CHAT_ID) return;
 
         // ACCELERANDO STYLE ALERT
         const safeScore = narrative.aiScore || 0;
 
-        // Construct Message
-        let message = `📍 CA: \`${token.mint}\`
+        // Escape ALL dynamic data
+        const symbol = this.escapeMarkdown(token.symbol);
+        const headline = this.escapeMarkdown(narrative.headline || "🔥 Yeni Fırsat Tespit Edildi");
+        const summary = this.escapeMarkdown(narrative.analystSummary || narrative.narrativeText.split('\n')[0]);
+        const technical = this.escapeMarkdown(narrative.technicalOutlook || "Veri Hazırlanıyor...");
+        const vibe = this.escapeMarkdown(narrative.socialVibe || "Veri Hazırlanıyor...");
+        const risk = this.escapeMarkdown(narrative.riskAnalysis || "Risk Analizi Yapılıyor...");
+        const strategy = this.escapeMarkdown(narrative.strategy || "İzleme Moduna Alın.");
+        const mint = token.mint; // Mint is code block, no escape needed inside ` ` but we do it manually if needed, usually raw is fine inside code block. Actually, inside ` `, only ` and \ need escape. But for safety let's leave mint raw as it is trusted chars usually. 
+        // Wait, inside monospaced `...`, escapable chars are different. 
+        // "Inside pre and code entities, all '`' and '\' characters must be escaped with a preceding backslash '\'."
+        // Mint addresses are alphanumeric, so acceptable.
 
-🚨 TOKEN DETECTED: $${token.symbol}
+        // Construct Message (MarkdownV2)
+        // Note: For fields inside normal text, we use the escaped versions.
+        let message = `📍 CA: \`${mint}\`
+
+🚨 TOKEN DETECTED: $${symbol}
 
 ✨ POTANSİYEL VAR • Puan: ${safeScore}/10
-${narrative.headline || "🔥 Yeni Fırsat Tespit Edildi"}
-🚨 TOKEN: $${token.symbol}
-📋 CA: \`${token.mint}\`
+${headline}
+🚨 TOKEN: $${symbol}
+📋 CA: \`${mint}\`
 
 🧐 ANALİST ÖZETİ:
-${narrative.analystSummary || narrative.narrativeText.split('\n')[0]}
+${summary}
 
-📊 Teknik Görünüm: ${narrative.technicalOutlook || "Veri Hazırlanıyor..."}
-🗣️ Sosyal Vibe: ${narrative.socialVibe || "Veri Hazırlanıyor..."}
+📊 Teknik Görünüm: ${technical}
+🗣️ Sosyal Vibe: ${vibe}
 
 🚩 RİSK ANALİZİ:
-${narrative.riskAnalysis || "Risk Analizi Yapılıyor..."}
+${risk}
 
 🚀 STRATEJİ:
-${narrative.strategy || "İzleme Moduna Alın."}
-
+${strategy}
 
 Data:
-${narrative.dataSection}
+${this.escapeMarkdown(narrative.dataSection)}
 
-Status: ${narrative.tradeLens}
-Vibe: ${narrative.vibeCheck || narrative.vibe || "Nötr"}`;
+Status: ${this.escapeMarkdown(narrative.tradeLens)}
+Vibe: ${this.escapeMarkdown(narrative.vibeCheck || narrative.vibe || "Nötr")}`;
 
-        // Link Section
+        // Link Section - URLs don't need escaping usually if using [text](url), but text part does.
         const dexLink = `[DexScreener](${token.links.dexScreener})`;
         const pumpLink = token.links.pumpfun ? ` | [PumpFun](${token.links.pumpfun})` : "";
         const birdLink = token.links.birdeye ? ` | [Birdeye](${token.links.birdeye})` : "";
 
         message += `\n\n${dexLink}${pumpLink}${birdLink}
 
-⚠️ Yatırım Tavsiyesi Değildir.`;
+⚠️ Yatırım Tavsiyesi Değildir\\.`; // Escape the dot at the end manually
 
         try {
-            await this.bot.sendMessage(config.TELEGRAM_CHAT_ID, message, { parse_mode: 'Markdown', disable_web_page_preview: true });
-            logger.info(`[Telegram] Alert sent for ${token.symbol} (Accelerando Style)`);
-        } catch (err) {
-            logger.error(`[Telegram] Failed to send alert: ${err} `);
+            await this.bot.sendMessage(config.TELEGRAM_CHAT_ID, message, { parse_mode: 'MarkdownV2', disable_web_page_preview: true });
+            logger.info(`[Telegram] Alert sent for ${token.symbol} (Style: MarkdownV2)`);
+        } catch (err: any) {
+            logger.error(`[Telegram] Failed to send alert: ${err.message}`);
+            // Fallback to plain text if Markdown fails
+            if (err.message.includes('Markdown')) {
+                await this.bot.sendMessage(config.TELEGRAM_CHAT_ID, `🚨 **FORMAT ERROR**\nContent for $${token.symbol} caused a Markdown error.\n\n${narrative.headline}`);
+            }
         }
     }
 

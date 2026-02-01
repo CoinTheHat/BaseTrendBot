@@ -163,6 +163,8 @@ export class TokenScanJob {
                         }
 
                         const ageDisplay = ageHours < 1 ? `${Math.floor(ageHours * 60)}m` : `${Math.floor(ageHours)}h`;
+
+                        // MOVED: Log only after passing ALL filters (Floor, Liq, MC, Momentum)
                         logger.info(`[Sniper] 💎 GEM DETECTED: ${token.symbol} | MC: $${Math.floor(mc)} | Age: ${ageDisplay} | Vol/Liq: ${momentum.toFixed(2)}x | Floor: ${liqMcRatio.toFixed(2)}`);
 
 
