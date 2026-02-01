@@ -47,10 +47,10 @@ export class DexScreenerService {
      */
     async getLatestPairs(): Promise<TokenSnapshot[]> {
         try {
-            console.log(`[DexScreener] Scraping 30 pair addresses from M5 trending...`);
+            console.log(`[DexScreener] Scraping 60 pair addresses from M5 trending to ensure 30 candidate buffer...`);
 
-            // 1. Get 30 pair addresses from the trending page
-            const pairAddresses = await this.scrapePairAddresses(30);
+            // 1. Get 60 pair addresses from the trending page (Buffer for API filtering)
+            const pairAddresses = await this.scrapePairAddresses(60);
 
             if (pairAddresses.length === 0) {
                 console.log(`[DexScreener] Found 0 pairs via scraping. Falling back to search...`);
@@ -80,7 +80,7 @@ export class DexScreenerService {
             }
 
             console.log(`[DexScreener] Successfully retrieved ${results.length} tokens with accurate metrics`);
-            return results;
+            return results.slice(0, 30);
 
         } catch (error) {
             console.error('[DexScreener] Hybrid fetching failed:', error);
