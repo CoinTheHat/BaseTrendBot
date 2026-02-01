@@ -169,7 +169,17 @@ export class BirdeyeService {
 
             return response.data?.data?.items || [];
         } catch (error: any) {
-            logger.error(`[Birdeye] Fetch OHLCV Failed for ${address}: ${error.message}`);
+            // Enhanced Error Logging
+            const status = error.response?.status;
+            const msg = error.response?.data ? JSON.stringify(error.response.data) : error.message;
+
+            if (status === 400 && type === '1m') {
+                logger.warn(`[Birdeye] 1m Candles not supported/failed for ${address}. Retrying with 15m.`);
+                // Fallback to 15m
+                return this.getHistoricalCandles(address, '15m', timeFrom, timeTo);
+            }
+
+            logger.error(`[Birdeye] Fetch OHLCV Failed for ${address} (Status: ${status}): ${msg}`);
             return [];
         }
     }
