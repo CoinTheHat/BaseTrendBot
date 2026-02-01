@@ -163,12 +163,14 @@ export class BirdService {
                 }
 
                 logger.error(`[Bird] Error Code: ${status} on Account #${account.index + 1}`);
-                this.handleRateLimit(account);
+                twitterAccountManager.releaseAccount(account.index, true);
             } else if (msg.includes('Rate limit') || msg.includes('Too Many Requests') || msg.includes('429')) {
                 logger.warn(`[Bird] 🛑 Rate Limit Hit on Account #${account.index + 1}`);
-                this.handleRateLimit(account, true);
+                twitterAccountManager.releaseAccount(account.index, true);
             } else {
                 logger.error(`[Bird] Unexpected Error on Account #${account.index + 1}: ${msg}`);
+                // unexpected error, just release without penalty
+                twitterAccountManager.releaseAccount(account.index, false);
             }
 
             return [];
