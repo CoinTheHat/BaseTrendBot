@@ -8,6 +8,7 @@ interface StorageData {
 }
 
 export interface SeenTokenData {
+    symbol?: string; // New: For Dashboard display if performance record missing
     firstSeenAt: number;
     lastAlertAt: number;
     lastScore: number;

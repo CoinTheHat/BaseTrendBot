@@ -187,6 +187,7 @@ export class TokenScanJob {
                             logger.warn(`[Ghost] 👻 No tweets found for ${token.symbol}. Auto-Rejecting (Score: 4).`);
 
                             await this.storage.saveSeenToken(token.mint, {
+                                symbol: token.symbol,
                                 firstSeenAt: Date.now(),
                                 lastAlertAt: 0,
                                 lastScore: 4,
@@ -213,6 +214,7 @@ export class TokenScanJob {
                             logger.info(`❌ [AI Reject] ${token.symbol} - Score: ${aiScore}/10 - Reason: ${reason}`);
 
                             await this.storage.saveSeenToken(token.mint, {
+                                symbol: token.symbol, // Save symbol especially for rejects
                                 firstSeenAt: Date.now(),
                                 lastAlertAt: 0,
                                 lastScore: aiScore,
