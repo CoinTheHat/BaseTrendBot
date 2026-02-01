@@ -155,7 +155,6 @@
                             <th class="text-left p-4 text-slate-400 font-semibold text-sm">Found Date</th>
                             <th class="text-right p-4 text-slate-400 font-semibold text-sm">Found MC</th>
                             <th class="text-right p-4 text-slate-400 font-semibold text-sm">Max MC (ATH)</th>
-                            <th class="text-right p-4 text-slate-400 font-semibold text-sm">Current MC</th>
                             <th class="text-right p-4 text-slate-400 font-semibold text-sm">Multiplier</th>
                             <th class="text-center p-4 text-slate-400 font-semibold text-sm">Status</th>
                             <th class="text-center p-4 text-slate-400 font-semibold text-sm">Action</th>
@@ -163,7 +162,7 @@
                     </thead>
                     <tbody id="tokenTable">
                         <tr>
-                            <td colspan="7" class="text-center p-8 text-slate-500">
+                            <td colspan="6" class="text-center p-8 text-slate-500">
                                 <div class="flex items-center justify-center gap-2">
                                     <svg class="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none"
                                         viewBox="0 0 24 24">
@@ -184,7 +183,7 @@
 
         <!-- Footer -->
         <div class="mt-8 text-center text-slate-500 text-sm">
-            <p>Monitoring Active (Updates Hourly) • Powered by <span class="text-cyan-400">BirdEye API</span></p>
+            <p>Monitoring Active (Updates Hourly) • Manual & DexScreener Mode</p>
         </div>
     </div>
 
@@ -232,7 +231,7 @@
                 console.error('Error fetching tokens:', error);
                 document.getElementById('tokenTable').innerHTML = `
                     <tr>
-                        <td colspan="7" class="text-center p-8 text-red-400">
+                        <td colspan="6" class="text-center p-8 text-red-400">
                             ⚠️ Error loading tokens. Check console for details.
                         </td>
                     </tr>
@@ -272,7 +271,7 @@
             if (tokens.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="7" class="text-center p-8 text-slate-500">
+                        <td colspan="6" class="text-center p-8 text-slate-500">
                             No tokens tracked yet. Start scanning to populate the list.
                         </td>
                     </tr>
@@ -308,7 +307,6 @@
                         <td class="p-4 text-right">
                             <span class="text-green-400 font-bold">${formatMC(maxMc)}</span>
                         </td>
-                        <td class="p-4 text-right text-slate-300">${formatMC(currentMc)}</td>
                         <td class="p-4 text-right">
                             <span class="${multiplierClass} text-lg">${multiplier.toFixed(2)}x</span>
                         </td>

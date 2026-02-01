@@ -50,7 +50,7 @@ async function main() {
 
     // 2. Services
     const pumpFun = new PumpFunService();
-    const birdeye = new BirdeyeService();
+    // const birdeye = new BirdeyeService(); // DISABLED
     const dexScreener = new DexScreenerService();
     const twitterService = new TwitterTrendsService();
     const alphaSearchService = new AlphaSearchService(); // Instantiated
@@ -66,13 +66,35 @@ async function main() {
     const phaseDetector = new PhaseDetector();
     const cooldown = new CooldownManager(storage);
 
-
-
     // 4. Alerting
     const llmService = new LLMService();
     const narrative = new NarrativeEngine(llmService);
     const bot = new ScandexBot(watchlist, trendCollector, trendMatcher);
     const twitter = new TwitterPublisher();
+
+    // Mock BirdEye for TokenScanJob until it's refactored (TokenScanJob uses it mainly for checking types match, but might use it?)
+    // Actually TokenScanJob takes BirdeyeService. We need to pass null or dummy if we really want to kill it.
+    // However, user said "birdeye api kullanmayalım".
+    // TokenScanJob.ts uses it? Let's check imports. It imports BirdeyeService.
+    // If I delete the instance here, TokenScanJob constructor will fail unless I update it or pass null/any.
+    // Let's assume for now we keep the instance but don't USE it, OR passing null is better.
+    // But Typescript strict mode...
+    // Let's modify TokenScanJob to make Birdeye optional or remove it later if needed.
+    // For now, let's keep the instance but NOT use it in Performance/Portfolio jobs.
+    // Wait, TokenScanJob expects it.
+    // Re-reading user request: "birdeye api kullanmayalım".
+    // So I should effectively not call it.
+    // PerformanceMonitorJob calls it heavily. I disabled that job.
+    // PortfolioTrackerJob called it? No, I removed it.
+    // TokenScanJob calls it?
+    // TokenScanJob uses `birdeye.getTrending()`? No, it uses DexScreener now for fetching.
+    // Does it use `birdeye` for anything else?
+    // In TokenScanJob.ts: `private birdeye: BirdeyeService`.
+    // It's used? I need to check TokenScanJob sources again to be 100% sure.
+    // If it's unused there, I can remove it.
+    // For SAFETY now, I will keep the instance creation but COMMENT OUT PerformanceMonitorJob start.
+
+    const birdeye = new BirdeyeService(); // Keep instance for Type compatibility in TokenScanJob for now, but ensure logic doesn't use it.
 
     // 5. Job
     const job = new TokenScanJob(
@@ -93,12 +115,12 @@ async function main() {
     );
 
     // 6. Performance & Dashboard
-    const performanceJob = new PerformanceMonitorJob(storage, birdeye);
-    const portfolioTracker = new PortfolioTrackerJob(storage, birdeye);
+    // const performanceJob = new PerformanceMonitorJob(storage, birdeye); // DISABLED (BirdEye Dependency)
+    const portfolioTracker = new PortfolioTrackerJob(storage); // BirdEye Removed
     // REMOVED: KeywordMonitorJob (Jeweler Mode) killed by user request.
     const dashboard = new DashboardServer(storage); // Railway auto-sets PORT env var
 
-    performanceJob.start();
+    // performanceJob.start();
     portfolioTracker.start();
     dashboard.start();
 

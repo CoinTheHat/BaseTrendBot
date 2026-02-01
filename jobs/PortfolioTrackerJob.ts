@@ -1,15 +1,13 @@
 import { PostgresStorage } from '../storage/PostgresStorage';
-import { BirdeyeService } from '../services/BirdeyeService';
 import { logger } from '../utils/Logger';
 
 export class PortfolioTrackerJob {
     private isRunning = false;
-    private readonly INTERVAL_MS = 60 * 60 * 1000; // 1 Hour (API Safety)
+    private readonly INTERVAL_MS = 60 * 60 * 1000; // 1 Hour
     private readonly MAX_AGE_MS = 72 * 60 * 60 * 1000; // 3 days
 
     constructor(
-        private storage: PostgresStorage,
-        private birdeye: BirdeyeService
+        private storage: PostgresStorage
     ) { }
 
     start() {
