@@ -47,14 +47,14 @@ export class DexScreenerService {
      */
     async getLatestPairs(): Promise<TokenSnapshot[]> {
         try {
-            console.log(`[DexScreener] Scraping 100 pair addresses from M5 trending...`);
+            console.log(`[DexScreener] Scraping 30 pair addresses from M5 trending...`);
 
-            // 1. Get 100 pair addresses from the trending page
-            const pairAddresses = await this.scrapePairAddresses(100);
+            // 1. Get 30 pair addresses from the trending page
+            const pairAddresses = await this.scrapePairAddresses(30);
 
             if (pairAddresses.length === 0) {
                 console.log(`[DexScreener] Found 0 pairs via scraping. Falling back to search...`);
-                return (await this.search("solana")).slice(0, 100);
+                return (await this.search("solana")).slice(0, 30);
             }
 
             console.log(`[DexScreener] Found ${pairAddresses.length} pairs. Fetching full data via API...`);
