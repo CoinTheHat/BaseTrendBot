@@ -127,22 +127,30 @@ export class TokenScanJob {
                         // 3. Twitter sentiment (Ghost Protocol)
 
                         // --- STEP 2: PREMIUM FILTERS ---
-                        const liq = token.liquidityUsd || 0;
-                        const mc = token.marketCapUsd || 0;
+                        // Explicitly parse values to ensure they are numbers
+                        const rawLiq = token.liquidityUsd;
+                        const rawMc = token.marketCapUsd;
+                        const rawVol = token.volume24hUsd;
+
+                        // Ensure numeric types (handle potential string inputs)
+                        const liq = Number(rawLiq) || 0;
+                        const mc = Number(rawMc) || 0;
+                        const volume24h = Number(rawVol) || 0;
+
                         const ageHours = token.createdAt ? (Date.now() - token.createdAt.getTime()) / (3600 * 1000) : 0;
 
                         // NEW: ZEMİN KONTROLÜ (Hard Filter: Strong Floor %20)
                         const liqMcRatio = liq / (mc || 1);
                         if (liqMcRatio < 0.20) {
                             lowLiqCount++;
-                            logger.debug(`[Filter] 🏚️ Weak Floor: ${token.symbol} (Ratio: ${liqMcRatio.toFixed(2)}, needs >0.20)`);
+                            logger.warn(`[REJECT-DEBUG] 🏚️ Weak Floor: ${token.symbol} | Ratio: ${liqMcRatio.toFixed(2)} | Liq: $${liq} | MC: $${mc} | Threshold: 0.20`);
                             return;
                         }
 
                         // FILTER 1: Liquidity (Min $5k)
                         if (liq < 5000) {
                             lowLiqCount++;
-                            logger.debug(`[Filter] 💧 Low Liquidity: ${token.symbol} ($${Math.floor(liq)})`);
+                            logger.warn(`[REJECT-DEBUG] 💧 Low Liq: ${token.symbol} | Seen: $${liq} | Raw: ${rawLiq} | Threshold: $5000`);
                             return;
                         }
 
@@ -153,12 +161,11 @@ export class TokenScanJob {
                         }
 
                         // FILTER 2: Momentum (24h Volume / Liquidity)
-                        const volume24h = token.volume24hUsd || 0;
                         const momentum = volume24h / (liq || 1);
 
                         if (momentum < 0.5) {
                             weakMomentumCount++;
-                            logger.debug(`[Filter] 💤 Weak Momentum: ${token.symbol} (${momentum.toFixed(2)}x, needs >0.5x)`);
+                            logger.warn(`[REJECT-DEBUG] 💤 Low Vol: ${token.symbol} | Vol: $${volume24h} | Liq: $${liq} | Ratio: ${(momentum).toFixed(2)}x`);
                             return;
                         }
 
