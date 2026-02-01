@@ -1,5 +1,9 @@
 import axios from 'axios';
+import puppeteer from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { TokenSnapshot } from '../models/types';
+
+puppeteer.use(StealthPlugin());
 
 export class DexScreenerService {
     private apiUrl = 'https://api.dexscreener.com/latest/dex';
@@ -68,7 +72,7 @@ export class DexScreenerService {
 
                 // Add only unique tokens (not already in allTokens)
                 const uniqueResults = searchResults.filter(
-                    sr => !allTokens.some(at => at.mint === sr.mint)
+                    (sr: TokenSnapshot) => !allTokens.some(at => at.mint === sr.mint)
                 );
 
                 allTokens.push(...uniqueResults);
@@ -80,9 +84,23 @@ export class DexScreenerService {
             // Limit to 100 tokens
             const finalTokens = allTokens.slice(0, 100);
 
-            console.log(`[DexScreener] Total fetched: ${finalTokens.length} tokens (Target: 100)`);
+            console.log(`[DexScreener] API fetched: ${finalTokens.length} tokens`);
 
-            return finalTokens;
+            // Strategy 3: If still under 100, use Puppeteer scraping to fill the gap
+            if (finalTokens.length < 100) {
+                console.log(`[DexScreener] Using Puppeteer scraping to reach 100 tokens...`);
+                const scrapedTokens = await this.scrapeTrendingTokens(100 - finalTokens.length);
+
+                // Add unique scraped tokens
+                const uniqueScraped = scrapedTokens.filter(
+                    st => !finalTokens.some(ft => ft.mint === st.mint)
+                );
+
+                finalTokens.push(...uniqueScraped);
+                console.log(`[DexScreener] Added ${uniqueScraped.length} scraped tokens. Total: ${finalTokens.length}`);
+            }
+
+            return finalTokens.slice(0, 100);
 
         } catch (error) {
             console.error('[DexScreener] Error fetching latest profiles:', error);
@@ -184,5 +202,80 @@ export class DexScreenerService {
             res.push(arr.slice(i, i + size));
         }
         return res;
+    }
+
+    /**
+     * Scrape DexScreener's M5 Trending page using Puppeteer
+     * https://dexscreener.com/solana?rankBy=trendingScoreM5&order=desc
+     */
+    private async scrapeTrendingTokens(limit: number = 50): Promise<TokenSnapshot[]> {
+        let browser;
+        try {
+            console.log(`[DexScreener Scraper] Launching browser to scrape ${limit} tokens...`);
+
+            browser = await puppeteer.launch({
+                headless: true,
+                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
+                args: ['--no-sandbox', '--disable-setuid-sandbox']
+            });
+
+            const page = await browser.newPage();
+            await page.setUserAgent(this.getRandomUserAgent());
+
+            const url = 'https://dexscreener.com/solana?rankBy=trendingScoreM5&order=desc';
+            console.log(`[DexScreener Scraper] Navigating to ${url}...`);
+
+            await page.goto(url, { waitUntil: 'networkidle2', timeout: 30000 });
+
+            // Wait for token cards to load
+            await page.waitForSelector('a[href^="/solana/"]', { timeout: 10000 });
+
+            // Extract token data from the page
+            const tokens = await page.evaluate((maxTokens) => {
+                const tokenLinks = Array.from(document.querySelectorAll('a[href^="/solana/"]'));
+                const results: any[] = [];
+
+                for (let i = 0; i < Math.min(tokenLinks.length, maxTokens); i++) {
+                    const link = tokenLinks[i] as HTMLAnchorElement;
+                    const card = link.closest('div');
+
+                    if (!card) continue;
+
+                    // Extract token address from href
+                    const href = link.getAttribute('href') || '';
+                    const match = href.match(/\/solana\/([A-Za-z0-9]+)/);
+                    if (!match) continue;
+
+                    const tokenAddress = match[1];
+
+                    // Extract text content (symbol, price, liquidity, etc.)
+                    const textContent = card.textContent || '';
+
+                    // Try to extract basic info (this is a best-effort approach)
+                    results.push({
+                        tokenAddress,
+                        textContent: textContent.substring(0, 200) // Limit text for safety
+                    });
+                }
+
+                return results;
+            }, limit);
+
+            console.log(`[DexScreener Scraper] Scraped ${tokens.length} tokens from page`);
+
+            // Convert to TokenSnapshot format
+            // Get full details using API for these tokens
+            const mints = tokens.map((t: any) => t.tokenAddress).filter(Boolean);
+            const fullTokenData = await this.getTokens(mints);
+
+            await browser.close();
+
+            return fullTokenData;
+
+        } catch (error) {
+            console.error('[DexScreener Scraper] Error:', error);
+            if (browser) await browser.close();
+            return [];
+        }
     }
 }
