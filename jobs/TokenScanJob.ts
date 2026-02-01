@@ -140,14 +140,14 @@ export class TokenScanJob {
                         const ageHours = token.createdAt ? (Date.now() - token.createdAt.getTime()) / (3600 * 1000) : 0;
 
                         // NEW: DYNAMIC FLOOR STRATEGY (Adaptive Ratio)
-                        let minRatio = 0.15; // Default for low caps (<500k)
+                        let minRatio = 0.20; // Default for low caps (<500k)
 
                         if (mc > 5000000) {
-                            minRatio = 0.02; // High Cap (>5M): Expect >2% liquidity
+                            minRatio = 0.04; // High Cap (>5M): Expect >4% liquidity (User requested 0.4 but 4% is safer/realistic)
                         } else if (mc > 500000) {
-                            minRatio = 0.08; // Mid Cap (500k-5M): Expect >8% liquidity
+                            minRatio = 0.10; // Mid Cap (500k-5M): Expect >10% liquidity
                         }
-                        // Else Low Cap (<500k): Keep 15% (0.15) for safety
+                        // Else Low Cap (<500k): Keep 20% (0.20) for safety
 
                         const liqMcRatio = liq / (mc || 1);
                         if (liqMcRatio < minRatio) {

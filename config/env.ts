@@ -41,7 +41,7 @@ export const config = {
     DATABASE_URL: process.env.DATABASE_URL || '',
 
     // Scanner Settings
-    SCAN_INTERVAL_SECONDS: Number(process.env.SCAN_INTERVAL_SECONDS) || 30,
+    SCAN_INTERVAL_SECONDS: Number(process.env.SCAN_INTERVAL_SECONDS) || 60,
     ALERT_COOLDOWN_MINUTES: Number(process.env.ALERT_COOLDOWN_MINUTES) || 1, // Reduced to 1m for testing
     MAX_ALERTS_PER_HOUR: Number(process.env.MAX_ALERTS_PER_HOUR) || 12,
     NETWORK: process.env.NETWORK || 'solana',
