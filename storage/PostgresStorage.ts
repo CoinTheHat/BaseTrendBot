@@ -108,10 +108,23 @@ export class PostgresStorage {
     async savePerformance(perf: TokenPerformance) {
         try {
             await this.pool.query(
-                `INSERT INTO token_performance(mint, symbol, alert_mc, ath_mc, current_mc, status, alert_timestamp, last_updated, entry_price)
-        VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)
-                 ON CONFLICT(mint) DO NOTHING`,
-                [perf.mint, perf.symbol, perf.alertMc, perf.athMc, perf.currentMc, perf.status, perf.alertTimestamp, perf.lastUpdated, perf.entryPrice || 0]
+                `INSERT INTO token_performance(
+                    mint, symbol, alert_mc, ath_mc, current_mc, status, alert_timestamp, last_updated, entry_price,
+                    found_mc, max_mc, found_at
+                )
+                VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $3, $4, $7)
+                ON CONFLICT(mint) DO NOTHING`,
+                [
+                    perf.mint,
+                    perf.symbol,
+                    perf.alertMc,
+                    perf.athMc,
+                    perf.currentMc,
+                    perf.status,
+                    perf.alertTimestamp,
+                    perf.lastUpdated,
+                    perf.entryPrice || 0
+                ]
             );
         } catch (err) {
             logger.error('[Postgres] savePerformance failed', err);
