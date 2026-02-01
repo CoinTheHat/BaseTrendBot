@@ -106,15 +106,18 @@ Translate all tech terms (Liquidity -> Likidite, Cap -> Değer) but keep common 
    - **> 0.25:** PREFERRED (SAĞLAM). Good floor support. (Bonus Points).
    - **> 0.50:** VERY STRONG. Unruggable vibes.
 
-3. **SECONDARY METRIC: VOLUME & NARRATIVE:**
-   - Use volume to confirm if there is "Organic Action" or just "Dead Liquidity".
+3. **SECONDARY METRIC: VOLUME & NARRATIVE (VIBE CHECK):**
+   - **Do not be impressed by basic existence.** Being "safe" is not enough for a Gem.
+   - Look for **HYPE** and **ORIGINALITY**. If it's boring, REJECT IT.
+   - Use volume to confirm "Organic Action".
    - Narrative (AI, Tiba, Trumps) gives the upside potential.
 
-**SCORING RUBRIC (STRICT):**
-- **1-4 (REJECT):** Bot Spam OR Chain Mismatch OR Liq/MC < 0.05.
-- **5-6 (MID):** Decent metrics but boring.
-- **7-8 (BUY):** Good Liq/MC (>0.20) + High Volume + Real Human Tweets.
-- **9-10 (GEM):** Excellent Liq/MC (>0.25) + Viral Narrative + God Candle.
+**CRITICAL SCORING RULES (RUTHLESS):**
+- **STARTING SCORE:** Assume the token is a **5/10**. It must EARN points to go higher.
+- **SCORE 5-6 (MEDIOCRE):** Good liquidity/volume, but generic narrative (e.g., just another dog/cat with no twist) or weak engagement. -> **RESULT: FADE (Do Not Alert)**.
+- **SCORE 7 (GOOD):** Needs a CLEAR Narrative Hook (Unique art, funny concept, or strong cult vibe) AND Organic Tweets (Not just 'LFG' spam).
+- **SCORE 8+ (GEM):** Needs 'God Mode' metrics (Vol > 2x Liq) AND High Quality Memes/Video content mentioned in tweets.
+- **DERIVATIVES:** If the token is a blatant copy of a trending token (e.g., 'MoltMint' vs 'Molt'), **CAP SCORE AT 6** unless metrics are insane.
 
 **FINAL DECISION:**
 - If Score < 7, Verdict MUST be "FADE".
