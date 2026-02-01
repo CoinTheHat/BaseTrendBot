@@ -43,7 +43,6 @@ export class PortfolioTrackerJob {
             }
 
             let archived = 0;
-            let updated = 0;
 
             for (const token of tokens) {
                 try {
@@ -51,51 +50,19 @@ export class PortfolioTrackerJob {
                     const now = Date.now();
                     const age = now - foundAt;
 
-                    // 1. ARCHIVE old tokens (>72 hours)
+                    // ARCHIVE old tokens (>3 days)
                     if (age > this.MAX_AGE_MS) {
                         await this.storage.archiveToken(token.mint);
                         archived++;
                         logger.info(`[PortfolioTracker] 📦 Archived ${token.symbol} (${token.mint}) - 72h limit reached.`);
-                        continue;
                     }
-
-                    // 2. UPDATE MAX MC (ATH Tracking)
-                    // Only check if it's active (TRACKING)
-                    const overview = await this.birdeye.getTokenOverview(token.mint);
-                    if (overview) {
-                        const currentMc = overview.mc;
-                        // Calculate Peak Price since Alert
-                        const alertTimeSec = Math.floor(foundAt / 1000);
-                        const nowSec = Math.floor(now / 1000);
-
-                        const peakPrice = await this.birdeye.getTokenPeakPrice(token.mint, alertTimeSec, nowSec);
-                        const maxMc = peakPrice * overview.supply;
-
-                        // Persist to DB
-                        await this.storage.savePerformance({
-                            mint: token.mint,
-                            symbol: token.symbol,
-                            alertMc: token.alert_mc, // Keep original
-                            athMc: maxMc > token.ath_mc ? maxMc : token.ath_mc, // Update if higher
-                            currentMc: currentMc,
-                            entryPrice: token.entry_price,
-                            status: token.status, // Keep status
-                            alertTimestamp: token.found_at, // Keep original
-                            lastUpdated: new Date()
-                        });
-                        updated++;
-                    }
-
-                    // Rate Limit Protection (1s delay between tokens)
-                    await new Promise(r => setTimeout(r, 1000));
-
                 } catch (err) {
                     logger.error(`[PortfolioTracker] Error processing ${token.symbol}: ${err}`);
                 }
             }
 
-            if (updated > 0 || archived > 0) {
-                logger.info(`[PortfolioTracker] ✅ Cycle complete | Updated: ${updated} | Archived: ${archived}`);
+            if (archived > 0) {
+                logger.info(`[PortfolioTracker] ✅ Cycle complete | Archived ${archived} tokens.`);
             }
 
         } catch (err) {

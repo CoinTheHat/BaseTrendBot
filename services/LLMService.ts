@@ -131,11 +131,11 @@ ${ghostInstruction}
 **JSON OUTPUT FORMAT (TURKISH STRINGS):**
 {
     "headline": "Kısa, çarpıcı 1 satırlık kanca",
-    "analystSummary": "Hikaye, katalizör ve hacim hakkında kısa özet.",
+    "analystSummary": "META ANALİZİ. Sadece meme'i anlatma; piyasa psikolojisine uygun mu? (Örn: 'Kızıl piyasada ilaç gibi gelen relatable hikaye'). Neden şimdi hype oldu?",
     "technicalOutlook": "Likidite/MC oranını ve momentumu yorumla.",
     "socialVibe": "KOL'lar, topluluk hissiyatı, video/sanat kalitesi.",
-    "riskAnalysis": "Likidite derinliği ve kopyacılık riski.",
-    "strategy": "Net bir eylem planı.",
+    "riskAnalysis": "SERT GERÇEKLER. Balina Hakimiyeti uyarısı yap (Top 10 > %50 ise 'Çöküş Riski' de). Likidite 'Sığ' mı 'Tank' gibi mi? Holder sayısı 'Insider' mı gösteriyor?",
+    "strategy": "TAKTİKSEL OYUN PLANI. Genel konuşma. 1. Giriş Bölgesi (Örn: '90k-100k arası topla'). 2. Hedefler (Örn: '200k Psikolojik direnç, yarısını sat'). 3. Stop Loss (Örn: 'Likidite bozulursa kaç').",
     "vibe": "1 satırlık eğlenceli durum özeti + emojiler",
     "score": number, 
     "verdict": "APE" | "WATCH" | "FADE",

@@ -243,41 +243,12 @@ export class BirdeyeService {
             return {
                 price: data.price || 0,
                 mc: data.mc || data.marketCap || 0,
-                supply: data.circulatingSupply || data.supply || 0, // Try circulatingSupply first
+                supply: data.supply || 0,
                 liquidity: data.liquidity || 0
             };
-        } catch (error: any) {
-            logger.warn(`[Birdeye] Overview failed for ${address}: ${error.message}`);
+        } catch (error) {
+            // logger.warn(`[Birdeye] Overview failed for ${address}`);
             return null;
-        }
-    }
-
-    /**
-     * Get Token Peak Price (ATH) since a specific time
-     * precise: true -> uses 1m candles (limited range)
-     * precise: false -> uses 15m candles (wider range)
-     */
-    async getTokenPeakPrice(address: string, timeFrom: number, timeTo: number): Promise<number> {
-        if (!config.BIRDEYE_API_KEY) return 0;
-
-        try {
-            // Smart Interval Strategy
-            // If duration < 24 hours, use 1m for precision
-            // If duration > 24 hours, use 15m to avoid "entry too large"
-            const duration = timeTo - timeFrom;
-            const type = duration < 86400 ? '1m' : '15m';
-
-            const candles = await this.getHistoricalCandles(address, type, timeFrom, timeTo);
-
-            let maxHigh = 0;
-            for (const c of candles) {
-                if (c.h > maxHigh) maxHigh = c.h;
-            }
-
-            return maxHigh;
-        } catch (err: any) {
-            logger.warn(`[Birdeye] Peak Price check failed for ${address}: ${err.message}`);
-            return 0;
         }
     }
 
