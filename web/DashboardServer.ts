@@ -23,16 +23,18 @@ export class DashboardServer {
 
         // Setup EJS
         this.app.set('view engine', 'ejs');
-        // Use process.cwd() for Railway compatibility
+        // Use process.cwd() for local and Railway compatibility
+        // If running with ts-node, cwd is root. If running via node dist/index.js, cwd is usually root too.
         const viewsPath = path.join(process.cwd(), 'web', 'views');
         this.app.set('views', viewsPath);
 
-        // Public static files - CRITICAL FIX
-        // Use process.cwd() to ensure correct path in production
+        // Public static files
         const publicPath = path.join(process.cwd(), 'web', 'public');
         this.app.use(express.static(publicPath));
 
-        logger.info(`[Dashboard] Static files serving from: ${publicPath}`);
+        logger.info(`[Dashboard] CWD: ${process.cwd()}`);
+        logger.info(`[Dashboard] Views Path: ${viewsPath}`);
+        logger.info(`[Dashboard] Public Path: ${publicPath}`);
 
         // Routes
         this.setupRoutes();
@@ -93,7 +95,12 @@ export class DashboardServer {
         // Redirect root to static index.html if it exists, otherwise dashboard
         this.app.get('/', (req, res) => {
             const indexPath = path.join(process.cwd(), 'web', 'public', 'index.html');
-            res.sendFile(indexPath);
+            res.sendFile(indexPath, (err) => {
+                if (err) {
+                    logger.warn(`[Dashboard] index.html not found at ${indexPath}, redirecting to /dashboard`);
+                    res.redirect('/dashboard');
+                }
+            });
         });
 
         // NEW: Portfolio Tracking API

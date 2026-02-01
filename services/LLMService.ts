@@ -77,7 +77,7 @@ export class LLMService {
             ? "\n🚨 **GHOST PROTOCOL:** NO TWEETS FOUND. SCORE MUST BE MAX 4. REJECT IMMEDIATELY."
             : "";
 
-        // WOLF SYSTEM PROMPT (TURKISH MODE)
+        // WOLF SYSTEM PROMPT (TURKISH MODE - ACCELERANDO STYLE)
         const systemPrompt = `
 YOU ARE "THE WOLF" (Crypto Sniper & Narrative Interpreter) for the TURKISH Market.
 Your job is to find 100x GEMS and ruthlessly filter out TRASH.
@@ -119,13 +119,13 @@ ${ghostInstruction}
 
 **JSON OUTPUT FORMAT (ALL VALUES MUST BE TURKISH STRINGS):**
 {
-    "headline": "Çarpıcı Başlık (Örn: SNIPER ALERT: ORGANİK HYPE)",
-    "narrative": "Hikaye nedir? (Türkçe anlat)",
-    "analystSummary": "Artılar ve eksiler özeti (Türkçe).",
-    "technicalOutlook": "Hacim/Likidite oranı (${volLiqRatio}x) yorumu.",
-    "socialVibe": "Botlar mı insanlar mı konuşuyor?",
-    "riskAnalysis": "Rug/Dump riskleri.",
-    "strategy": "APE / WATCH / FADE",
+    "headline": "Kısa, çarpıcı 1 satırlık kanca (Örn: Accelerando: AI Lobsters Hype'ı ile 4x Patladı...)",
+    "analystSummary": "Hikaye, katalizör ve hacim hakkında kısa özet.",
+    "technicalOutlook": "Likidite/MC oranı, organik vs sahte hacim ve grafik formasyonları tartış.",
+    "socialVibe": "KOL'lar, topluluk hissiyatı, bot vs insan oranı.",
+    "riskAnalysis": "Holder dağılımı, Dev hareketleri (sattı/tuttu) ve Rug ihtimali.",
+    "strategy": "Net bir eylem planı (Örn: Ufak gir, 2x'te ana parayı al).",
+    "vibe": "1 satırlık eğlenceli durum özeti + emojiler (Örn: 🚀🦞 Hızlanan lobster hype'ı...)",
     "score": number, 
     "verdict": "APE" | "WATCH" | "FADE",
     "displayEmoji": "💎",

@@ -63,6 +63,14 @@ export interface Narrative {
     dataSection: string;
     tradeLens: string;
     vibeCheck: string;
+    // Granular AI Fields for Accelerando Format
+    headline?: string;
+    analystSummary?: string;
+    technicalOutlook?: string;
+    socialVibe?: string;
+    riskAnalysis?: string;
+    strategy?: string;
+    vibe?: string; // Short Emojified Vibe
     aiScore?: number; // Added for Gatekeeper
     aiApproved?: boolean; // Explicit approval flag
     aiReason?: string; // Added for Logging

@@ -50,6 +50,9 @@ export class NarrativeEngine {
 
         const shouldSkipAI = isLowLiquidity || (hasNoTweets && !isHighLiqTrace);
 
+        // 5. AI Analysis (with Pre-filtering logic)
+        let aiResult: any = null; // Lifted scope
+
         if (shouldSkipAI) {
             // SKIP AI
             intro = `⚠️ **Early Stage / High Risk** ($${symbol})`;
@@ -70,7 +73,7 @@ export class NarrativeEngine {
 
         } else {
             // 5. AI Analysis (with Pre-filtering logic)
-            let aiResult = await this.llm.analyzeToken(token, recentTweets);
+            aiResult = await this.llm.analyzeToken(token, recentTweets);
 
             if (aiResult) {
                 // EXTRACT NEW DEEP ANALYSIS FIELDS
@@ -83,17 +86,18 @@ export class NarrativeEngine {
                 finalAiReason = aiResult.riskReason;
 
                 // HEADER LOGIC (DISCIPLINE)
+                const safeScore = finalAiScore || 0;
                 let headerPrefix = '';
                 // Removed explicit emoji var as it's part of the header string now
 
-                if (finalAiScore >= 9) {
-                    headerPrefix = `🔥 **GÜÇLÜ SİNYAL** • Puan: ${finalAiScore}/10`;
-                } else if (finalAiScore >= 7) {
-                    headerPrefix = `✨ **POTANSİYEL VAR** • Puan: ${finalAiScore}/10`;
-                } else if (finalAiScore >= 5) {
-                    headerPrefix = `⚠️ **DİKKATLİ İZLE** • Puan: ${finalAiScore}/10`;
+                if (safeScore >= 9) {
+                    headerPrefix = `🔥 **GÜÇLÜ SİNYAL** • Puan: ${safeScore}/10`;
+                } else if (safeScore >= 7) {
+                    headerPrefix = `✨ **POTANSİYEL VAR** • Puan: ${safeScore}/10`;
+                } else if (safeScore >= 5) {
+                    headerPrefix = `⚠️ **DİKKATLİ İZLE** • Puan: ${safeScore}/10`;
                 } else {
-                    headerPrefix = `🚫 **ZAYIF / RİSKLİ** • Puan: ${finalAiScore}/10`;
+                    headerPrefix = `🚫 **ZAYIF / RİSKLİ** • Puan: ${safeScore}/10`;
                 }
 
                 // SMART MOMENTUM TAGS
@@ -168,7 +172,14 @@ export class NarrativeEngine {
             vibeCheck,
             aiScore: finalAiScore,
             aiApproved: finalAiApproved,
-            aiReason: finalAiReason
+            aiReason: finalAiReason,
+            // Accelerando Fields
+            headline: aiResult?.headline,
+            analystSummary: aiResult?.analystSummary,
+            technicalOutlook: aiResult?.technicalOutlook,
+            socialVibe: aiResult?.socialVibe,
+            riskAnalysis: aiResult?.riskAnalysis,
+            strategy: aiResult?.strategy
         };
     }
 }

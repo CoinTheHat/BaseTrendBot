@@ -179,67 +179,50 @@ export class ScandexBot {
     async sendAlert(narrative: Narrative, token: TokenSnapshot, score: ScoreResult) {
         if (!this.bot || !config.TELEGRAM_CHAT_ID) return;
 
-        const isTrendLinked = !!narrative.twitterStory;
-        const phaseEmoji = score.phase === 'SPOTTED' ? '🛸' : score.phase === 'COOKING' ? '🔥' : score.phase === 'TRACKING' ? '📡' : '🍽';
+        // ACCELERANDO STYLE ALERT
+        const safeScore = narrative.aiScore || 0;
 
-        let titleLine = `🚨 **TOKEN DETECTED: $${token.symbol}**`;
+        // Construct Message
+        let message = `📍 CA: \`${token.mint}\`
 
-        // Breaking News Override (Viral/Trend)
-        if (isTrendLinked) {
-            titleLine = `📈 **TREND ALERT: $${token.symbol}**`;
-        }
+🚨 TOKEN DETECTED: $${token.symbol}
 
-        // Early Alpha Override
-        if (narrative.twitterStory?.potentialCategory === 'EARLY_ALPHA') {
-            titleLine = `⚡ **EARLY MOVER: $${token.symbol}**`;
-        } else if (narrative.twitterStory?.potentialCategory === 'SUPER_ALPHA') {
-            titleLine = `🚀 **HIGH VELOCITY: $${token.symbol}**`;
-        }
+✨ POTANSİYEL VAR • Puan: ${safeScore}/10
+${narrative.headline || "🔥 Yeni Fırsat Tespit Edildi"}
+🚨 TOKEN: $${token.symbol}
+📋 CA: \`${token.mint}\`
 
-        // Add Risk Warning to top if DANGEROUS including specific flags
-        if (narrative.twitterStory?.riskAnalysis?.level === 'DANGEROUS') {
-            titleLine = `⛔ **RISK WARNING: $${token.symbol}** ⛔\n${titleLine}`;
-        }
+🧐 ANALİST ÖZETİ:
+${narrative.analystSummary || narrative.narrativeText.split('\n')[0]}
 
-        let message =
-            `📍 **CA:** \`${token.mint}\`
+📊 Teknik Görünüm: ${narrative.technicalOutlook || "Veri Hazırlanıyor..."}
+🗣️ Sosyal Vibe: ${narrative.socialVibe || "Veri Hazırlanıyor..."}
 
-${titleLine}
+🚩 RİSK ANALİZİ:
+${narrative.riskAnalysis || "Risk Analizi Yapılıyor..."}
 
-${narrative.narrativeText}
+🚀 STRATEJİ:
+${narrative.strategy || "İzleme Moduna Alın."}
 
-**Data:**
+
+Data:
 ${narrative.dataSection}
 
-**Status:** ${narrative.tradeLens}
-**Vibe:** ${narrative.vibeCheck}`;
+Status: ${narrative.tradeLens}
+Vibe: ${narrative.vibeCheck || narrative.vibe || "Nötr"}`;
 
-        if (narrative.twitterStory) {
-            message += `\n\n🔍 **DEDEKTİF ANALİZİ (Vibe Check)**
-Güven Skoru: **${narrative.twitterStory.trustScore ?? 50}/100** (${(narrative.twitterStory.trustScore ?? 50) >= 75 ? 'Güvenli ✅' : (narrative.twitterStory.trustScore ?? 50) < 40 ? 'Riskli 🔴' : 'Orta 🟡'})`;
-            message += `\n🐦 **Twitter Havası:** ${narrative.twitterStory.riskAnalysis?.level === 'SAFE' ? 'Temiz ☀️' : 'Karışık 🌪️'}`;
-            message += `\n📝 **Analiz Detayları:**\n${narrative.twitterStory.summary}`;
+        // Link Section
+        const dexLink = `[DexScreener](${token.links.dexScreener})`;
+        const pumpLink = token.links.pumpfun ? ` | [PumpFun](${token.links.pumpfun})` : "";
+        const birdLink = token.links.birdeye ? ` | [Birdeye](${token.links.birdeye})` : "";
 
-            if (narrative.twitterStory.sampleLines.length > 0) {
-                message += `\n\n💬 **Örnek Tweet:**\n${narrative.twitterStory.sampleLines[0]}`;
-            }
-        }
+        message += `\n\n${dexLink}${pumpLink}${birdLink}
 
-        // Technical Security Seals
-        if (token.mintAuthority) {
-            message += `\n\n⚠️ **MINT IS OPEN (Yeni coin basılabilir!)**`;
-        }
-        if (token.top10HoldersSupply && token.top10HoldersSupply > 50) {
-            message += `\n🔴 **CENTRALIZED SUPPLY (Top 10 > %${token.top10HoldersSupply.toFixed(1)})**`;
-        }
-
-        message += `\n\n[DexScreener](${token.links.dexScreener}) | [Pump.fun](${token.links.pumpfun}) | [Birdeye](${token.links.birdeye || '#'})
-
-⚠ _Yatırım Tavsiyesi Değildir._`;
+⚠️ Yatırım Tavsiyesi Değildir.`;
 
         try {
             await this.bot.sendMessage(config.TELEGRAM_CHAT_ID, message, { parse_mode: 'Markdown', disable_web_page_preview: true });
-            logger.info(`[Telegram] Alert sent for ${token.symbol}`);
+            logger.info(`[Telegram] Alert sent for ${token.symbol} (Accelerando Style)`);
         } catch (err) {
             logger.error(`[Telegram] Failed to send alert: ${err} `);
         }
