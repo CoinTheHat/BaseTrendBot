@@ -124,17 +124,34 @@ Bu token şu an trend listesinde, yani fiyatı zaten yükselmiş durumda. Senin 
 
 ${ghostInstruction}
 
-# ÇIKTI FORMATI (JSON)
-Yanıtın SADECE aşağıdaki JSON formatında olmalı, başka hiçbir metin içermemeli:
+# ÇIKTI FORMATI VE KURALLARI (JSON)
+Cevabın SADECE aşağıdaki JSON formatında olmalı. Alanlar arasındaki farklara kesinlikle uy:
 
 {
   "aiScore": number, // 1-10 arası puan (7 ve üzeri ONAY demektir)
   "aiApproved": boolean, // Puan >= 7 ise true, değilse false
-  "aiReason": "Kararının 1 cümlelik teknik özeti (Örn: Satış baskısı alıcılardan fazla, riskli.)",
-  "riskLevel": "Düşük" | "Orta" | "Yüksek" | "Aşırı Yüksek",
-  "tradeSuggestion": "Giriş stratejisi (Örn: 'Momentum güçlü, girilebilir' veya 'Sadece izle, alma')",
-  "headline": "Telegram başlığı için kısa, vurucu slogan (Örn: 🔥 Momentum Patlaması veya ⚠️ Satış Baskısı Uyarısı)"
+
+  // KURAL 1: ANALİST ÖZETİ (Durum Tespiti)
+  // Rakamları tekrar etme! Piyasanın ruh halini anlat.
+  // Örn: "Satıcılar yoruldu, alıcılar tahtayı domine ediyor. Hype organik görünüyor."
+  "analystSummary": "string",
+
+  // KURAL 2: RİSK ANALİZİ (Tehlikeler)
+  // ASLA strateji verme. Sadece 'Neyin ters gidebileceğini' yaz.
+  // Örn: "Likidite market cap'e göre düşük, sert satış yerse toparlayamaz." veya "Twitter hype'ı tamamen bot, suni yükseliş."
+  "riskAnalysis": "string",
+
+  // KURAL 3: STRATEJİ (Eylem Planı)
+  // ASLA riskten bahsetme. Sadece 'Ne yapmalı?' sorusuna emir kipiyle cevap ver.
+  // Örn: "Hemen giriş yapma, %10 geri çekilme bekle." veya "Momentum çok güçlü, stop-loss koyarak market buy atılabilir."
+  "strategy": "string",
+  
+  "headline": "Kısa, emoji içeren vurucu başlık"
 }
+
+# YASAKLI KELİMELER:
+- "Momentum güçlü" ifadesini her yere kopyalama.
+- Risk ve Strateji alanları ASLA aynı cümleyi içeremez.
 `;
         const userContent = `
 TOKEN: $${token.symbol} (${token.name})
@@ -160,21 +177,21 @@ GÖREV: Yukarıdaki kurallara göre analiz et ve JSON çıktısını üret.
 
         return {
             headline: result.headline || `⚠️ ANALYZING`,
-            narrative: result.aiReason || "No narrative generated.", // Mapping Reason to Narrative
-            analystSummary: result.aiReason || "No summary.",        // Mapping Reason to Summary
-            technicalOutlook: `M5 Data Analysis`,                    // Placeholder or derived
-            socialVibe: "Twitter Data Analyzed",                     // Placeholder
-            riskAnalysis: result.tradeSuggestion || "Check Risk",    // Mapping Trade Suggestion here
-            strategy: result.tradeSuggestion || "WATCH",
+            narrative: result.analystSummary || "No narrative generated.", // Analist Özeti -> Narrative
+            analystSummary: result.analystSummary || "No summary.",
+            technicalOutlook: result.analystSummary ? "AI Analyzed" : "No Data",
+            socialVibe: "Twitter Data Analyzed",
+            riskAnalysis: result.riskAnalysis || "Check Risk",
+            strategy: result.strategy || "WATCH",
             analysis: [],
-            riskLevel: (result.riskLevel as any) || 'HIGH',
-            riskReason: result.aiReason || '',
+            riskLevel: 'HIGH', // Default to High for manual review
+            riskReason: result.riskAnalysis || '', // Risk nedeni buraya
             score: score,
             isApproved: result.aiApproved === true,
             verdict: score >= 7 ? 'APE' : 'FADE',
             displayEmoji: score >= 7 ? '🚀' : '⚠️',
             recommendation: score >= 7 ? 'AL' : 'PAS',
-            advice: result.tradeSuggestion || '',
+            advice: result.strategy || '',
             vibe: result.headline || ''
         };
     }
