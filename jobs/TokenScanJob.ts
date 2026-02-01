@@ -46,15 +46,15 @@ export class TokenScanJob {
     start() {
         if (this.isRunning) return;
         this.isRunning = true;
-        logger.info(`[Job] Token Scan Job started. Interval: 60s (Sniper Mode)`);
+        logger.info(`[Job] Token Scan Job started. Interval: ${config.SCAN_INTERVAL_SECONDS}s`);
         this.runLoop();
     }
 
     private async runLoop() {
         if (!this.isRunning) return;
         await this.runCycle();
-        const delay = 60000; // 60 seconds
-        logger.info(`[Premium-Mode] Scan complete. Resting for 60s...`);
+        const delay = config.SCAN_INTERVAL_SECONDS * 1000;
+        logger.info(`[Job] Scan complete. Next scan in ${config.SCAN_INTERVAL_SECONDS}s...`);
         setTimeout(() => this.runLoop(), delay);
     }
 
@@ -284,10 +284,8 @@ export class TokenScanJob {
 ✅ ALERTS SENT: ${alertCount}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
 
-            // CRITICAL: 60-second cooldown before next scan
-            // Prevents DexScreener rate limiting + gives system breathing room
-            logger.info(`[Cooldown] 😴 Sleeping for 60 seconds before next scan...`);
-            await new Promise(r => setTimeout(r, 60000));
+            // Note: Scan interval is controlled by runLoop() setTimeout
+            // No additional sleep needed here to avoid double-delay
 
         } catch (err) {
             logger.error(`[Job] Cycle failed: ${err}`);
