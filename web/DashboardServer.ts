@@ -135,6 +135,24 @@ export class DashboardServer {
                 res.status(500).json({ error: 'Internal Server Error' });
             }
         });
+
+        // NEW: Toggle Status (Rugged / Tracking)
+        this.app.post('/api/tokens/:mint/status', async (req, res) => {
+            try {
+                const { mint } = req.params;
+                const { status } = req.body; // 'RUGGED' or 'TRACKING'
+
+                if (!['RUGGED', 'TRACKING', 'ARCHIVED'].includes(status)) {
+                    return res.status(400).json({ error: 'Invalid status' });
+                }
+
+                await this.storage.updateTokenStatus(mint, status as any);
+                res.json({ success: true });
+            } catch (error) {
+                logger.error(`[API] Update Status failed: ${error}`);
+                res.status(500).json({ error: 'Internal Server Error' });
+            }
+        });
     }
 
     start() {

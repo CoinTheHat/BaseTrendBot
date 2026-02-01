@@ -72,6 +72,18 @@
             border: 1px solid rgba(100, 116, 139, 0.4);
         }
 
+        .status-rugged {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+            border: 1px solid rgba(239, 68, 68, 0.4);
+        }
+
+        .rugged-row {
+            opacity: 0.6;
+            filter: grayscale(0.5);
+            background: rgba(127, 29, 29, 0.05);
+        }
+
         /* Modal Styles */
         .modal-overlay {
             background: rgba(0, 0, 0, 0.7);
@@ -119,6 +131,13 @@
             <div class="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
                 <p class="text-slate-400 text-sm mb-1">Archived</p>
                 <p class="text-3xl font-bold text-slate-400" id="archivedTokens">0</p>
+            </div>
+            <div class="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
+                <p class="text-slate-400 text-sm mb-1">Win Rate (2x+)</p>
+                <div class="flex items-baseline gap-2">
+                    <p class="text-3xl font-bold text-cyan-400" id="winRate">0%</p>
+                    <p class="text-slate-500 text-xs" id="moonCount">(0 Moons)</p>
+                </div>
             </div>
             <div class="bg-slate-800/50 backdrop-blur-sm border border-slate-700 rounded-xl p-6">
                 <p class="text-slate-400 text-sm mb-1">Best Performer</p>
@@ -236,6 +255,15 @@
             document.getElementById('activeTokens').textContent = active;
             document.getElementById('archivedTokens').textContent = archived;
             document.getElementById('bestMultiplier').textContent = bestMultiplier.toFixed(2) + 'x';
+
+            // Win Rate Logic
+            // Backend provides pre-calculated winRate if needed, 
+            // but we can also re-calculate here for "Live" feel
+            const moons = tokens.filter(t => (t.found_mc > 0 && (t.max_mc / t.found_mc) >= 2) && t.status !== 'RUGGED').length;
+            const rate = total > 0 ? Math.round((moons / total) * 100) : 0;
+
+            document.getElementById('winRate').textContent = rate + '%';
+            document.getElementById('moonCount').textContent = `(${moons} Moons)`;
         }
 
         function renderTable(tokens) {
@@ -262,11 +290,13 @@
                 if (multiplier >= 5) multiplierClass = 'multiplier-high';
                 else if (multiplier >= 2) multiplierClass = 'multiplier-medium';
 
-                const statusClass = token.status === 'TRACKING' ? 'status-tracking' : 'status-archived';
+                const statusClass = token.status === 'TRACKING' ? 'status-tracking' :
+                    token.status === 'RUGGED' ? 'status-rugged' : 'status-archived';
+                const rowClass = token.status === 'RUGGED' ? 'rugged-row' : '';
                 const timeAgo = getTimeAgo(new Date(token.found_at));
 
                 return `
-                    <tr class="table-row border-b border-slate-800">
+                    <tr class="table-row border-b border-slate-800 ${rowClass}">
                         <td class="p-4">
                             <div>
                                 <p class="text-white font-semibold">${token.symbol || 'Unknown'}</p>
@@ -286,10 +316,23 @@
                             <span class="status-badge ${statusClass}">${token.status}</span>
                         </td>
                         <td class="p-4 text-center">
-                            <button onclick="openEditModal('${token.mint}', '${token.symbol}', ${maxMc})" 
-                                class="text-xs bg-slate-700 hover:bg-cyan-900/50 hover:text-cyan-400 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-600 transition-all">
-                                ✏️ Edit
-                            </button>
+                            <div class="flex items-center justify-center gap-2">
+                                <button onclick="openEditModal('${token.mint}', '${token.symbol}', ${maxMc})" 
+                                    class="text-xs bg-slate-700 hover:bg-cyan-900/50 hover:text-cyan-400 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-600 transition-all">
+                                    ✏️ Edit
+                                </button>
+                                ${token.status !== 'RUGGED' ? `
+                                    <button onclick="markAsRugged('${token.mint}', '${token.symbol}')" 
+                                        class="text-xs bg-slate-700 hover:bg-red-900/50 hover:text-red-400 text-slate-300 px-3 py-1.5 rounded-lg border border-slate-600 transition-all">
+                                        💀 Rug
+                                    </button>
+                                ` : `
+                                    <button onclick="markAsTracking('${token.mint}', '${token.symbol}')" 
+                                        class="text-xs bg-red-900/50 text-red-400 px-3 py-1.5 rounded-lg border border-red-900/50 transition-all">
+                                        Undo Rug
+                                    </button>
+                                `}
+                            </div>
                         </td>
                     </tr>
                 `;
@@ -371,6 +414,34 @@
             } catch (err) {
                 console.error('Save failed:', err);
                 alert('Network error while saving.');
+            }
+        }
+
+        async function markAsRugged(mint, symbol) {
+            if (!confirm(`Mark ${symbol} as RUGGED? This will count as a direct loss in success rate.`)) return;
+            updateStatus(mint, 'RUGGED');
+        }
+
+        async function markAsTracking(mint, symbol) {
+            updateStatus(mint, 'TRACKING');
+        }
+
+        async function updateStatus(mint, status) {
+            try {
+                const response = await fetch(`/api/tokens/${mint}/status`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status })
+                });
+
+                if (response.ok) {
+                    fetchTokens();
+                } else {
+                    alert('Status update failed.');
+                }
+            } catch (err) {
+                console.error('Status update error:', err);
+                alert('Connection error.');
             }
         }
 

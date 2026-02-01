@@ -237,10 +237,10 @@ export class PostgresStorage {
             const totalRes = await this.pool.query(`SELECT COUNT(*) FROM (${combinedView}) combined`);
             const totalCalls = parseInt(totalRes.rows[0].count);
 
-            // 2. Win Rate (Tokens with > 2x ATH from Alert)
+            // 2. Win Rate (Tokens with > 2x ATH from Alert, and NOT RUGGED)
             const winRes = await this.pool.query(`
                 SELECT COUNT(*) FROM (${combinedView}) combined
-                WHERE ath_mc >= alert_mc * 2 AND alert_mc > 0
+                WHERE ath_mc >= alert_mc * 2 AND alert_mc > 0 AND status != 'RUGGED'
             `);
             const moons = parseInt(winRes.rows[0].count);
             const winRate = totalCalls > 0 ? (moons / totalCalls) * 100 : 0;
@@ -473,6 +473,21 @@ export class PostgresStorage {
             logger.info(`[Postgres] Updated Max MC for ${mint}: $${maxMc}`);
         } catch (err) {
             logger.error(`[Postgres] updateMaxMC failed for ${mint}`, err);
+            throw err;
+        }
+    }
+
+    async updateTokenStatus(mint: string, status: 'TRACKING' | 'ARCHIVED' | 'RUGGED') {
+        try {
+            await this.pool.query(
+                `UPDATE token_performance 
+                 SET status = $1, last_updated = NOW() 
+                 WHERE mint = $2`,
+                [status, mint]
+            );
+            logger.info(`[Postgres] Updated status for ${mint} to ${status}`);
+        } catch (err) {
+            logger.error(`[Postgres] updateTokenStatus failed for ${mint}`, err);
             throw err;
         }
     }
