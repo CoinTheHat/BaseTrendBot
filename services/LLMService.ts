@@ -44,7 +44,7 @@ export class LLMService {
 
         try {
             const completion = await this.xai.chat.completions.create({
-                model: config.XAI_MODEL || "grok-beta",
+                model: config.XAI_MODEL || "grok-4-1-fast-reasoning",
                 messages: [
                     { role: "system", content: systemPrompt },
                     { role: "user", content: userContent }
