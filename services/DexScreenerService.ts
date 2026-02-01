@@ -38,38 +38,59 @@ export class DexScreenerService {
 
     /**
      * Fetch latest Solana profiles/pairs.
+     * Strategy: Combine Profiles + Search to get ~100 tokens
      */
     async getLatestPairs(): Promise<TokenSnapshot[]> {
         try {
-            // Strategy: Use Token Profiles endpoint to get truly NEW tokens
-            const data = await this.makeRequest(this.profilesUrl);
-            const profiles = data || []; // Handle null/empty
+            const allTokens: TokenSnapshot[] = [];
 
-            // 1. Strict Chain Filtering
+            // Strategy 1: Use Token Profiles endpoint (usually ~30 tokens)
+            const data = await this.makeRequest(this.profilesUrl);
+            const profiles = data || [];
+
             const solanaProfiles = profiles.filter((p: any) => p.chainId === 'solana');
 
-            if (solanaProfiles.length === 0) {
-                // If profiles failed/empty (or rate limited returned null -> empty arr), fallback.
-                console.log(`[DexScreener] 0 profiles/RateLimit. Switching to fallback search...`);
-
-                // Fallback 1: Search "solana"
-                return await this.search("solana");
+            if (solanaProfiles.length > 0) {
+                console.log(`[DexScreener] Found ${solanaProfiles.length} new Solana profiles.`);
+                const mints = solanaProfiles.map((p: any) => p.tokenAddress);
+                const profileTokens = await this.getTokens(mints);
+                allTokens.push(...profileTokens);
             }
 
-            console.log(`[DexScreener] Found ${solanaProfiles.length} new Solana profiles.`);
+            // Strategy 2: Supplement with Search to reach ~100 total tokens
+            // Search for fresh Solana tokens using multiple queries
+            const searchQueries = ['solana', 'sol meme', 'pump'];
 
-            // 2. Extract Mints to fetch full pair data
-            const mints = solanaProfiles.map((p: any) => p.tokenAddress);
+            for (const query of searchQueries) {
+                if (allTokens.length >= 100) break; // Stop if we have 100
 
-            // 3. Fetch Pair Details (Prices, Liq, Vol)
-            return await this.getTokens(mints);
+                const searchResults = await this.search(query);
+
+                // Add only unique tokens (not already in allTokens)
+                const uniqueResults = searchResults.filter(
+                    sr => !allTokens.some(at => at.mint === sr.mint)
+                );
+
+                allTokens.push(...uniqueResults);
+
+                // Small delay between searches to avoid rate limit
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+
+            // Limit to 100 tokens
+            const finalTokens = allTokens.slice(0, 100);
+
+            console.log(`[DexScreener] Total fetched: ${finalTokens.length} tokens (Target: 100)`);
+
+            return finalTokens;
 
         } catch (error) {
             console.error('[DexScreener] Error fetching latest profiles:', error);
-            // Fallback on error
-            return await this.search("solana");
+            // Fallback on error - just search
+            return (await this.search("solana")).slice(0, 100);
         }
     }
+
 
     /**
      * Get specific token data by Mint Address(es)
