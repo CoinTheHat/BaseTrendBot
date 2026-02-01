@@ -82,7 +82,8 @@ export class NarrativeEngine {
                 const strategy = aiResult.strategy || (aiResult.advice || "Veri yok.");
 
                 finalAiScore = aiResult.score;
-                finalAiApproved = aiResult.isApproved;
+                // FIX: Derive approval from score (Threshold: 7/10)
+                finalAiApproved = finalAiScore >= 7;
                 finalAiReason = aiResult.riskReason;
 
                 // HEADER LOGIC (DISCIPLINE)
