@@ -152,14 +152,14 @@ export class TokenScanJob {
                         const liqMcRatio = liq / (mc || 1);
                         if (liqMcRatio < minRatio) {
                             lowLiqCount++;
-                            logger.warn(`[REJECT-DEBUG] 🏚️ Weak Floor: ${token.symbol} | Ratio: ${liqMcRatio.toFixed(2)} | Required: ${minRatio} | MC: $${mc}`);
+                            // logger.debug(`[Filter] 🏚️ Weak Floor: ${token.symbol} (Ratio: ${liqMcRatio.toFixed(2)})`);
                             return;
                         }
 
                         // FILTER 1: Liquidity (Min $5k)
                         if (liq < 5000) {
                             lowLiqCount++;
-                            logger.warn(`[REJECT-DEBUG] 💧 Low Liq: ${token.symbol} | Seen: $${liq} | Raw: ${rawLiq} | Threshold: $5000`);
+                            // logger.debug(`[Filter] 💧 Low Liquidity: ${token.symbol} ($${Math.floor(liq)})`);
                             return;
                         }
 
@@ -174,7 +174,7 @@ export class TokenScanJob {
 
                         if (momentum < 0.5) {
                             weakMomentumCount++;
-                            logger.warn(`[REJECT-DEBUG] 💤 Low Vol: ${token.symbol} | Vol: $${volume24h} | Liq: $${liq} | Ratio: ${(momentum).toFixed(2)}x`);
+                            // logger.debug(`[Filter] 💤 Weak Momentum: ${token.symbol} (${momentum.toFixed(2)}x)`);
                             return;
                         }
 

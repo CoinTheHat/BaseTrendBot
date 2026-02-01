@@ -181,9 +181,6 @@ export class DexScreenerService {
             }
         };
 
-        // TODO: Remove this debug log after verifying the fix
-        console.log(`[DEBUG-VOL] ${pair.baseToken?.symbol} | Vol24h: $${result.volume24hUsd} | Raw:`, JSON.stringify(pair.volume));
-
         return result;
     }
 
