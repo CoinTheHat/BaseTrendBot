@@ -82,6 +82,7 @@ Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. 
 - Likidite: $${token.liquidityUsd}
 - Market Cap: $${token.marketCapUsd}
 - Hacim (5dk): $${token.volume5mUsd}
+- Zemin Oranı (Liq/MC): ${((token.liquidityUsd || 0) / (token.marketCapUsd || 1)).toFixed(3)} ${((token.liquidityUsd || 0) / (token.marketCapUsd || 1)) >= 0.20 ? '✅ Sağlam' : '⚠️ Zayıf'}
 - Top 10 Holder: ${token.top10HoldersSupply ? token.top10HoldersSupply.toFixed(2) + '%' : 'Bilinmiyor'}
 
 **Görev:**
