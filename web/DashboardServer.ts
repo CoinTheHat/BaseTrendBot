@@ -23,16 +23,19 @@ export class DashboardServer {
 
         // Setup EJS
         this.app.set('view engine', 'ejs');
-        // Use process.cwd() for local and Railway compatibility
-        // If running with ts-node, cwd is root. If running via node dist/index.js, cwd is usually root too.
-        const viewsPath = path.join(process.cwd(), 'web', 'views');
+
+        // FIX: Use __dirname to locate files relative to the script (works in src and dist)
+        // In src: web/DashboardServer.ts -> views is ./views
+        // In dist: dist/web/DashboardServer.js -> views is ./views (copied via build script)
+        const viewsPath = path.join(__dirname, 'views');
         this.app.set('views', viewsPath);
 
         // Public static files
-        const publicPath = path.join(process.cwd(), 'web', 'public');
+        const publicPath = path.join(__dirname, 'public');
         this.app.use(express.static(publicPath));
 
         logger.info(`[Dashboard] CWD: ${process.cwd()}`);
+        logger.info(`[Dashboard] Root (__dirname): ${__dirname}`);
         logger.info(`[Dashboard] Views Path: ${viewsPath}`);
         logger.info(`[Dashboard] Public Path: ${publicPath}`);
 

@@ -107,14 +107,17 @@ export class DexScreenerService {
                         let txns = 0;
 
                         for (const t of texts) {
-                            // Price: Starts with $ AND includes . 
+                            // Identify Money Values (Price, Vol, Liq, MC)
                             if (t.startsWith('$')) {
-                                if (/[KMBT]$/.test(t.toUpperCase())) {
-                                    moneyValues.push(parseVal(t));
-                                } else {
-                                    const val = parseFloat(t.replace(/[$,]/g, ''));
-                                    if (!isNaN(val) && price === 0) price = val;
-                                }
+                                // Add to moneyValues list regardless of suffix (handling small Vol like $500)
+                                const val = parseVal(t);
+                                moneyValues.push(val); // Store ALL money values found
+
+                                // Heuristic for Price: usually the first one or small value? 
+                                // Actually, we can just rely on the fact Price is usually first.
+                                // We store `price` separately just in case, but moneyValues logic is robust for others.
+                                const numericVal = parseFloat(t.replace(/[$,]/g, ''));
+                                if (!isNaN(numericVal) && price === 0) price = numericVal;
                             }
 
                             // Txns: Integer, no $, no dots
@@ -130,9 +133,21 @@ export class DexScreenerService {
                         }
 
                         // 3. MAPPING STRATEGY (Right-to-Left)
+                        // Typically: Price ... Vol ... Liq ... MC
+                        // We assume the LAST money value is MC, then Liq, then Vol.
+                        // If we have Price, Vol, Liq, MC -> length 4.
+                        // If we have Price, Vol, MC (Liq hidden?) -> length 3. (Rare)
+
+                        // Robust Right-to-Left:
                         const mc = moneyValues.length >= 1 ? moneyValues[moneyValues.length - 1] : 0;
                         const liq = moneyValues.length >= 2 ? moneyValues[moneyValues.length - 2] : 0;
                         const vol = moneyValues.length >= 3 ? moneyValues[moneyValues.length - 3] : 0;
+
+                        // Security fallback: If Liq > MC (impossible usually), swap? 
+                        // No, mostly accurate.
+
+                        // Price logic fix: If we collected Price in moneyValues, it's likely index 0.
+                        // But we already extracted `price` above.
 
                         results.push({
                             address,
