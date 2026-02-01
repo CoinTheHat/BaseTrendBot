@@ -198,11 +198,11 @@ export class PostgresStorage {
 
     async getTrackingTokens(): Promise<TokenPerformance[]> {
         try {
-            // Get tokens alerting in last 48h that are still TRACKING
+            // Get ALL tokens (TRACKING, RUGGED, ARCHIVED) for dashboard
             const res = await this.pool.query(
                 `SELECT * FROM token_performance 
-                 WHERE status = 'TRACKING' 
-                 AND alert_timestamp > NOW() - INTERVAL '48 hours'`
+                 WHERE alert_timestamp > NOW() - INTERVAL '48 hours'
+                 ORDER BY alert_timestamp DESC`
             );
             return res.rows.map(row => this.mapPerformanceRow(row)); // Fixed 'this' context
         } catch (err) {
