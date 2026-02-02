@@ -164,7 +164,14 @@ export class DashboardServer {
                     return res.status(400).json({ error: 'Invalid soldMc value' });
                 }
 
-                await this.storage.updateSoldMC(mint, Number(soldMc));
+                const val = Number(soldMc);
+                await this.storage.updateSoldMC(mint, val);
+
+                // NEW: Auto-mark as RUGGED if sold for 0
+                if (val === 0) {
+                    await this.storage.updateTokenStatus(mint, 'RUGGED');
+                }
+
                 res.json({ success: true });
             } catch (error) {
                 logger.error(`[API] Update Sold MC failed: ${error}`);

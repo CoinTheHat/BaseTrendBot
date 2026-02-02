@@ -236,7 +236,7 @@
                                         <input type="number" step="any"
                                             class="sold-input bg-gray-900 border border-gray-600 rounded px-2 py-1 w-24 text-white focus:border-blue-500 outline-none transition-colors"
                                             placeholder="Open"
-                                            value="<%= token.soldMc > 0 ? (token.soldMc / 1000).toFixed(1) : '' %>"
+                                            value="<%= token.status === 'RUGGED' ? '0' : (token.soldMc > 0 ? (token.soldMc / 1000).toFixed(1) : '') %>"
                                             onchange="saveSoldMc('<%= token.mint %>', this)">
                                         <span class="text-gray-500 ml-1">k</span> <!-- Assumed input is full value? Or k? User usually types 100k or 100000. Let's assume full number but maybe placeholder implies it?
                                     Looking at helper text 'Found MC' is $Xk.
