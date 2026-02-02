@@ -206,12 +206,14 @@ export class DexScreenerService {
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage', // Uses /tmp instead of /dev/shm (CRITICAL for Docker)
+                    '--disable-dev-shm-usage', // Critical for Docker: prevents shared memory crashes
                     '--disable-accelerated-2d-canvas',
                     '--no-first-run',
                     '--no-zygote',
-                    '--single-process', // Reduces process count significantly
-                    '--disable-gpu'
+                    '--single-process', // Critical: Forces generic chrome process, saving PIDs
+                    '--disable-gpu',
+                    '--disable-software-rasterizer', // Prevents CPU spikes
+                    '--mute-audio' // Saves a tiny bit of resources
                 ],
                 executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
             });
