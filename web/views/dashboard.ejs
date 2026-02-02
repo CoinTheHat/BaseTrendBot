@@ -211,12 +211,15 @@
                                             <span class="text-xs text-gray-400">
                                                 <%= new Date(token.alertTimestamp).toLocaleTimeString() %>
                                             </span>
-                                            <!-- CHART LINK Corrected -->
-                                            <a href="https://dexscreener.com/search?q=<%= token.mint %>" target="_blank"
-                                                rel="noopener noreferrer"
-                                                class="ml-2 text-blue-400 hover:text-blue-300 text-xs font-semibold z-10 relative pointer-events-auto">
-                                                Chart ↗
-                                            </a>
+
+                                            <!-- CHART LINK (Dynamic Chain) -->
+                                            <% const isEVM=token.mint.startsWith('0x'); const chain=isEVM ? 'base'
+                                                : 'solana' ; %>
+                                                <a href="https://dexscreener.com/<%= chain %>/<%= token.mint %>"
+                                                    target="_blank" rel="noopener noreferrer"
+                                                    class="ml-2 text-blue-400 hover:text-blue-300 text-xs font-semibold z-10 relative pointer-events-auto">
+                                                    Chart ↗
+                                                </a>
                                         </div>
                                     </div>
                                 </td>
