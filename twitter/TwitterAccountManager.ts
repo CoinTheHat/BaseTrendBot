@@ -231,14 +231,14 @@ export class TwitterAccountManager {
             account.isBusy = false;
             account.lastBusyStart = 0;
 
+            // 🛑 STRICT COOLDOWN: Always rest for 2 minutes after ANY usage
+            // User requirement: "1 token 1 hesap taradı... o hesap 2dk dinlensin"
+            account.cooldownUntil = Date.now() + (2 * 60 * 1000);
+
             if (wasRateLimited) {
-                // 🛑 RATE LIMIT HIT: 2 Minute Penalty (Reduced from 5m)
-                account.cooldownUntil = Date.now() + (2 * 60 * 1000);
-                logger.warn(`[TwitterManager] Account #${index + 1} hit Rate Limit. Cooldown 2m until ${new Date(account.cooldownUntil).toTimeString().substring(0, 8)}`);
+                logger.warn(`[TwitterManager] 🛑 Account #${index + 1} hit Rate Limit. Resting 2m.`);
             } else {
-                // ✅ STANDARD CYCLE: 10 Second Rest (Aggressive)
-                account.cooldownUntil = Date.now() + (10 * 1000);
-                logger.debug(`[TwitterManager] Account #${index + 1} released. Resting 10s.`);
+                logger.info(`[TwitterManager] 💤 Account #${index + 1} task complete. Resting 2m.`);
             }
         }
     }
