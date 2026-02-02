@@ -134,17 +134,17 @@ Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. 
 ### ⛔ KAPI 1: BAD DATA (SPAM / BOT / GHOST TOWN)
 - **Durum:** Tweetler bot ağırlıklı, sadece "airdrop/giveaway/whitelist" spam'i veya ölü.
 - **KARAR:**
-  - `verdict` = "FADE" (KESİN)
-  - `riskLevel` = "DANGEROUS" veya "HIGH"
-  - `score` = 0 ile 4 arasında SINIRLA.
+  - \`verdict\` = "FADE" (KESİN)
+  - \`riskLevel\` = "DANGEROUS" veya "HIGH"
+  - \`score\` = 0 ile 4 arasında SINIRLA.
   - **MANTIK:** Teknik veriler 10/10 olsa bile, sosyal vibe kötüyse APE OLAMAZ.
 
 ### 📉 KAPI 2: NO DATA (VERİ YOK / CILIZ)
 - **Durum:** Tweet bulunamadı veya spam filtresinden 0 çıktı.
 - **KARAR:**
   - Final Puandan **OTOMATİK -2 PUAN DÜŞ**.
-  - `verdict` EN FAZLA "WATCH" olabilir. (Asla APE olamaz).
-  - `riskLevel` EN AZ "HIGH".
+  - \`verdict\` EN FAZLA "WATCH" olabilir. (Asla APE olamaz).
+  - \`riskLevel\` EN AZ "HIGH".
   - **MANTIK:** Sosyal veri yoksa kör uçuş yapıyoruz demektir. Risk al, ama küçük risk al.
 
 **DİĞER PUANLAMA KURALLARI:**
