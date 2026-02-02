@@ -184,8 +184,8 @@ export class TokenScanJob {
                             return;
                         }
 
-                        // FILTER 1: Liquidity (Min $10k)
-                        if (liq < 10000) {
+                        // FILTER 1: Liquidity (Min $5k)
+                        if (liq < 5000) {
                             lowLiqCount++;
                             // logger.debug(`[Filter] 💧 Low Liquidity: ${token.symbol} ($${Math.floor(liq)})`);
                             return;
@@ -200,7 +200,7 @@ export class TokenScanJob {
                         // FILTER 2: Momentum (24h Volume / Liquidity)
                         const momentum = volume24h / (liq || 1);
 
-                        if (momentum < 0.7) {
+                        if (momentum < 0.5) {
                             weakMomentumCount++;
                             // logger.debug(`[Filter] 💤 Weak Momentum: ${token.symbol} (${momentum.toFixed(2)}x)`);
                             return;
