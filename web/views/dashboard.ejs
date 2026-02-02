@@ -68,6 +68,10 @@
             // Safe division check
             const winRate = totalClosed > 0 ? (wins / totalClosed) * 100 : 0;
             document.getElementById('win-rate-display').textContent = `${winRate.toFixed(0)}%`;
+
+            // Update Total Count
+            const totalRows = document.querySelectorAll('.token-row').length;
+            document.getElementById('trade-count').textContent = `${totalRows} Trades`;
         }
 
         async function saveSoldMc(mint, input) {
@@ -193,7 +197,9 @@
         <!-- Recent Calls Table -->
         <div>
             <h2 class="text-xl font-bold text-white mb-4 flex items-center">
-                <span class="mr-2">📝</span> Trade Log
+                <span class="mr-2">📝</span> Trade Log <span id="trade-count"
+                    class="ml-3 text-sm text-gray-400 font-normal border border-gray-700 px-2 py-0.5 rounded-full">0
+                    Trades</span>
             </h2>
             <div class="bg-gray-800 rounded-xl overflow-hidden shadow-lg border border-gray-700">
                 <table class="w-full text-left">
