@@ -120,14 +120,12 @@ Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. 
 - Fiyat Değişimi (5dk): %${token.priceChange5m}
 - Token Yaşı: ${token.createdAt ? Math.floor((Date.now() - token.createdAt.getTime()) / (3600 * 1000)) + ' Saat' : 'Bilinmiyor'}
 - Zemin Oranı (Liq/MC): ${((token.liquidityUsd || 0) / (token.marketCapUsd || 1)).toFixed(3)} ${((token.liquidityUsd || 0) / (token.marketCapUsd || 1)) >= 0.20 ? '✅ Sağlam' : '⚠️ Zayıf'}
-- Top 10 Holder: ${token.top10HoldersSupply ? token.top10HoldersSupply.toFixed(2) + '%' : 'Bilinmiyor'}
 
 **GÖREV VE ÖNCELİK SIRASI (PRIORITY):**
 1. 🥇 **Sosyal Vibe (Twitter GERÇEK Mİ?):** En önemli kriter. Topluluk yoksa, token yoktur.
 2. 🥈 **Hikaye / Meme Gücü:** Anlatı ne kadar güçlü?
 3. 🥉 **Hacim & Likidite:** Teknik veriler destekliyor mu?
-4. 🏅 **Holder Dağılımı:** Balina riski var mı?
-5. 🎖️ **Grafik / PA:** Kısa vadeli trend.
+4. 🎖️ **Grafik / PA:** Kısa vadeli trend.
 
 **AŞILAMAZ KAPI KURALLARI (GATE RULES):**
 
@@ -149,32 +147,23 @@ Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. 
 
 **DİĞER PUANLAMA KURALLARI:**
 
-### 1. ⏳ TOKEN YAŞI (Time Decay)
-- **0-4 Saat:** PRIME TIME (Tam Puan).
-- **4-12 Saat:** Çok seçici ol.
+### 1. ⏳ TOKEN YAŞI (Time Decay) - KRİTİK
+- **0-4 Saat:** 🟢 MÜKEMMEL (PRIME TIME). Bu bir Sniper Botudur. Yeni olması RİSK DEĞİL, FIRSATTIR. "Erken" diye asla puan kırma veya risk olarak yazma.
+- **4-12 Saat:** Seçici ol.
 - **12-24 Saat:** Hacim düşüyorsa -1 Puan.
 - **> 24 Saat (ZOMBIE TEST):**
-  - Eğer **YENİ ve GÜÇLÜ BİR HYPE** (Revival, Breakout, Yeni Haber) varsa: 🟢 CEZA YOK (Max Puan Alabilir).
-  - Eğer hype yoksa (yatay/ölü): 🔴 DİREKT -2 PUAN.
-  - **NOT:** Eski token sadece 8+ Puanlık potansiyel varsa önerilmeli.
+  - Eğer **YENİ ve GÜÇLÜ BİR HYPE** yoksa: 🔴 DİREKT -2 PUAN.
 
 ### 2. 📈 FOMO KORUMASI (5dk Mum)
 - **Durum:** 5dk Fiyat Değişimi > %30.
-- **CEZA:** Final puandan -2 Puan.
+- **CEZA:** Final puandan -1 Puan.
 - **UYARI:** "⚠️ Dikey pump (Vertical). Tepeden alma riski."
 
 ### 3. 🌙 GECE VAKTİ (03:00 - 09:00 TRT)
 - **Durum:** Şu an saat ${currentTrtHour}:00.
 - **CEZA:** Hacim düşüklüğü riski nedeniyle -1 Puan.
 
-### 4. 👥 HOLDER DAĞILIMI (Top 10 Supply)
-- Eğer veri 'Bilinmiyor' ise: 🟢 GÜVENLİ KABUL ET. (Yeni tokenlarda API gecikmesi normaldir).
-- DİKKAT: 'Holder verisi yok' veya 'belirsiz' diye ASLA puan kırma ve bunu risk olarak yazma.
-- Eğer veri < %30 ise: 🟢 GÜVENLİ.
-- Eğer veri %30 - %60 arası ise: ⚠️ ORTA RİSK.
-- Eğer veri > %60 ise: 🔴 ÇOK YÜKSEK RİSK (Rug/Dump ihtimali). Ciddi puan kır.
-
-### 5. 📅 HİKAYE TAZELİĞİ & ZAMANLAMA (Narrative Timing)
+### 4. 📅 HİKAYE TAZELİĞİ & ZAMANLAMA (Narrative Timing)
 - Tweetlerin İÇERİĞİNDEKİ zaman algısına bak.
 - **BAYAT HYPE (STALE):** Eğer tweetler "Dün harikaydı", "ATH yaptık", "Dinleniyoruz", "10M MC'yi gördük" gibi *geçmiş başarıları* övüyorsa -> 🔴 GEÇ KALINDI. (Puan Kır: -2).
 - **TAZE HYPE (FRESH):** Eğer tweetler "Yeni başlıyoruz", "Keşfediliyor", "Breakout geliyor", "Trende giriyor" diyorsa -> 🟢 TAZE FIRSAT.
