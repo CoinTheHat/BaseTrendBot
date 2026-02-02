@@ -241,7 +241,13 @@ export class TokenScanJob {
 
                         // Generate Narrative & Get AI Score
                         const narrative = await this.narrative.generate(enrichedToken, matchResult, scoreRes, tweets);
-                        const aiScore = narrative.aiScore || 0;
+                        let aiScore = narrative.aiScore || 0;
+
+                        // AGE PENALTY: Deduct 1 point for tokens older than 36h (Focus on fresh hype)
+                        if (ageHours > 36) {
+                            aiScore -= 1;
+                            logger.info(`[Age Penalty] 📉 ${token.symbol} is ${ageHours.toFixed(1)}h old. Deducting 1 point (New Score: ${aiScore}).`);
+                        }
 
                         // --- STEP 6: THE GATEKEEPER (Strict Approval) ---
                         const minScore = strictMode ? 8.5 : 7; // Higher bar for re-alerts or pumped tokens
