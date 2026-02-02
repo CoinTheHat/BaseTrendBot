@@ -207,19 +207,32 @@ export class DexScreenerService {
                 args: [
                     '--no-sandbox',
                     '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage', // Critical for Docker: prevents shared memory crashes
+                    '--disable-dev-shm-usage',
                     '--disable-accelerated-2d-canvas',
                     '--no-first-run',
                     '--no-zygote',
-                    '--single-process', // Critical: Forces generic chrome process, saving PIDs
+                    '--single-process',
                     '--disable-gpu',
-                    '--disable-software-rasterizer', // Prevents CPU spikes
-                    '--mute-audio' // Saves a tiny bit of resources
+                    '--disable-software-rasterizer',
+                    '--mute-audio'
                 ],
                 executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
             });
 
-            const page = await browser.newPage();
+            // Incognito Context (User Request)
+            const context = await browser.createBrowserContext();
+            const page = await context.newPage();
+
+            // Resource Blocking (User Request)
+            await page.setRequestInterception(true);
+            page.on('request', (req: any) => {
+                if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
+                    req.abort();
+                } else {
+                    req.continue();
+                }
+            });
+
             await page.setUserAgent(this.getRandomUserAgent());
 
             const url = 'https://dexscreener.com/solana?rankBy=trendingScoreM5&order=desc';
@@ -231,7 +244,7 @@ export class DexScreenerService {
             await page.waitForSelector('a[href^="/solana/"]', { timeout: 10000 });
 
             // Extract pair addresses from hrefs
-            const pairAddresses = await page.evaluate((maxPairs) => {
+            const pairAddresses = await page.evaluate((maxPairs: number) => {
                 const links = Array.from(document.querySelectorAll('a[href^="/solana/"]'));
                 const addresses = new Set<string>();
 
@@ -248,13 +261,16 @@ export class DexScreenerService {
             }, limit);
 
             console.log(`[DexScreener Scraper] Successfully extracted ${pairAddresses.length} pair addresses`);
+
+            // Explicitly close context as requested
+            try { await context.close(); } catch (e) { }
+
             return pairAddresses;
 
         } catch (error) {
             console.error('[DexScreener Scraper] Error scraping addresses:', error);
             return [];
         } finally {
-            // CRITICAL: Always close browser to prevent resource leaks
             if (browser) {
                 try {
                     await browser.close();

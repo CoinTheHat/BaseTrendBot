@@ -129,6 +129,16 @@ export class AlphaSearchService {
             context = await this.browser.createBrowserContext();
             page = await context.newPage();
 
+            // Resource Blocking (User Request)
+            await page.setRequestInterception(true);
+            page.on('request', (req: any) => {
+                if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
+                    req.abort();
+                } else {
+                    req.continue();
+                }
+            });
+
             await page.setUserAgent(account.userAgent);
             await page.setCookie(
                 { name: 'auth_token', value: account.authToken, domain: '.twitter.com' },
