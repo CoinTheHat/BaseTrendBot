@@ -93,6 +93,7 @@ JSON formatında derinlemesine ve yapılandırılmış bir analiz sun. TÜM ÇIK
 2. **Teknik Görünüm**: Likidite/MC oranını analiz et. Hacim organik mi? Likidite, piyasa değerini destekliyor mu?
 3. **Sosyal Vibe**: Tweetler bot gibi mi yoksa gerçek bir topluluk mu var? Kimler konuşuyor?
 4. **Risk Analizi**: Eğer Top 10 Holder oranı %30'un üzerindeyse "YÜKSEK BALİNA RİSKİ" uyarısı ver. Rug pull ihtimalini değerlendir.
+   - **ÖNEMLİ:** "Rug için likidite yeterli değil" gibi anlamsız cümleler kurma. Eğer risk yoksa netçe "Rug riski düşük" de.
 5. **Strateji**: Net bir aksiyon öner (Örn: "Düşüşü bekle", "Ufak bir miktar gir", "Uzak dur").
 6. **Puan (0-10)**:
    - 0-4: Çöp / Rug Riski
