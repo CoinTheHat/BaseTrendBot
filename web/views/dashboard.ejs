@@ -101,6 +101,28 @@
             const input = row.querySelector('.sold-input');
             input.value = 0;
             await saveSoldMc(mint, input);
+            window.location.reload(); // Refresh to update button state
+        }
+
+        async function unRug(mint) {
+            const row = document.querySelector(`tr[data-mint="${mint}"]`);
+            const input = row.querySelector('.sold-input');
+
+            // 1. Clear input (or set to empty so user can type)
+            input.value = '';
+
+            // 2. Set status to TRACKING via API
+            try {
+                await fetch(`/api/tokens/${mint}/status`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'TRACKING' })
+                });
+                window.location.reload(); // Refresh to switch button back
+            } catch (err) {
+                console.error(err);
+                alert('Unrug failed');
+            }
         }
 
         function copyToClipboard(text, btnElement) {
@@ -252,10 +274,17 @@
 
                                 <!-- ACTION -->
                                 <td class="px-6 py-4 text-right">
-                                    <button onclick="markRug('<%= token.mint %>')"
-                                        class="bg-red-900 hover:bg-red-800 text-red-200 text-xs font-bold py-1 px-3 rounded transition-colors border border-red-800">
-                                        💀 RUG
-                                    </button>
+                                    <% if (token.status==='RUGGED' ) { %>
+                                        <button onclick="unRug('<%= token.mint %>')"
+                                            class="bg-green-900 hover:bg-green-800 text-green-200 text-xs font-bold py-1 px-3 rounded transition-colors border border-green-800">
+                                            🚑 UNRUG
+                                        </button>
+                                        <% } else { %>
+                                            <button onclick="markRug('<%= token.mint %>')"
+                                                class="bg-red-900 hover:bg-red-800 text-red-200 text-xs font-bold py-1 px-3 rounded transition-colors border border-red-800">
+                                                💀 RUG
+                                            </button>
+                                            <% } %>
                                 </td>
                             </tr>
                             <% }); %>
