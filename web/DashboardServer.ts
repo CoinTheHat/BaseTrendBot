@@ -153,6 +153,24 @@ export class DashboardServer {
                 res.status(500).json({ error: 'Internal Server Error' });
             }
         });
+
+        // NEW: Update Sold MC
+        this.app.post('/api/tokens/:mint/sold-mc', async (req, res) => {
+            try {
+                const { mint } = req.params;
+                const { soldMc } = req.body;
+
+                if (soldMc === undefined || isNaN(Number(soldMc))) {
+                    return res.status(400).json({ error: 'Invalid soldMc value' });
+                }
+
+                await this.storage.updateSoldMC(mint, Number(soldMc));
+                res.json({ success: true });
+            } catch (error) {
+                logger.error(`[API] Update Sold MC failed: ${error}`);
+                res.status(500).json({ error: 'Internal Server Error' });
+            }
+        });
     }
 
     start() {

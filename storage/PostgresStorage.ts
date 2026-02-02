@@ -90,6 +90,7 @@ export class PostgresStorage {
             await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS found_mc NUMERIC;`);
             await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS max_mc NUMERIC;`);
             await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS found_at TIMESTAMP DEFAULT NOW();`);
+            await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS sold_mc NUMERIC DEFAULT 0;`); // NEW
 
             // Backfill: found_mc = alert_mc, max_mc = ath_mc for existing rows
             await this.pool.query(`UPDATE token_performance SET found_mc = alert_mc WHERE found_mc IS NULL;`);
@@ -111,9 +112,9 @@ export class PostgresStorage {
             await this.pool.query(
                 `INSERT INTO token_performance(
                     mint, symbol, alert_mc, ath_mc, current_mc, status, alert_timestamp, last_updated, entry_price,
-                    found_mc, max_mc, found_at
+                    found_mc, max_mc, found_at, sold_mc
                 )
-                VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $3, $4, $7)
+                VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $3, $4, $7, 0)
                 ON CONFLICT(mint) DO NOTHING`,
                 [
                     perf.mint,
@@ -142,6 +143,20 @@ export class PostgresStorage {
             );
         } catch (err) {
             logger.error('[Postgres] updatePerformance failed', err);
+        }
+    }
+
+    async updateSoldMC(mint: string, soldMc: number) {
+        try {
+            await this.pool.query(
+                `UPDATE token_performance
+                 SET sold_mc = $1, last_updated = NOW()
+                 WHERE mint = $2`,
+                [soldMc, mint]
+            );
+            logger.info(`[Postgres] Updated Sold MC for ${mint}: $${soldMc}`);
+        } catch (err) {
+            logger.error(`[Postgres] updateSoldMC failed for ${mint}`, err);
         }
     }
 
@@ -216,7 +231,7 @@ export class PostgresStorage {
             // UNION QUERY: Combine new system (token_performance) + historical (seen_tokens)
             const combinedView = `
                 SELECT 
-                    mint, symbol, alert_mc, ath_mc, current_mc, status, alert_timestamp
+                    mint, symbol, alert_mc, ath_mc, current_mc, status, alert_timestamp, sold_mc
                 FROM token_performance
                 
                 UNION ALL
@@ -228,7 +243,8 @@ export class PostgresStorage {
                     0 as ath_mc,
                     0 as current_mc,
                     'HISTORIC' as status,
-                    to_timestamp(first_seen_at / 1000) as alert_timestamp
+                    to_timestamp(first_seen_at / 1000) as alert_timestamp,
+                    0 as sold_mc
                 FROM seen_tokens
                 WHERE last_alert_at > 0
                 AND mint NOT IN (SELECT mint FROM token_performance)
@@ -261,8 +277,8 @@ export class PostgresStorage {
             const recentRes = await this.pool.query(`
                 SELECT * FROM (${combinedView}) combined
                 ORDER BY alert_timestamp DESC 
-                LIMIT 20
-            `);
+                LIMIT 50
+            `); // Capabilities boosted to 50 for better PnL view
 
             return {
                 totalCalls,
@@ -287,7 +303,8 @@ export class PostgresStorage {
             status: row.status,
             alertTimestamp: row.alert_timestamp,
             lastUpdated: row.last_updated,
-            entryPrice: row.entry_price ? Number(row.entry_price) : 0
+            entryPrice: row.entry_price ? Number(row.entry_price) : 0,
+            soldMc: row.sold_mc ? Number(row.sold_mc) : 0 // NEW
         };
     }
 

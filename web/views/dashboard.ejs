@@ -1,137 +1,238 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TrendBot Dashboard</title>
     <!-- Tailwind via CDN for simplicity -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        .neon-text { text-shadow: 0 0 10px rgba(52, 211, 153, 0.5); }
-    </style>
+    <script>
+        const START_BALANCE = 1000;
+        const BET_SIZE = 50;
+
+        function calculatePortfolio() {
+            let realizedPnL = 0;
+            let wins = 0;
+            let losses = 0;
+            let totalClosed = 0;
+
+            document.querySelectorAll('.token-row').forEach(row => {
+                const foundMc = parseFloat(row.dataset.foundMc);
+                const soldInput = row.querySelector('.sold-input');
+                const pnlCell = row.querySelector('.pnl-cell');
+                const soldMcVal = soldInput.value;
+
+                if (soldMcVal && !isNaN(soldMcVal)) {
+                    // User inputs 'k' value (e.g. 500 for 500k), convert to full
+                    const soldMc = parseFloat(soldMcVal) * 1000;
+                    // PnL Formula: (Sold / Found) * Bet - Bet
+                    const pnl = (soldMc / foundMc * BET_SIZE) - BET_SIZE;
+
+                    realizedPnL += pnl;
+                    totalClosed++;
+
+                    if (pnl > 0) wins++;
+                    else losses++;
+
+                    // Update PnL Cell
+                    pnlCell.textContent = `$${pnl.toFixed(2)}`;
+                    pnlCell.className = `pnl-cell font-bold ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+                } else {
+                    pnlCell.textContent = '-';
+                    pnlCell.className = 'pnl-cell text-gray-500';
+                }
+            });
+
+            // Update Cards
+            const currentBalance = START_BALANCE + realizedPnL;
+            const growth = ((currentBalance - START_BALANCE) / START_BALANCE) * 100;
+
+            document.getElementById('portfolio-value').textContent = `$${currentBalance.toFixed(2)}`;
+            document.getElementById('total-pnl').textContent = `${realizedPnL >= 0 ? '+' : ''}$${realizedPnL.toFixed(2)}`;
+            document.getElementById('total-pnl').className = `text-4xl font-bold ${realizedPnL >= 0 ? 'text-green-400' : 'text-red-400'}`;
+
+            document.getElementById('growth-pct').textContent = `${growth >= 0 ? '+' : ''}${growth.toFixed(1)}%`;
+            document.getElementById('growth-pct').className = `text-4xl font-bold ${growth >= 0 ? 'text-green-400' : 'text-red-400'}`;
+
+            // Safe division check
+            const winRate = totalClosed > 0 ? (wins / totalClosed) * 100 : 0;
+            document.getElementById('win-rate-display').textContent = `${winRate.toFixed(0)}%`;
+        }
+
+        async function saveSoldMc(mint, input) {
+            const val = input.value;
+            if (!val) return;
+
+            // Save as full value (x1000)
+            const soldMc = parseFloat(val) * 1000;
+
+            // Optimistic update
+            calculatePortfolio();
+
+            try {
+                await fetch(`/api/tokens/${mint}/sold-mc`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ soldMc })
+                });
+
+                // Visual feedback
+                input.classList.add('border-green-500');
+                setTimeout(() => input.classList.remove('border-green-500'), 1000);
+            } catch (err) {
+                console.error(err);
+                alert('Save failed');
+            }
+        }
+
+        async function markRug(mint) {
+            const row = document.querySelector(`tr[data-mint="${mint}"]`);
+            const input = row.querySelector('.sold-input');
+            input.value = 0;
+            // For 0, simple save
+            await saveSoldMc(mint, input);
+        }
+
+        // Init
+        document.addEventListener('DOMContentLoaded', calculatePortfolio);
+    </script>
 </head>
+
 <body class="bg-gray-900 text-gray-100 font-sans">
     <div class="container mx-auto px-4 py-8">
         <!-- Header -->
         <header class="mb-8 flex justify-between items-center border-b border-gray-700 pb-4">
             <div>
-                <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-green-400 to-blue-500 neon-text">
-                    TrendBot HQ
+                <h1
+                    class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-green-400 to-blue-500 neon-text">
+                    TrendBot PnL Tracker
                 </h1>
-                <p class="text-gray-400 text-sm mt-1">AI-Powered Solana Trend Hunter</p>
+                <p class="text-gray-400 text-sm mt-1">Simulated Portfolio: $1000 Start | $50 Bets</p>
             </div>
             <div class="text-right">
                 <div class="text-xs text-gray-500">Last Updated</div>
-                <div class="font-mono text-green-400"><%= lastUpdated.toLocaleTimeString() %></div>
+                <div class="font-mono text-green-400">
+                    <%= lastUpdated.toLocaleTimeString() %>
+                </div>
             </div>
         </header>
 
         <!-- Metrics Cards -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <!-- Win Rate -->
+            <!-- Portfolio Value -->
             <div class="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
-                <div class="text-gray-400 text-sm font-semibold uppercase tracking-wider">Win Rate (>2x)</div>
-                <div class="mt-2 flex items-baseline">
-                    <span class="text-4xl font-bold text-green-400"><%= metrics.winRate %>%</span>
-                    <span class="ml-2 text-sm text-gray-400">of <%= metrics.totalCalls %> calls</span>
+                <div class="text-gray-400 text-sm font-semibold uppercase tracking-wider">Portfolio Value</div>
+                <div class="mt-2 text-4xl font-bold text-white" id="portfolio-value">
+                    $1000.00
                 </div>
             </div>
 
-            <!-- Moons -->
+            <!-- Total PnL -->
             <div class="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
-                <div class="text-gray-400 text-sm font-semibold uppercase tracking-wider">Moonshots</div>
-                <div class="mt-2 flex items-baseline">
-                    <span class="text-4xl font-bold text-yellow-400"><%= metrics.moonCount %></span>
-                    <span class="ml-2 text-sm text-gray-400">Tokens > 2x</span>
+                <div class="text-gray-400 text-sm font-semibold uppercase tracking-wider">Total PnL</div>
+                <div class="mt-2 text-4xl font-bold text-gray-400" id="total-pnl">
+                    $0.00
                 </div>
             </div>
 
-            <!-- Active -->
+            <!-- Growth -->
             <div class="bg-gray-800 rounded-xl p-6 border border-gray-700 shadow-lg">
-                <div class="text-gray-400 text-sm font-semibold uppercase tracking-wider">Total Scanned</div>
-                <div class="mt-2">
-                    <span class="text-4xl font-bold text-blue-400"><%= metrics.totalCalls %></span>
+                <div class="text-gray-400 text-sm font-semibold uppercase tracking-wider">Growth (Win Rate: <span
+                        id="win-rate-display">0%</span>)</div>
+                <div class="mt-2 text-4xl font-bold text-gray-400" id="growth-pct">
+                    0.0%
                 </div>
             </div>
         </div>
 
-        <!-- Top Performers -->
-        <div class="mb-8">
-            <h2 class="text-xl font-bold text-white mb-4 flex items-center">
-                <span class="mr-2">🏆</span> Top Performers (ATH)
-            </h2>
-            <div class="bg-gray-800 rounded-xl overflow-hidden shadow-lg border border-gray-700">
-                <table class="w-full text-left">
-                    <thead class="bg-gray-700 text-gray-300">
-                        <tr>
-                            <th class="px-6 py-3">Token</th>
-                            <th class="px-6 py-3">Alert MC</th>
-                            <th class="px-6 py-3">ATH MC</th>
-                            <th class="px-6 py-3">Multiplier</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-700">
-                        <% metrics.topPerformers.forEach(token => { %>
-                        <tr class="hover:bg-gray-750 transition-colors">
-                            <td class="px-6 py-4 font-bold text-white"><%= token.symbol %></td>
-                            <td class="px-6 py-4 text-gray-400">$<%= (token.alertMc / 1000).toFixed(1) %>k</td>
-                            <td class="px-6 py-4 text-gray-400">$<%= (token.athMc / 1000).toFixed(1) %>k</td>
-                            <td class="px-6 py-4 text-green-400 font-bold"><%= (token.athMc / (token.alertMc || 1)).toFixed(1) %>x</td>
-                        </tr>
-                        <% }); %>
-                        <% if(metrics.topPerformers.length === 0) { %>
-                        <tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">No data yet.</td></tr>
-                        <% } %>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Recent Calls -->
+        <!-- Recent Calls Table -->
         <div>
             <h2 class="text-xl font-bold text-white mb-4 flex items-center">
-                <span class="mr-2">📢</span> Recent Calls
+                <span class="mr-2">📝</span> Trade Log
             </h2>
             <div class="bg-gray-800 rounded-xl overflow-hidden shadow-lg border border-gray-700">
                 <table class="w-full text-left">
                     <thead class="bg-gray-700 text-gray-300">
                         <tr>
-                            <th class="px-6 py-3">Time</th>
-                            <th class="px-6 py-3">Token</th>
-                            <th class="px-6 py-3">Status</th>
-                            <th class="px-6 py-3">Current MC</th>
-                            <th class="px-6 py-3">ATH X</th>
-                            <th class="px-6 py-3">Link</th>
+                            <th class="px-6 py-3 w-1/4">Token</th>
+                            <th class="px-6 py-3">Found MC</th>
+                            <th class="px-6 py-3">Sold MC</th>
+                            <th class="px-6 py-3">PnL</th>
+                            <th class="px-6 py-3 text-right">Action</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-700">
-                        <% metrics.recentCalls.forEach(token => { %>
-                        <tr class="hover:bg-gray-750 transition-colors">
-                            <td class="px-6 py-4 text-gray-400 text-sm"><%= new Date(token.alertTimestamp).toLocaleString() %></td>
-                            <td class="px-6 py-4 text-white"><%= token.symbol %></td>
-                            <td class="px-6 py-4">
-                                <% if(token.status === 'MOONED') { %>
-                                    <span class="px-2 py-1 rounded bg-green-900 text-green-300 text-xs font-bold">MOONED 🚀</span>
-                                <% } else if(token.status === 'RUGGED') { %>
-                                    <span class="px-2 py-1 rounded bg-red-900 text-red-300 text-xs font-bold">RUGGED 💀</span>
-                                <% } else { %>
-                                    <span class="px-2 py-1 rounded bg-blue-900 text-blue-300 text-xs font-bold">TRACKING 👀</span>
-                                <% } %>
-                            </td>
-                            <td class="px-6 py-4 text-gray-400">$<%= (token.currentMc / 1000).toFixed(1) %>k</td>
-                            <td class="px-6 py-4 text-green-400 font-bold"><%= (token.athMc / (token.alertMc || 1)).toFixed(1) %>x</td>
-                            <td class="px-6 py-4">
-                                <a href="https://dexscreener.com/solana/<%= token.mint %>" target="_blank" class="text-blue-400 hover:text-blue-300">Chart ↗</a>
-                            </td>
-                        </tr>
-                        <% }); %>
-                        <% if(metrics.recentCalls.length === 0) { %>
-                        <tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No recent calls.</td></tr>
-                        <% } %>
+                        <% metrics.recentCalls.forEach(token=> {
+                            // Fallback to alertMc if foundMc is missing or 0
+                            const baseMc = token.foundMc > 0 ? token.foundMc : token.alertMc;
+                            %>
+                            <tr class="hover:bg-gray-750 transition-colors token-row" data-mint="<%= token.mint %>"
+                                data-found-mc="<%= baseMc %>">
+
+                                <!-- TOKEN COLUMN (Preserved Style) -->
+                                <td class="px-6 py-4">
+                                    <div class="flex flex-col">
+                                        <span class="font-bold text-white text-lg">
+                                            <%= token.symbol %>
+                                        </span>
+                                        <span class="text-xs text-gray-500 font-mono">
+                                            <%= token.mint.substring(0,6) %>...
+                                        </span>
+                                        <div class="mt-1">
+                                            <span class="text-xs text-gray-400">
+                                                <%= new Date(token.alertTimestamp).toLocaleTimeString() %>
+                                            </span>
+                                            <a href="https://dexscreener.com/solana/<%= token.mint %>" target="_blank"
+                                                class="ml-2 text-blue-400 hover:text-blue-300 text-xs">Chart ↗</a>
+                                        </div>
+                                    </div>
+                                </td>
+
+                                <!-- FOUND MC -->
+                                <td class="px-6 py-4 text-gray-300 font-mono">
+                                    $<%= (baseMc / 1000).toFixed(1) %>k
+                                </td>
+
+                                <!-- SOLD MC (Input) -->
+                                <td class="px-6 py-4">
+                                    <div class="flex items-center">
+                                        <span class="text-gray-500 mr-1">$</span>
+                                        <input type="number"
+                                            class="sold-input bg-gray-900 border border-gray-600 rounded px-2 py-1 w-24 text-white focus:border-blue-500 outline-none transition-colors"
+                                            placeholder="Open"
+                                            value="<%= token.soldMc > 0 ? (token.soldMc / 1000).toFixed(1) : '' %>"
+                                            onchange="saveSoldMc('<%= token.mint %>', this)">
+                                        <span class="text-gray-500 ml-1">k</span> <!-- Assumed input is full value? Or k? User usually types 100k or 100000. Let's assume full number but maybe placeholder implies it?
+                                    Looking at helper text 'Found MC' is $Xk.
+                                    If user types 500000, that's fine.
+                                    Adding auto-converter might be complex. Let's assume raw number. -->
+                                    </div>
+                                </td>
+
+                                <!-- PNL (Calculated) -->
+                                <td class="px-6 py-4 pnl-cell font-mono text-gray-500">
+                                    -
+                                </td>
+
+                                <!-- ACTION -->
+                                <td class="px-6 py-4 text-right">
+                                    <button onclick="markRug('<%= token.mint %>')"
+                                        class="bg-red-900 hover:bg-red-800 text-red-200 text-xs font-bold py-1 px-3 rounded transition-colors border border-red-800">
+                                        💀 RUG
+                                    </button>
+                                </td>
+                            </tr>
+                            <% }); %>
+                                <% if(metrics.recentCalls.length===0) { %>
+                                    <tr>
+                                        <td colspan="5" class="px-6 py-4 text-center text-gray-500">No trades yet.</td>
+                                    </tr>
+                                    <% } %>
                     </tbody>
                 </table>
             </div>
         </div>
     </div>
 </body>
+
 </html>
