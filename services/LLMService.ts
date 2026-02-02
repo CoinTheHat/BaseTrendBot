@@ -164,6 +164,12 @@ Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. 
 - **Durum:** Şu an saat ${currentTrtHour}:00.
 - **CEZA:** Hacim düşüklüğü riski nedeniyle -1 Puan.
 
+### 4. 👥 HOLDER DAĞILIMI (Top 10 Supply)
+- Eğer veri 'Bilinmiyor' ise: CEZA YOK (Nötr kal).
+- Eğer veri < %30 ise: 🟢 GÜVENLİ (Sağlıklı dağılım).
+- Eğer veri %30 - %60 arası ise: ⚠️ ORTA RİSK (Balina hakimiyeti, dikkatli ol).
+- Eğer veri > %60 ise: 🔴 ÇOK YÜKSEK RİSK (Rug/Dump ihtimali). Ciddi puan kır.
+
 
 **Analiz Gereksinimleri:**
 0. **Dil ve Üslup:** Türkçe kripto jargonunu doğal ve profesyonel kullan.
