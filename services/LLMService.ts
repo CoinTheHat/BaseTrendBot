@@ -150,9 +150,9 @@ Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. 
 **DİĞER PUANLAMA KURALLARI:**
 
 ### 1. ⏳ TOKEN YAŞI (Time Decay)
-- **0-4 Saat:** PRIME TIME (Ceza Yok).
-- **4-12 Saat:** Hacim düşüyorsa -1 Puan.
-- **12-24 Saat:** Çok seçici ol.
+- **0-4 Saat:** PRIME TIME (Tam Puan).
+- **4-12 Saat:** Çok seçici ol.
+- **12-24 Saat:** Hacim düşüyorsa -1 Puan.
 - **> 24 Saat:** Breakout yoksa OTOMATİK -2 PUAN.
 
 ### 2. 📈 FOMO KORUMASI (5dk Mum)
