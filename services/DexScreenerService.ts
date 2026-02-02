@@ -203,8 +203,17 @@ export class DexScreenerService {
 
             browser = await puppeteer.launch({
                 headless: true,
-                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-                args: ['--no-sandbox', '--disable-setuid-sandbox']
+                args: [
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage', // Uses /tmp instead of /dev/shm (CRITICAL for Docker)
+                    '--disable-accelerated-2d-canvas',
+                    '--no-first-run',
+                    '--no-zygote',
+                    '--single-process', // Reduces process count significantly
+                    '--disable-gpu'
+                ],
+                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
             });
 
             const page = await browser.newPage();
@@ -236,14 +245,20 @@ export class DexScreenerService {
             }, limit);
 
             console.log(`[DexScreener Scraper] Successfully extracted ${pairAddresses.length} pair addresses`);
-
-            await browser.close();
             return pairAddresses;
 
         } catch (error) {
             console.error('[DexScreener Scraper] Error scraping addresses:', error);
-            if (browser) await browser.close();
             return [];
+        } finally {
+            // CRITICAL: Always close browser to prevent resource leaks
+            if (browser) {
+                try {
+                    await browser.close();
+                } catch (closeError) {
+                    console.error('[DexScreener Scraper] Error closing browser:', closeError);
+                }
+            }
         }
     }
 }
