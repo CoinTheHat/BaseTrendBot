@@ -171,6 +171,12 @@ Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. 
 - Eğer veri %30 - %60 arası ise: ⚠️ ORTA RİSK.
 - Eğer veri > %60 ise: 🔴 ÇOK YÜKSEK RİSK (Rug/Dump ihtimali). Ciddi puan kır.
 
+### 5. 📅 HİKAYE TAZELİĞİ & ZAMANLAMA (Narrative Timing)
+- Tweetlerin İÇERİĞİNDEKİ zaman algısına bak.
+- **BAYAT HYPE (STALE):** Eğer tweetler "Dün harikaydı", "ATH yaptık", "Dinleniyoruz", "10M MC'yi gördük" gibi *geçmiş başarıları* övüyorsa -> 🔴 GEÇ KALINDI. (Puan Kır: -2).
+- **TAZE HYPE (FRESH):** Eğer tweetler "Yeni başlıyoruz", "Keşfediliyor", "Breakout geliyor", "Trende giriyor" diyorsa -> 🟢 TAZE FIRSAT.
+- **MC UYUMU:** Eğer hikaye "Milyonluk proje" diyor ama MC şu an düşükse -> 🟢 DİPTEN YAKALAMA FIRSATI. Eğer MC zaten çok yüksekse (>5M) ve hype eskiyse -> 🔴 FADE.
+
 
 **Analiz Gereksinimleri:**
 0. **Dil ve Üslup:** Türkçe kripto jargonunu doğal ve profesyonel kullan.
@@ -206,7 +212,7 @@ Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. 
 }
 `;
         const userContent = hasTweets
-            ? `Tweets:\n${tweets.slice(0, 20).map(t => `- ${t.replace(/\n/g, ' ')}`).join('\n')}`
+            ? `Tweets:\n${tweets.slice(0, 30).map(t => `- ${t.replace(/\n/g, ' ')}`).join('\n')}`
             : `Twitter verisi yok. Sadece teknik verileri analiz et. Risk seviyesini yüksek tut.`;
 
         return { systemPrompt, userContent };
