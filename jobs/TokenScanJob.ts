@@ -137,7 +137,14 @@ export class TokenScanJob {
                         const mc = Number(rawMc) || 0;
                         const volume24h = Number(rawVol) || 0;
 
+
                         const ageHours = token.createdAt ? (Date.now() - token.createdAt.getTime()) / (3600 * 1000) : 0;
+
+                        // FILTER: Token Age (Max 36h - Focus on Fresh Trends)
+                        if (ageHours > 36) {
+                            // logger.debug(`[Filter] 👴 Too Old: ${token.symbol} (${Math.floor(ageHours)}h)`);
+                            return;
+                        }
 
                         // NEW: DYNAMIC FLOOR STRATEGY (Adaptive Ratio)
                         let minRatio = 0.20; // Default for low caps (<500k)
