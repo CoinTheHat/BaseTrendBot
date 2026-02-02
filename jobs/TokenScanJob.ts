@@ -140,11 +140,9 @@ export class TokenScanJob {
 
                         const ageHours = token.createdAt ? (Date.now() - token.createdAt.getTime()) / (3600 * 1000) : 0;
 
-                        // FILTER: Token Age (Max 36h - Focus on Fresh Trends)
-                        if (ageHours > 36) {
-                            // logger.debug(`[Filter] 👴 Too Old: ${token.symbol} (${Math.floor(ageHours)}h)`);
-                            return;
-                        }
+
+                        // AGE FILTER REVERTED: User wants High Score Old Tokens to pass.
+                        // Rely on AI "Zombie Test" instead.
 
                         // NEW: DYNAMIC FLOOR STRATEGY (Adaptive Ratio)
                         let minRatio = 0.20; // Default for low caps (<500k)

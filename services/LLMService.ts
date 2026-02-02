@@ -153,7 +153,10 @@ Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. 
 - **0-4 Saat:** PRIME TIME (Tam Puan).
 - **4-12 Saat:** Çok seçici ol.
 - **12-24 Saat:** Hacim düşüyorsa -1 Puan.
-- **> 24 Saat:** Breakout yoksa OTOMATİK -2 PUAN.
+- **> 24 Saat (ZOMBIE TEST):**
+  - Eğer **YENİ ve GÜÇLÜ BİR HYPE** (Revival, Breakout, Yeni Haber) varsa: 🟢 CEZA YOK (Max Puan Alabilir).
+  - Eğer hype yoksa (yatay/ölü): 🔴 DİREKT -2 PUAN.
+  - **NOT:** Eski token sadece 8+ Puanlık potansiyel varsa önerilmeli.
 
 ### 2. 📈 FOMO KORUMASI (5dk Mum)
 - **Durum:** 5dk Fiyat Değişimi > %30.
