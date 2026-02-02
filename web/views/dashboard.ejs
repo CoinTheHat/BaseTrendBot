@@ -197,7 +197,7 @@
                                 <td class="px-6 py-4">
                                     <div class="flex items-center">
                                         <span class="text-gray-500 mr-1">$</span>
-                                        <input type="number"
+                                        <input type="number" step="any"
                                             class="sold-input bg-gray-900 border border-gray-600 rounded px-2 py-1 w-24 text-white focus:border-blue-500 outline-none transition-colors"
                                             placeholder="Open"
                                             value="<%= token.soldMc > 0 ? (token.soldMc / 1000).toFixed(1) : '' %>"
