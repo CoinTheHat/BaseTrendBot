@@ -10,6 +10,13 @@ export const logger = winston.createLogger({
     ),
     transports: [
         new winston.transports.Console(),
-        new winston.transports.File({ filename: 'scandex.log' })
+        // new winston.transports.File({ filename: 'scandex.log' })
+        new (require('winston-daily-rotate-file'))({
+            filename: 'scandex-%DATE%.log',
+            datePattern: 'YYYY-MM-DD',
+            zippedArchive: true,
+            maxSize: '20m',
+            maxFiles: '14d'
+        })
     ]
 });
