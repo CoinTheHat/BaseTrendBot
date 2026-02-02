@@ -320,8 +320,8 @@ export class TokenScanJob {
 🎯 Fresh Candidates: ${freshCandidates.length}
 
 🚫 REJECTED (${totalRejected}):
-  💧 Low Liquidity (<$10k): ${lowLiqCount}
-  💤 Weak Momentum (<0.7x): ${weakMomentumCount}
+  💧 Low Liquidity (<$5k): ${lowLiqCount}
+  💤 Weak Momentum (<0.5x): ${weakMomentumCount}
   👻 Ghost Protocol: ${ghostCount}
   ❌ AI Score <7: ${lowScoreCount}
 
