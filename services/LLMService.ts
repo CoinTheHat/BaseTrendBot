@@ -165,9 +165,10 @@ Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. 
 - **CEZA:** Hacim düşüklüğü riski nedeniyle -1 Puan.
 
 ### 4. 👥 HOLDER DAĞILIMI (Top 10 Supply)
-- Eğer veri 'Bilinmiyor' ise: CEZA YOK (Nötr kal).
-- Eğer veri < %30 ise: 🟢 GÜVENLİ (Sağlıklı dağılım).
-- Eğer veri %30 - %60 arası ise: ⚠️ ORTA RİSK (Balina hakimiyeti, dikkatli ol).
+- Eğer veri 'Bilinmiyor' ise: 🟢 GÜVENLİ KABUL ET. (Yeni tokenlarda API gecikmesi normaldir).
+- DİKKAT: 'Holder verisi yok' veya 'belirsiz' diye ASLA puan kırma ve bunu risk olarak yazma.
+- Eğer veri < %30 ise: 🟢 GÜVENLİ.
+- Eğer veri %30 - %60 arası ise: ⚠️ ORTA RİSK.
 - Eğer veri > %60 ise: 🔴 ÇOK YÜKSEK RİSK (Rug/Dump ihtimali). Ciddi puan kır.
 
 
