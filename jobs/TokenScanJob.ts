@@ -195,20 +195,13 @@ export class TokenScanJob {
                             }
                         }
 
+
                         // --- STEP 4: GHOST PROTOCOL ---
-                        // If no tweets found, Auto-Reject (Risk of ghost scam)
+                        // If no tweets found, proceed to AI with Penalty (Risk of ghost scam)
                         if (!tweets || tweets.length === 0) {
                             ghostCount++;
-                            logger.warn(`[Ghost] 👻 No tweets found for ${token.symbol}. Auto-Rejecting (Score: 4).`);
-
-                            await this.storage.saveSeenToken(token.mint, {
-                                symbol: token.symbol,
-                                firstSeenAt: Date.now(),
-                                lastAlertAt: 0,
-                                lastScore: 4,
-                                lastPhase: 'REJECTED_GHOST'
-                            });
-                            return; // STOP HERE
+                            logger.warn(`[Ghost] 👻 No tweets found for ${token.symbol}. Proceeding to AI for PENALTY Evaluation (-2 Pts).`);
+                            // DO NOT RETURN. Let it pass to AI.
                         }
 
                         // --- STEP 5: AI ANALYSIS (Wolf Logic) ---

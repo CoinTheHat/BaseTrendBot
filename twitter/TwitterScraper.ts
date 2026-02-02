@@ -64,10 +64,26 @@ export class TwitterScraper {
                 }
             }
 
-            return Array.from(allTexts);
+            // 5. Spam Filter (Heuristic)
+            const cleanTweets = this.filterSpamTweets(Array.from(allTexts));
+            logger.info(`[Scraper] 🧹 Filtered ${allTexts.size - cleanTweets.length} spam tweets. Serving ${cleanTweets.length} clean tweets.`);
+
+            return cleanTweets;
         }
 
         return [];
+    }
 
+    private filterSpamTweets(tweets: string[]): string[] {
+        const SPAM_KEYWORDS = [
+            'airdrop', 'giveaway', 'whitelist', 'presale', 'join tg', 'dm for promo',
+            'free mint', 'send dm', 'promotion', 'collaborate'
+        ];
+
+        return tweets.filter(text => {
+            const lower = text.toLowerCase();
+            // Keep if NO spam keywords are found
+            return !SPAM_KEYWORDS.some(keyword => lower.includes(keyword));
+        });
     }
 }

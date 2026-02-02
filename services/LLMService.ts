@@ -57,7 +57,7 @@ export class LLMService {
             const content = completion.choices[0].message.content;
             if (!content) throw new Error('Empty response from xAI');
 
-            const result = JSON.parse(content);
+            const result = this.safeJSONParse(content);
             return this.normalizeResult(result);
 
         } catch (error: any) {
@@ -71,16 +71,40 @@ export class LLMService {
         }
     }
 
+    private safeJSONParse(content: string): any {
+        try {
+            // 1. Try direct parse
+            return JSON.parse(content);
+        } catch (e) {
+            // 2. Try cleaning markdown wrappers (```json ... ```)
+            try {
+                const clean = content.replace(/```json\n?|```/g, '').trim();
+                return JSON.parse(clean);
+            } catch (e2) {
+                // 3. Try finding JSON object in text
+                const match = content.match(/\{[\s\S]*\}/);
+                if (match) {
+                    try {
+                        return JSON.parse(match[0]);
+                    } catch (e3) {
+                        logger.warn(`[JSON Repair] Failed to extract JSON: ${e3}`);
+                    }
+                }
+                logger.error(`[JSON Repair] Fatal parse error. Raw: ${content.substring(0, 50)}...`);
+                // Return empty object to trigger fallback in normalizeResult
+                return {};
+            }
+        }
+    }
+
     private buildPrompt(token: TokenSnapshot, tweets: string[], hasTweets: boolean): { systemPrompt: string; userContent: string } {
-        // TRT Time Calculation (UTC+3)
-        const now = new Date();
-        const trtOffset = 3 * 60 * 60 * 1000;
-        const trtTime = new Date(now.getTime() + trtOffset);
-        const trtHour = trtTime.getUTCHours(); // getUTCHours because we manually added offset to timestamp? No, wait.
-        // Actually simplest way to get TRT hour:
-        const trtDateStr = new Date().toLocaleString("en-US", { timeZone: "Europe/Istanbul" });
-        const trtDate = new Date(trtDateStr);
-        const currentTrtHour = trtDate.getHours();
+        // TRT Time Calculation (UTC+3) using Intl.DateTimeFormat
+        const trtFormatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: 'Europe/Istanbul',
+            hour: 'numeric',
+            hour12: false
+        });
+        const currentTrtHour = parseInt(trtFormatter.format(new Date()));
 
         const systemPrompt = `
 Sen Kıdemli bir Kripto Degen Analistisin (xAI Grok tabanlı). Görevin, piyasa verilerine ve son tweetlere dayanarak Solana meme tokenlarını analiz etmek.
@@ -98,29 +122,48 @@ Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. 
 - Zemin Oranı (Liq/MC): ${((token.liquidityUsd || 0) / (token.marketCapUsd || 1)).toFixed(3)} ${((token.liquidityUsd || 0) / (token.marketCapUsd || 1)) >= 0.20 ? '✅ Sağlam' : '⚠️ Zayıf'}
 - Top 10 Holder: ${token.top10HoldersSupply ? token.top10HoldersSupply.toFixed(2) + '%' : 'Bilinmiyor'}
 
-**Görev:**
-JSON formatında derinlemesine ve yapılandırılmış bir analiz sun. TÜM ÇIKTILAR %100 TÜRKÇE OLMALIDIR.
+**GÖREV VE ÖNCELİK SIRASI (PRIORITY):**
+1. 🥇 **Sosyal Vibe (Twitter GERÇEK Mİ?):** En önemli kriter. Topluluk yoksa, token yoktur.
+2. 🥈 **Hikaye / Meme Gücü:** Anlatı ne kadar güçlü?
+3. 🥉 **Hacim & Likidite:** Teknik veriler destekliyor mu?
+4. 🏅 **Holder Dağılımı:** Balina riski var mı?
+5. 🎖️ **Grafik / PA:** Kısa vadeli trend.
 
-**PUANLAMA AYARLARI & KURALLAR (SCORING RULES):**
+**AŞILAMAZ KAPI KURALLARI (GATE RULES):**
 
-### 1. ⏳ TOKEN YAŞI KURALLARI (Time Decay)
-Bu kuralları puan verirken KESİNLİKLE uygula:
-- **0 - 4 Saat:** 🟢 **PRIME TIME.** Keşif bölgesi. Ceza yok. (Tam puan potansiyeli).
-- **4 - 12 Saat:** 🟡 **SÜRDÜRÜLEBİLİRLİK KONTROLÜ.** Hype hala canlı mı? Hacim düşüyorsa -1 Puan kır.
-- **12 - 24 Saat:** 🟠 **DİKKAT BÖLGESİ.** Trend dönüşü riski. Çok seçici ol.
-- **> 24 Saat:** 🔴 **ESKİ HABER.** Eğer devasa bir breakout (yeni ATH) yoksa, final puandan **OTOMATİK OLARAK 1-2 PUAN DÜŞ**.
+### ⛔ KAPI 1: BAD DATA (SPAM / BOT / GHOST TOWN)
+- **Durum:** Tweetler bot ağırlıklı, sadece "airdrop/giveaway/whitelist" spam'i veya ölü.
+- **KARAR:**
+  - `verdict` = "FADE" (KESİN)
+  - `riskLevel` = "DANGEROUS" veya "HIGH"
+  - `score` = 0 ile 4 arasında SINIRLA.
+  - **MANTIK:** Teknik veriler 10/10 olsa bile, sosyal vibe kötüyse APE OLAMAZ.
 
-### 2. 📈 FİYAT HAREKETİ UYARISI (FOMO Koruması)
-- **5 Dakikalık Mum Kuralı:** 'Fiyat Değişimi (5dk)' verisine bak.
-- **EĞER > %30 ARTIŞ VARSA:** 🚨 **TEHLİKE.** Token dikine (vertical) gidiyor.
-  - **AKSİYON:** Final puandan 1-2 puan düş.
-  - **UYARI:** Strateji kısmına ŞUNU YAZ: "⚠️ DİKKAT: Son 5 dakikada %${token.priceChange5m} pump yaptı. RSI şişmiş olabilir, tepeden alma. Geri çekilme (Retrace) bekle."
+### 📉 KAPI 2: NO DATA (VERİ YOK / CILIZ)
+- **Durum:** Tweet bulunamadı veya spam filtresinden 0 çıktı.
+- **KARAR:**
+  - Final Puandan **OTOMATİK -2 PUAN DÜŞ**.
+  - `verdict` EN FAZLA "WATCH" olabilir. (Asla APE olamaz).
+  - `riskLevel` EN AZ "HIGH".
+  - **MANTIK:** Sosyal veri yoksa kör uçuş yapıyoruz demektir. Risk al, ama küçük risk al.
 
-### 3. 🌙 GECE VAKTİ KURALI (Düşük Hacim)
-- **Saat Kontrolü:** Şu An (TRT) verisine bak.
-- **EĞER SAAT 03:00 - 09:00 ARASINDAYSA:** 📉 **ÖLÜ SAATLER.**
-  - **KURAL:** Global hacim düşük olduğu için, ne kadar iyi olursa olsun final puandan **OTOMATİK OLARAK 1 PUAN DÜŞ**.
-  - **UYARI:** "Gece saatlerinde hacimsizlik riski var, dikkatli ol." şeklinde not düş.
+**DİĞER PUANLAMA KURALLARI:**
+
+### 1. ⏳ TOKEN YAŞI (Time Decay)
+- **0-4 Saat:** PRIME TIME (Ceza Yok).
+- **4-12 Saat:** Hacim düşüyorsa -1 Puan.
+- **12-24 Saat:** Çok seçici ol.
+- **> 24 Saat:** Breakout yoksa OTOMATİK -2 PUAN.
+
+### 2. 📈 FOMO KORUMASI (5dk Mum)
+- **Durum:** 5dk Fiyat Değişimi > %30.
+- **CEZA:** Final puandan -2 Puan.
+- **UYARI:** "⚠️ Dikey pump (Vertical). Tepeden alma riski."
+
+### 3. 🌙 GECE VAKTİ (03:00 - 09:00 TRT)
+- **Durum:** Şu an saat ${currentTrtHour}:00.
+- **CEZA:** Hacim düşüklüğü riski nedeniyle -1 Puan.
+
 
 **Analiz Gereksinimleri:**
 0. **Dil ve Üslup:** Türkçe kripto jargonunu doğal ve profesyonel kullan.
