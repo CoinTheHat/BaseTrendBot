@@ -6,6 +6,17 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TrendBot Dashboard</title>
     <!-- Tailwind via CDN for simplicity -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .neon-text {
+            text-shadow: 0 0 10px rgba(52, 211, 153, 0.5);
+        }
+
+        /* Custom overrides if needed */
+        .token-row:hover .sold-input {
+            background-color: #374151;
+        }
+    </style>
     <script>
         const START_BALANCE = 1000;
         const BET_SIZE = 50;
