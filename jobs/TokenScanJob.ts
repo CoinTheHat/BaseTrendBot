@@ -84,8 +84,8 @@ export class TokenScanJob {
 
             for (const token of dexTokens) {
                 const lastProcessed = this.processedCache.get(token.mint);
-                // ANTI-SPAM: Ignore if seen in last 4 hours (Hard Mode)
-                if (lastProcessed && (now - lastProcessed < 4 * 60 * 60 * 1000)) {
+                // SMART CACHE: Reduce to 1 hour (was 4h)
+                if (lastProcessed && (now - lastProcessed < 1 * 60 * 60 * 1000)) {
                     cachedCount++;
                     continue;
                 }
@@ -137,6 +137,29 @@ export class TokenScanJob {
                         const mc = Number(rawMc) || 0;
                         const volume24h = Number(rawVol) || 0;
 
+
+
+                        // --- CRITICAL RE-EVALUATION LOGIC ---
+                        let strictMode = false;
+                        const previousAlert = await this.storage.getSeenToken(token.mint);
+
+                        if (previousAlert && previousAlert.lastAlertAt > 0) {
+                            // Token was alerted before. Check if it "walked" (price spiked)
+                            const lastPrice = previousAlert.lastPrice || 0;
+                            const currentPrice = token.priceUsd || 0;
+
+                            if (lastPrice > 0) {
+                                const priceRatio = currentPrice / lastPrice;
+                                if (priceRatio > 1.5) {
+                                    // Price is >1.5x since last alert. Dangerous to enter?
+                                    logger.info(`[Re-Eval] ⚠️ ${token.symbol} is up ${priceRatio.toFixed(2)}x since last alert. Engaging STRICT MODE.`);
+                                    strictMode = true;
+                                }
+                            }
+
+                            // Even if price is fine, re-alerting requires higher standards
+                            // strictMode = true; // Use this if we want ALL re-alerts to be strict
+                        }
 
                         const ageHours = token.createdAt ? (Date.now() - token.createdAt.getTime()) / (3600 * 1000) : 0;
 
@@ -221,9 +244,11 @@ export class TokenScanJob {
                         const aiScore = narrative.aiScore || 0;
 
                         // --- STEP 6: THE GATEKEEPER (Strict Approval) ---
-                        if (!narrative.aiApproved) {
+                        const minScore = strictMode ? 8.5 : 7; // Higher bar for re-alerts or pumped tokens
+
+                        if (!narrative.aiApproved || aiScore < minScore) {
                             lowScoreCount++;
-                            const reason = narrative.aiReason || "AI Approval: NO";
+                            const reason = narrative.aiReason || `AI Score ${aiScore} < ${minScore}`;
                             logger.info(`❌ [AI Reject] ${token.symbol} - Score: ${aiScore}/10 - Reason: ${reason}`);
 
                             await this.storage.saveSeenToken(token.mint, {
