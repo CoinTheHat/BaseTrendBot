@@ -37,8 +37,9 @@ export class NarrativeEngine {
         const dataSection =
             `• MC: $${(token.marketCapUsd || 0).toLocaleString()}\n` +
             `• Liq: $${(token.liquidityUsd ?? 0).toLocaleString()}\n` +
+            `• Liq: $${(token.liquidityUsd ?? 0).toLocaleString()}\n` +
             `• Vol (24h): $${(token.volume24hUsd ?? 0).toLocaleString()}\n` +
-            `• Buyers (5m): ${token.buyers5m ?? 'Veri Alınamadı'}\n` +
+            `• Age: ${token.createdAt ? Math.floor((Date.now() - token.createdAt.getTime()) / (60 * 60 * 1000)) + 'h' : 'N/A'}\n` +
             `• ${twitterStatus}`;
 
         // PRE-FILTERING (User Request)

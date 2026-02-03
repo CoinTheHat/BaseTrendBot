@@ -270,13 +270,23 @@ export class TokenScanJob {
                         // --- STEP 7: SUCCESS - GEM SPOTTED ---
                         const { allowed } = await this.cooldown.canAlert(token.mint);
                         if (allowed) {
-                            // DIP ENTRY LOGIC
+                            // DIP ENTRY LOGIC (50% Retracement Strategy)
                             const m5 = token.priceChange5m || 0;
                             if (m5 > 30) {
                                 const currentMc = token.marketCapUsd || 0;
-                                const dipTargetMc = currentMc * (1 - (m5 / 200)); // Half of the rise % (e.g. 30% rise -> 15% discount target)
 
-                                logger.info(`[DIP WAIT] 📉 ${token.symbol} is up ${m5}% in 5m. Waiting for dip to ~$${Math.floor(dipTargetMc)} before alerting.`);
+                                // LOGIC: If price went from 10 -> 14 (+40%), we want entry at 12 (giving back half the gain).
+                                // Math: 
+                                // BasePrice = Current / (1 + m5/100)
+                                // Gain = Current - BasePrice
+                                // Target = BasePrice + (Gain * 0.5) 
+                                //        = Current - (Gain * 0.5)
+
+                                const basePriceMc = currentMc / (1 + (m5 / 100));
+                                const gain = currentMc - basePriceMc;
+                                const dipTargetMc = currentMc - (gain * 0.5); // 50% retracement level
+
+                                logger.info(`[DIP WAIT] 📉 ${token.symbol} (+${m5.toFixed(1)}%) Base: $${Math.floor(basePriceMc)} -> Peak: $${Math.floor(currentMc)}. Waiting for 50% drop to ~$${Math.floor(dipTargetMc)}.`);
 
                                 await this.storage.savePerformance({
                                     mint: token.mint,

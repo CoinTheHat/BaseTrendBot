@@ -83,6 +83,7 @@ Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. 
 - Likidite: $${token.liquidityUsd}
 - Market Cap: $${token.marketCapUsd}
 - Hacim (5dk): $${token.volume5mUsd}
+- Token Yaşı: ${token.createdAt ? Math.floor((Date.now() - token.createdAt.getTime()) / (60 * 60 * 1000)) + 'saat' : 'Bilinmiyor'} (Genç tokenlar daha riskli ama kazançlı olabilir)
 - Top 10 Holder: ${token.top10HoldersSupply ? token.top10HoldersSupply.toFixed(2) + '%' : 'Bilinmiyor'}
 
 **Görev:**
