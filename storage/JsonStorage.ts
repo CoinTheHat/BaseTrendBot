@@ -14,6 +14,8 @@ export interface SeenTokenData {
     lastScore: number;
     lastPhase: string;
     lastPrice?: number;
+    dipTargetMc?: number;       // For Dip Entry
+    storedAnalysis?: string;    // For Dip Entry
 }
 
 export class JsonStorage {
