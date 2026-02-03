@@ -7,101 +7,144 @@ export class ScoringEngine {
         let totalScore = 0;
         const breakdown: ScoreBreakdown[] = [];
 
-        // 1. Meme Match (VIP Pass)
-        if (matchResult.memeMatch) {
-            totalScore += 10; // Massive boost to ensure alert
-            breakdown.push({ factor: 'Meme Match', points: 10, details: `Matches '${matchResult.matchedMeme?.phrase}'` });
-        }
-
-        // 2. Market Cap
-        const mc = token.marketCapUsd || 0;
-        if (mc >= config.MIN_MC_USD && mc <= config.MAX_MC_USD) {
-            totalScore += 2;
-            breakdown.push({ factor: 'MC Range', points: 2, details: `MC $${(mc / 1000).toFixed(1)}k in sweet spot` });
-        } else if (mc < config.MIN_MC_USD / 2) {
-            // 0 points, too early
-            breakdown.push({ factor: 'MC Range', points: 0, details: `MC $${(mc / 1000).toFixed(1)}k too low` });
-        } else if (mc > config.MAX_MC_USD * 2) {
-            // Only penalize if NOT a specific match
-            if (!matchResult.memeMatch) {
-                totalScore -= 2;
-                breakdown.push({ factor: 'MC Range', points: -2, details: `MC $${(mc / 1000).toFixed(1)}k too high` });
-            } else {
-                breakdown.push({ factor: 'MC Range', points: 0, details: `MC High but Ignored (Matched)` });
-            }
-        }
-
-        // 3. Liquidity
+        // --- 0. STRICT HARD GATES (Firewall) ---
+        // These MUST be checked first. If failed, score is 0 and rejected immediately.
         const liq = token.liquidityUsd || 0;
-        if (liq >= config.MIN_LIQUIDITY_USD) {
-            totalScore += 2;
-            breakdown.push({ factor: 'Liquidity', points: 2, details: `Liq $${(liq / 1000).toFixed(1)}k healthy` });
+        const mc = token.marketCapUsd || 0;
+        const liqMcRatio = mc > 0 ? liq / mc : 0;
+
+        // Gate 1: Unplayable Liquidity
+        if (liq < 5000) {
+            return { totalScore: 0, breakdown: [{ factor: 'Gate', points: 0, details: '🚫 Liq < $5k' }], phase: 'REJECTED_RISK' };
+        }
+
+        // Gate 2: Suspicious Liquidity Structure (Potential Rug/Honeypot)
+        // Ratio > 90% usually means dev added all supply to LP or weird price manipulation
+        if (liqMcRatio > 0.90) {
+            return { totalScore: 0, breakdown: [{ factor: 'Gate', points: 0, details: '🚫 Liq > 90% MC (Scam Risk)' }], phase: 'REJECTED_RISK' };
+        }
+
+
+        // --- 1. MARKET CAP SEGMENTATION (Context-Aware) ---
+        // Scale: 0-100. Max Segment Points: 50.
+        let segment = 'UNKNOWN';
+
+        if (mc < 10000) {
+            segment = 'MICRO'; // Too early
+            totalScore = 0;
+            breakdown.push({ factor: 'MC Segment', points: 0, details: '🚫 Micro Cap (<$10k) - Too Risky' });
+            return { totalScore, breakdown, phase: 'REJECTED_RISK' };
+        } else if (mc < 50000) {
+            segment = 'SEED'; // High Risk / Small Size
+            totalScore += 30; // Base Entry
+            breakdown.push({ factor: 'MC Segment', points: 30, details: '🌱 Seed Stage ($10k-$50k)' });
+        } else if (mc < 250000) {
+            segment = 'GOLDEN'; // Optimal Sniper Zone
+            totalScore += 50; // Strong Base
+            breakdown.push({ factor: 'MC Segment', points: 50, details: '🏆 Golden Zone ($50k-$250k)' });
         } else {
-            totalScore -= 2;
-            breakdown.push({ factor: 'Liquidity', points: -2, details: `Liq $${(liq / 1000).toFixed(1)}k low` });
+            segment = 'RUNNER'; // Breakout Only
+            totalScore += 20; // Needs strong momentum to pass
+            breakdown.push({ factor: 'MC Segment', points: 20, details: '🏃 Runner Zone (>$250k)' });
         }
 
-        // 4. Volume & Momentum
-        const vol5 = token.volume5mUsd || 0;
-        const vol30 = token.volume30mUsd || 0;
+        // --- 2. MOMENTUM (Txns & Speed > Volume) ---
+        // Max Points: 25
+        // Using `txs5m` (Buys + Sells) as proxy for speed
+        const txs = token.txs5m || { buys: 0, sells: 0 };
+        const totalTx = txs.buys + txs.sells;
+        const buyRatio = totalTx > 0 ? txs.buys / totalTx : 0;
 
-        // Check minimal volume activity (arbitrary threshold relative to liquidity)
-        if (vol5 >= 1000) { // e.g. $1k in 5 mins
-            totalScore += 2;
-            breakdown.push({ factor: 'Volume', points: 2, details: `$${(vol5 / 1000).toFixed(1)}k / 5m` });
+        // A. Activity Velocity
+        if (totalTx > 100) { // Hyper Active (>20 tx/min)
+            totalScore += 15;
+            breakdown.push({ factor: 'Velocity', points: 15, details: '🚀 Hyper Active (>100 tx/5m)' });
+        } else if (totalTx > 40) { // Active (>8 tx/min)
+            totalScore += 10;
+            breakdown.push({ factor: 'Velocity', points: 10, details: '⚡ Active (>40 tx/5m)' });
+        } else if (totalTx < 10) { // Dead
+            totalScore -= 20;
+            breakdown.push({ factor: 'Velocity', points: -20, details: '💤 Low Activity (<10 tx/5m)' });
         }
 
-        // Momentum
-        if (vol30 > 0 && vol5 > (vol30 / 6) * 2) {
-            if (vol5 > vol30 / 2) {
-                totalScore += 1;
-                breakdown.push({ factor: 'Momentum', points: 1, details: 'Strong 5m volume spike' });
+        // B. Buy Pressure (Context-Aware)
+        // Max Points: 15
+        // In Seed/Golden, we want diverse buying. In Runner, we want breakouts.
+        if (buyRatio > 0.60 && txs.buys > 15) {
+            totalScore += 15;
+            breakdown.push({ factor: 'Pressure', points: 15, details: `🔥 Strong Buys (${(buyRatio * 100).toFixed(0)}%)` });
+        } else if (buyRatio < 0.40) {
+            totalScore -= 10;
+            breakdown.push({ factor: 'Pressure', points: -10, details: '🐻 Sell Heavy' });
+        }
+
+        // --- 3. LIQUIDITY QUALITY ---
+        // Hard gates passed, now check quality
+        // Healthy Floor Check
+        if (liqMcRatio < 0.10) {
+            totalScore -= 10;
+            breakdown.push({ factor: 'Liquidity', points: -10, details: '⚠️ Thin Liquidity (<10% MC)' });
+        }
+
+        // --- 4. FAKE PUMP / SCAM DETECTION (Segment-Aware) ---
+        const priceChange = token.priceChange5m || 0;
+
+        // Definition: High Price Jump + Low Buys = Artificial
+        let minBuysForPump = 10;
+        let maxChangeTolerance = 40;
+
+        // Stricter for Seed Caps (Easier to manipulate)
+        if (segment === 'SEED') {
+            minBuysForPump = 20; // Needs more participation to prove it's real
+            maxChangeTolerance = 30; // Lower tolerance for huge candles
+        }
+
+        if (priceChange > maxChangeTolerance && txs.buys < minBuysForPump) {
+            totalScore = 0; // KILL IT
+            breakdown.push({ factor: 'Fake Pump', points: -99, details: `🚨 Fake Pump (+${priceChange.toFixed(0)}% w/ low buy txns)` });
+            return { totalScore, breakdown, phase: 'REJECTED_RISK' };
+        }
+
+        // Rule: Price crash
+        if (priceChange < -20) {
+            totalScore -= 20;
+            breakdown.push({ factor: 'Price Action', points: -20, details: '📉 Dumping (-20%)' });
+        }
+
+        // --- 5. MEME BONUS (Reduced Impact) ---
+        // Max Points: 5
+        if (matchResult.memeMatch) {
+            totalScore += 5;
+            breakdown.push({ factor: 'Meme Match', points: 5, details: `Meme Bonus (${matchResult.matchedMeme?.phrase})` });
+        }
+
+        // --- 6. AGE SEGMENT SCORING ---
+        // Max Points: 10
+        // Using createdAt if available
+        if (token.createdAt) {
+            const ageMins = (Date.now() - token.createdAt.getTime()) / (60 * 1000);
+
+            if (ageMins <= 10) {
+                totalScore += 10; // Aggressive Sniper Zone
+                breakdown.push({ factor: 'Freshness', points: 10, details: '👶 Newborn (<10m)' });
+            } else if (ageMins <= 30) {
+                totalScore += 5; // Optimal
+                breakdown.push({ factor: 'Freshness', points: 5, details: '⚡ Early (<30m)' });
+            } else if (ageMins > 240) { // > 4 hours
+                totalScore -= 20; // Old
+                breakdown.push({ factor: 'Freshness', points: -20, details: '👴 Old (>4h)' });
             }
         }
 
-        // 6. Smart Momentum (Buy Pressure & Volatility)
-        if (token.txs5m) {
-            const { buys, sells } = token.txs5m;
-            const totalTx = buys + sells;
-
-            if (totalTx > 10) { // Min sample size
-                const buyRatio = buys / totalTx;
-
-                // A. Buying Pressure Reward
-                if (buyRatio > 0.6) { // > 60% Buys
-                    totalScore += 1;
-                    breakdown.push({ factor: 'Buy Pressure', points: 1, details: `🔥 Strong Buys (${(buyRatio * 100).toFixed(0)}%)` });
-                }
-
-                // B. Price Flight Check (Organic vs Fake)
-                const pChange = token.priceChange5m || 0;
-                if (pChange > 30) {
-                    if (buyRatio > 0.5) {
-                        // Organic FOMO -> Reward
-                        totalScore += 1;
-                        breakdown.push({ factor: 'Price Action', points: 1, details: `🚀 Organic Pump (+${pChange.toFixed(0)}% & Buys)` });
-                    } else {
-                        // Fake Pump (Sells dominate) -> PUNISH
-                        totalScore = Math.min(totalScore, 4); // Cap at 4 (Filters it out)
-                        breakdown.push({ factor: 'Risk', points: -5, details: `⚠️ Fake Pump (+${pChange.toFixed(0)}% but High Sells)` });
-                    }
-                }
-            }
-        }
-
-        // C. Liquidity Health (Volatility Check)
-        if (vol5 > liq * 3 && liq > 0) {
-            // specific warning tag logic could be handled here or in Narrative
-            breakdown.push({ factor: 'Volatility', points: 0, details: '⚠️ High Volatility (Vol > 3x Liq)' });
-        }
-
-        // 5. Buyers (if available)
-        // token.buyers5m not always set, skip for V1 heuristic if undefined
+        // Normalize / Clamp Logic
+        // Max Theoretical: 50 (Golden) + 15 (Vel) + 15 (Press) + 5 (Meme) + 10 (Age) = 95.
+        // Alert Threshold: 70.
+        totalScore = Math.min(Math.max(totalScore, 0), 100);
 
         return {
             totalScore,
             breakdown,
-            phase: 'SPOTTED' // Default, will be recalculated by PhaseDetector
+            phase: totalScore >= 70 ? 'SPOTTED' : 'TRACKING'
         };
     }
 }

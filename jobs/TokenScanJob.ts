@@ -143,256 +143,119 @@ export class TokenScanJob {
                     try {
                         this.processedCache.set(token.mint, Date.now());
 
+                        // --- STEP 1: STRICT LIQUIDITY GATES (Sniper Firewall) ---
+                        const liq = Number(token.liquidityUsd) || 0;
+                        const mc = Number(token.marketCapUsd) || 0;
+                        const liqMcRatio = mc > 0 ? liq / mc : 0;
 
-                        // --- STEP 1: SECURITY (SIMPLIFIED) ---
-                        // BirdEye Trending already filters out most scams
-                        // GoPlus often returns "No data" for new tokens anyway
-                        // Skip honeypot check for speed, rely on:
-                        // 1. BirdEye's curated trending list
-                        // 2. Real-time volume/liquidity checks
-                        // 3. Twitter sentiment (Ghost Protocol)
-
-                        // --- STEP 2: PREMIUM FILTERS ---
-                        // Explicitly parse values to ensure they are numbers
-                        const rawLiq = token.liquidityUsd;
-                        const rawMc = token.marketCapUsd;
-                        const rawVol = token.volume24hUsd;
-
-                        // Ensure numeric types (handle potential string inputs)
-                        const liq = Number(rawLiq) || 0;
-                        const mc = Number(rawMc) || 0;
-                        const volume24h = Number(rawVol) || 0;
-
-
-
-                        // --- CRITICAL RE-EVALUATION LOGIC ---
-                        let strictMode = false;
-                        const previousAlert = await this.storage.getSeenToken(token.mint);
-
-                        if (previousAlert && previousAlert.lastAlertAt > 0) {
-                            // Token was alerted before. Check if it "walked" (price spiked)
-                            const lastPrice = previousAlert.lastPrice || 0;
-                            const currentPrice = token.priceUsd || 0;
-
-                            if (lastPrice > 0) {
-                                const priceRatio = currentPrice / lastPrice;
-                                if (priceRatio > 1.5) {
-                                    // Price is >1.5x since last alert. Dangerous to enter?
-                                    logger.info(`[Re-Eval] ⚠️ ${token.symbol} is up ${priceRatio.toFixed(2)}x since last alert. Engaging STRICT MODE.`);
-                                    strictMode = true;
-                                }
-                            }
-
-                            // Even if price is fine, re-alerting requires higher standards
-                            // strictMode = true; // Use this if we want ALL re-alerts to be strict
-                        }
-
-                        const ageHours = token.createdAt ? (Date.now() - token.createdAt.getTime()) / (3600 * 1000) : 0;
-
-
-                        // AGE FILTER REVERTED: User wants High Score Old Tokens to pass.
-                        // Rely on AI "Zombie Test" instead.
-
-                        // NEW: DYNAMIC FLOOR STRATEGY (Adaptive Ratio)
-                        let minRatio = 0.20; // Default for low caps (<500k)
-
-                        if (mc > 5000000) {
-                            minRatio = 0.04; // High Cap (>5M): Expect >4% liquidity (User requested 0.4 but 4% is safer/realistic)
-                        } else if (mc > 500000) {
-                            minRatio = 0.10; // Mid Cap (500k-5M): Expect >10% liquidity
-                        }
-                        // Else Low Cap (<500k): Keep 20% (0.20) for safety
-
-                        const liqMcRatio = liq / (mc || 1);
-                        if (liqMcRatio < minRatio) {
-                            lowLiqCount++;
-                            // logger.debug(`[Filter] 🏚️ Weak Floor: ${token.symbol} (Ratio: ${liqMcRatio.toFixed(2)})`);
-                            return;
-                        }
-
-                        // NEW FILTER: Reject Suspiciously High Liquidity (Rug/Honeypot/Post-Dump)
-                        // User Request: Reject if Liq/MC > 90%
-                        if (liqMcRatio > 0.90) {
-                            logger.warn(`[Filter] 🚨 Suspicious Liquidity: ${token.symbol} (Ratio: ${(liqMcRatio * 100).toFixed(1)}%). Potential Rug/Honeypot.`);
-                            return;
-                        }
-
-                        // FILTER 1: Liquidity (Min $5k)
+                        // GATE A: Unplayable Liquidity
                         if (liq < 5000) {
                             lowLiqCount++;
-                            // logger.debug(`[Filter] 💧 Low Liquidity: ${token.symbol} ($${Math.floor(liq)})`);
                             return;
                         }
 
-                        // FILTER 2: Market Cap (Max $5M)
-                        if (mc > 5000000) {
-                            logger.debug(`[Filter] 🐳 Too Big: ${token.symbol} (MC: $${(mc / 1000000).toFixed(1)}M)`);
+                        // GATE B: Rug / Scam Risk (Liquidity > 90% of MC is suspicious for established, but ok for ultra-fresh? No, usually scam/honeypot)
+                        // User accepted strict gate.
+                        if (liqMcRatio > 0.90) {
+                            lowLiqCount++; // Counting as liq reject for stats
+                            logger.warn(`[Gate] 🚫 High Liquidity Ratio: ${token.symbol} (${(liqMcRatio * 100).toFixed(1)}%). Potential Scam.`);
                             return;
                         }
 
-                        // FILTER 2: Momentum (24h Volume / Liquidity)
-                        const momentum = volume24h / (liq || 1);
-
-                        if (momentum < 0.5) {
-                            weakMomentumCount++;
-                            // logger.debug(`[Filter] 💤 Weak Momentum: ${token.symbol} (${momentum.toFixed(2)}x)`);
-                            return;
-                        }
-
-                        const ageDisplay = ageHours < 1 ? `${Math.floor(ageHours * 60)}m` : `${Math.floor(ageHours)}h`;
-
-                        // MOVED: Log only after passing ALL filters (Floor, Liq, MC, Momentum)
-                        logger.info(`[Sniper] 💎 GEM DETECTED: ${token.symbol} | MC: $${Math.floor(mc)} | Age: ${ageDisplay} | Vol/Liq: ${momentum.toFixed(2)}x | Floor: ${liqMcRatio.toFixed(2)}`);
-
-
-                        // --- STEP 3: TWITTER SCAN (Safe Mode) ---
-                        let tweets: string[] = [];
-                        if (config.ENABLE_TWITTER_SCRAPING) {
-                            try {
-                                // Use new fallback system (passes token object)
-                                tweets = await this.scraper.fetchTokenTweets(token);
-                            } catch (err) {
-                                logger.error(`[Job] Scraping failed for ${token.symbol}: ${err}`);
-                            }
-                        }
-
-
-                        // --- STEP 4: GHOST PROTOCOL ---
-                        // If no tweets found, proceed to AI with Penalty (Risk of ghost scam)
-                        if (!tweets || tweets.length === 0) {
-                            ghostCount++;
-                            logger.warn(`[Ghost] 👻 No tweets found for ${token.symbol}. Proceeding to AI for PENALTY Evaluation (-2 Pts).`);
-                            // DO NOT RETURN. Let it pass to AI.
-                        }
-
-                        // --- STEP 5: AI ANALYSIS (Wolf Logic) ---
-                        // Mock matchResult for scoring compatibility
-                        const matchResult = { memeMatch: true, matchScore: 1.0 };
+                        // --- STEP 2: MECHANICAL SCORING (Speed Focus) ---
+                        // Mock match for now, or real if watchlist active.
+                        const matchResult = { memeMatch: false };
                         const enrichedToken = token;
-                        const scoreRes = this.scorer.score(enrichedToken, matchResult); // Base tech score
-                        const phase = this.phaseDetector.detect(enrichedToken, scoreRes);
 
-                        // Generate Narrative & Get AI Score
-                        const narrative = await this.narrative.generate(enrichedToken, matchResult, scoreRes, tweets);
-                        let aiScore = narrative.aiScore || 0;
+                        // Check watchers (Meme Match) - minimal impact now
+                        // We could call matcher.match(token) if we want the small bonus
 
-                        // AGE SCORING (Tiered Strategy for Fast 2x)
-                        // 0-4h   : +1 Point (Fresh Hype)
-                        // 4-12h  :  0 Points (Neutral/Settling)
-                        // 12-24h : -1 Point (Caution/Slowing)
-                        // >24h   : -2 Points (Old/Stale)
+                        const scoreRes = this.scorer.score(enrichedToken, matchResult);
+                        const { totalScore, phase } = scoreRes;
 
-                        if (ageHours <= 4) {
-                            aiScore += 1;
-                            logger.info(`[Age Bonus] 🚀 ${token.symbol} is fresh (${ageHours.toFixed(1)}h). +1 Point (Score: ${aiScore}).`);
-                        } else if (ageHours > 12 && ageHours <= 24) {
-                            aiScore -= 1;
-                            logger.info(`[Age Penalty] ⚠️ ${token.symbol} is slowing (${ageHours.toFixed(1)}h). -1 Point (Score: ${aiScore}).`);
-                        } else if (ageHours > 24) {
-                            aiScore -= 2;
-                            logger.info(`[Age Penalty] 📉 ${token.symbol} is old (${ageHours.toFixed(1)}h). -2 Points (Score: ${aiScore}).`);
-                        }
-                        // 4-12h is neutral (0 change)
-
-                        // --- STEP 6: THE GATEKEEPER (Strict Approval) ---
-                        const minScore = strictMode ? 8.5 : 7; // Higher bar for re-alerts or pumped tokens
-
-                        if (!narrative.aiApproved || aiScore < minScore) {
+                        // REJECTION CHECK
+                        // Threshold: 70/100 (Equivalent to old 7/10)
+                        if (phase === 'REJECTED_RISK' || totalScore < 70) {
                             lowScoreCount++;
-                            const reason = narrative.aiReason || `AI Score ${aiScore} < ${minScore}`;
-                            logger.info(`❌ [AI Reject] ${token.symbol} - Score: ${aiScore}/10 - Reason: ${reason}`);
-
-                            await this.storage.saveSeenToken(token.mint, {
-                                symbol: token.symbol, // Save symbol especially for rejects
-                                firstSeenAt: Date.now(),
-                                lastAlertAt: 0,
-                                lastScore: aiScore,
-                                lastPhase: 'REJECTED_LOW_SCORE',
-                                storedAnalysis: JSON.stringify(narrative) // Save for training
-                            });
-                            return; // DO NOT ALERT
+                            return;
                         }
 
-                        // --- STEP 7: SUCCESS - GEM SPOTTED ---
+                        // --- STEP 3: SNIPED! (Immediate Alert) ---
                         const { allowed } = await this.cooldown.canAlert(token.mint);
                         if (allowed) {
-                            // DIP ENTRY LOGIC (50% Retracement Strategy)
-                            const m5 = token.priceChange5m || 0;
-                            if (m5 > 30) {
-                                const currentMc = token.marketCapUsd || 0;
-
-                                // LOGIC: If price went from 10 -> 14 (+40%), we want entry at 12 (giving back half the gain).
-                                // Math: 
-                                // BasePrice = Current / (1 + m5/100)
-                                // Gain = Current - BasePrice
-                                // Target = BasePrice + (Gain * 0.5) 
-                                //        = Current - (Gain * 0.5)
-
-                                const basePriceMc = currentMc / (1 + (m5 / 100));
-                                const gain = currentMc - basePriceMc;
-                                const dipTargetMc = currentMc - (gain * 0.5); // 50% retracement level
-
-                                logger.info(`[DIP WAIT] 📉 ${token.symbol} (+${m5.toFixed(1)}%) Base: $${Math.floor(basePriceMc)} -> Peak: $${Math.floor(currentMc)}. Waiting for 50% drop to ~$${Math.floor(dipTargetMc)}.`);
-
-                                await this.storage.saveSeenToken(token.mint, {
-                                    symbol: token.symbol,
-                                    firstSeenAt: Date.now(),
-                                    lastAlertAt: 0, // Not alerted yet
-                                    lastScore: aiScore,
-                                    lastPhase: 'WAITING_DIP',
-                                    dipTargetMc: dipTargetMc,
-                                    storedAnalysis: JSON.stringify(narrative) // Save analysis for later
-                                });
-
-                                // Ensure it's in performance table for monitoring
-                                await this.storage.savePerformance({
-                                    mint: token.mint,
-                                    symbol: token.symbol,
-                                    alertMc: currentMc,
-                                    athMc: currentMc,
-                                    currentMc: currentMc,
-                                    entryPrice: token.priceUsd || 0,
-                                    status: 'WAITING_DIP',
-                                    dipTargetMc: dipTargetMc,
-                                    alertTimestamp: new Date(),
-                                    lastUpdated: new Date()
-                                });
-
-                                return; // DO NOT ALERT YET
-                            }
-
-                            // NORMAL ALERT (Pump < 30%)
                             alertCount++;
-                            logger.info(`✅ [GEM SPOTTED] ${token.symbol} Score: ${aiScore}/10 -> Sending Alert!`);
 
-                            // Save as regular ALERTED
+                            // Determine Segment for Logging
+                            let segmentLog = 'UNKNOWN';
+                            if (mc < 50000) segmentLog = 'SEED';
+                            else if (mc < 250000) segmentLog = 'GOLDEN';
+                            else segmentLog = 'RUNNER';
+
+                            logger.info(`🔫 [SNIPED] [${segmentLog}] ${token.symbol} Score: ${totalScore}/100 | Liq: $${Math.floor(liq)} | MC: $${Math.floor(mc)}`);
+
+                            // Create Mechanical Narrative (No AI Latency)
+                            // Display Score as X/10 for familiarity (e.g. 75 -> 7.5)
+                            const displayScore = (totalScore / 10).toFixed(1);
+
+                            const mechanicalNarrative = {
+                                headline: `🔫 SNIPER ALERT: ${token.symbol}`,
+                                narrativeText: `⚡ **MECHANICAL ENTRY** • Score: ${displayScore}/10
+🚀 **MOMENTUM SIGNAL**
+• Txns Accelerating
+• Liquidity Healthy ($${(liq / 1000).toFixed(1)}k)
+• MC Segment: ${segmentLog}
+
+⚠️ **RISK CHECK:**
+• Volatility: High
+• Entry Type: ${segmentLog === 'SEED' ? 'Small Size' : 'Full Size'}`,
+                                dataSection: `• MC: $${(mc / 1000).toFixed(1)}k
+• Liq: $${(liq / 1000).toFixed(1)}k
+• Vol: $${(token.volume5mUsd || 0).toFixed(0)}
+• Age: ${token.createdAt ? Math.floor((Date.now() - token.createdAt.getTime()) / 60000) + 'm' : 'N/A'}`,
+                                tradeLens: `SNIPE`,
+                                vibeCheck: `MECHANICAL`,
+                                aiScore: totalScore, // Save full 100-scale score
+                                aiApproved: true
+                            };
+
+                            // Save as ALERTED immediately
                             await this.storage.saveSeenToken(token.mint, {
                                 symbol: token.symbol,
                                 firstSeenAt: Date.now(),
                                 lastAlertAt: Date.now(),
-                                lastScore: aiScore,
+                                lastScore: totalScore,
                                 lastPhase: 'ALERTED',
-                                storedAnalysis: JSON.stringify(narrative) // Save for training
+                                storedAnalysis: JSON.stringify(mechanicalNarrative)
                             });
 
-                            await this.bot.sendAlert(narrative, enrichedToken, scoreRes);
-                            if (aiScore >= 8) await this.twitter.postTweet(narrative, enrichedToken);
+                            // ⚡ FIRE ALERT
+                            await this.bot.sendAlert(mechanicalNarrative, enrichedToken, scoreRes);
 
-                            await this.cooldown.recordAlert(token.mint, scoreRes.totalScore, phase, token.priceUsd);
+                            // Twitter (Optional - maybe skip for pure sniper speed or do async)
+                            // if (totalScore >= 8) this.twitter.postTweet(mechanicalNarrative, enrichedToken);
 
-                            // Save Tracking Data
+                            await this.cooldown.recordAlert(token.mint, totalScore, 'TRACKING', token.priceUsd);
+
+                            // AUTOPSY PRESERVATION
                             await this.storage.savePerformance({
                                 mint: token.mint,
                                 symbol: token.symbol,
-                                alertMc: token.marketCapUsd || 0,
-                                athMc: token.marketCapUsd || 0,
-                                // ... rest continues below in original file ...
-                                currentMc: token.marketCapUsd || 0,
-                                entryPrice: token.priceUsd || 0,
-                                status: 'TRACKING', // Fixed missing status
+                                alertMc: mc,
+                                athMc: mc,
+                                currentMc: mc,
+                                entryPrice: Number(token.priceUsd) || 0,
+                                status: 'TRACKING',
                                 alertTimestamp: new Date(),
                                 lastUpdated: new Date()
                             });
+
+                            // --- STEP 4: ASYNC AI (Optional Post-Analysis) ---
+                            // We can trigger this without awaiting if we want dashboard updates later
+                            /*
+                            this.narrative.generate(enrichedToken, matchResult, scoreRes, []).then(aiResult => {
+                                // Update DB with AI thoughts for "Autopsy" later?
+                            });
+                            */
                         }
 
                     } catch (tokenErr) {
@@ -400,7 +263,7 @@ export class TokenScanJob {
                     }
                 }));
                 // Tiny delay between chunks
-                await new Promise(r => setTimeout(r, 100));
+                await new Promise(r => setTimeout(r, 50));
             }
 
             // SCAN SUMMARY
@@ -414,10 +277,10 @@ export class TokenScanJob {
 🎯 Fresh Candidates: ${freshCandidates.length}
 
 🚫 REJECTED (${totalRejected}):
-  💧 Low Liquidity (<$5k): ${lowLiqCount}
+  💧 Low Liquidity (<$5k or >90% MC): ${lowLiqCount}
   💤 Weak Momentum (<0.5x): ${weakMomentumCount}
   👻 Ghost Protocol: ${ghostCount}
-  ❌ AI Score <7: ${lowScoreCount}
+  ❌ Score <7: ${lowScoreCount}
 
 ✅ ALERTS SENT: ${alertCount}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);

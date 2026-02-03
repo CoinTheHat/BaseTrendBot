@@ -54,7 +54,7 @@ export interface ScoreBreakdown {
 export interface ScoreResult {
     totalScore: number;
     breakdown: ScoreBreakdown[];
-    phase: "SPOTTED" | "TRACKING" | "COOKING" | "SERVED";
+    phase: "SPOTTED" | "TRACKING" | "COOKING" | "SERVED" | "REJECTED_RISK";
 }
 
 // Narrative
