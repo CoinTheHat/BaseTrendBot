@@ -588,4 +588,17 @@ export class PostgresStorage {
             logger.error(`[Postgres] failDipToken failed for ${mint}`, err);
         }
     }
+    async resetDatabase(): Promise<void> {
+        try {
+            logger.warn('[Postgres] 🧨 RESETTING DATABASE BY ADMIN REQUEST...');
+            await this.pool.query('TRUNCATE TABLE seen_tokens CASCADE');
+            await this.pool.query('TRUNCATE TABLE token_performance CASCADE');
+            await this.pool.query('TRUNCATE TABLE trends CASCADE');
+            await this.pool.query('TRUNCATE TABLE keyword_alerts CASCADE');
+            logger.info('[Postgres] ✅ Database reset complete.');
+        } catch (err) {
+            logger.error('[Postgres] Reset failed:', err);
+            throw err;
+        }
+    }
 }

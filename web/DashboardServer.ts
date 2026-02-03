@@ -178,6 +178,32 @@ export class DashboardServer {
                 res.status(500).json({ error: 'Internal Server Error' });
             }
         });
+
+        // NEW: Database Reset Endpoint (Admin)
+        this.app.post('/api/admin/reset-db', async (req, res) => {
+            try {
+                logger.warn('[Dashboard] ⚠️ Admin requested database reset via UI.');
+
+                // Truncate tables via storage pool (direct query)
+                // Note: Ideally, expose a reset method in PostgresStorage, but access to pool is private.
+                // We'll trust the method on storage if it existed, or use raw sql if we can.
+                // Check if storage exposes pool or a query method. It does not look like it from imports.
+                // Let's modify PostgresStorage to add a reset method or use a Public method.
+                // Wait, I can't modify PostgresStorage in this turn easily without another tool call.
+                // Let's assume I will add `resetDatabase` to PostgresStorage first.
+
+                // Actually, let's use the script execution or add method.
+                // Better: Add resetAllData() to PostgresStorage.ts
+
+                await this.storage.resetDatabase(); // I will implement this next
+
+                logger.info('[Dashboard] ✅ Database reset successful.');
+                res.json({ success: true, message: 'Database cleared.' });
+            } catch (error) {
+                logger.error(`[API] DB Reset failed: ${error}`);
+                res.status(500).json({ error: 'Reset failed' });
+            }
+        });
     }
 
     start() {

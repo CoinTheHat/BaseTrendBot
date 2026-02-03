@@ -129,6 +129,24 @@
             }
         }
 
+        async function resetDb() {
+            if (!confirm('🧨 DANGER: This will wipe ALL data (Tokens, Performance, Alerts). Are you sure?')) return;
+
+            try {
+                const res = await fetch('/api/admin/reset-db', { method: 'POST' });
+                const json = await res.json();
+                if (json.success) {
+                    alert('Database Reset Successful');
+                    window.location.reload();
+                } else {
+                    alert('Reset Failed');
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Reset Request Failed');
+            }
+        }
+
         function copyToClipboard(text, btnElement) {
             navigator.clipboard.writeText(text).then(() => {
                 // Visual feedback
@@ -163,6 +181,10 @@
                 <div class="font-mono text-green-400">
                     <%= lastUpdated.toLocaleTimeString() %>
                 </div>
+                <button onclick="resetDb()"
+                    class="mt-2 text-xs bg-red-900/50 hover:bg-red-800 text-red-300 font-bold py-1 px-2 rounded border border-red-800 transition-colors">
+                    💣 RESET DB
+                </button>
             </div>
         </header>
 
