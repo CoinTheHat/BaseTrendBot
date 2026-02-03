@@ -128,12 +128,9 @@ export class TokenScanJob {
             logger.info(`[Job] 🔍 Processing ${freshCandidates.length} fresh candidates...`);
 
             // Scan Statistics
-            let lowLiqCount = 0;
-            let weakMomentumCount = 0;
-            let ghostCount = 0;
-            let lowScoreCount = 0;
+            let gateCount = 0; // Hard Rejects (Liq, Fake Pump)
+            let weakCount = 0; // Low Score (<70)
             let alertCount = 0;
-            let birdeyeFailCount = 0; // Track BirdEye validation failures
 
             // Process in chunks
             const chunks = this.chunkArray(freshCandidates, 2);
@@ -150,33 +147,33 @@ export class TokenScanJob {
 
                         // GATE A: Unplayable Liquidity
                         if (liq < 5000) {
-                            lowLiqCount++;
+                            gateCount++;
                             return;
                         }
 
-                        // GATE B: Rug / Scam Risk (Liquidity > 90% of MC is suspicious for established, but ok for ultra-fresh? No, usually scam/honeypot)
-                        // User accepted strict gate.
+                        // GATE B: Rug / Scam Risk
                         if (liqMcRatio > 0.90) {
-                            lowLiqCount++; // Counting as liq reject for stats
+                            gateCount++;
                             logger.warn(`[Gate] 🚫 High Liquidity Ratio: ${token.symbol} (${(liqMcRatio * 100).toFixed(1)}%). Potential Scam.`);
                             return;
                         }
 
                         // --- STEP 2: MECHANICAL SCORING (Speed Focus) ---
-                        // Mock match for now, or real if watchlist active.
                         const matchResult = { memeMatch: false };
                         const enrichedToken = token;
-
-                        // Check watchers (Meme Match) - minimal impact now
-                        // We could call matcher.match(token) if we want the small bonus
 
                         const scoreRes = this.scorer.score(enrichedToken, matchResult);
                         const { totalScore, phase } = scoreRes;
 
                         // REJECTION CHECK
-                        // Threshold: 70/100 (Equivalent to old 7/10)
-                        if (phase === 'REJECTED_RISK' || totalScore < 70) {
-                            lowScoreCount++;
+                        // Threshold: 70/100
+                        if (phase === 'REJECTED_RISK') {
+                            gateCount++; // Fake pump or other hard risk from engine
+                            return;
+                        }
+
+                        if (totalScore < 70) {
+                            weakCount++;
                             return;
                         }
 
@@ -194,7 +191,6 @@ export class TokenScanJob {
                             logger.info(`🔫 [SNIPED] [${segmentLog}] ${token.symbol} Score: ${totalScore}/100 | Liq: $${Math.floor(liq)} | MC: $${Math.floor(mc)}`);
 
                             // Create Mechanical Narrative (No AI Latency)
-                            // Display Score as X/10 for familiarity (e.g. 75 -> 7.5)
                             const displayScore = (totalScore / 10).toFixed(1);
 
                             const mechanicalNarrative = {
@@ -214,7 +210,7 @@ export class TokenScanJob {
 • Age: ${token.createdAt ? Math.floor((Date.now() - token.createdAt.getTime()) / 60000) + 'm' : 'N/A'}`,
                                 tradeLens: `SNIPE`,
                                 vibeCheck: `MECHANICAL`,
-                                aiScore: totalScore, // Save full 100-scale score
+                                aiScore: totalScore,
                                 aiApproved: true
                             };
 
@@ -231,9 +227,6 @@ export class TokenScanJob {
                             // ⚡ FIRE ALERT
                             await this.bot.sendAlert(mechanicalNarrative, enrichedToken, scoreRes);
 
-                            // Twitter (Optional - maybe skip for pure sniper speed or do async)
-                            // if (totalScore >= 8) this.twitter.postTweet(mechanicalNarrative, enrichedToken);
-
                             await this.cooldown.recordAlert(token.mint, totalScore, 'TRACKING', token.priceUsd);
 
                             // AUTOPSY PRESERVATION
@@ -248,14 +241,6 @@ export class TokenScanJob {
                                 alertTimestamp: new Date(),
                                 lastUpdated: new Date()
                             });
-
-                            // --- STEP 4: ASYNC AI (Optional Post-Analysis) ---
-                            // We can trigger this without awaiting if we want dashboard updates later
-                            /*
-                            this.narrative.generate(enrichedToken, matchResult, scoreRes, []).then(aiResult => {
-                                // Update DB with AI thoughts for "Autopsy" later?
-                            });
-                            */
                         }
 
                     } catch (tokenErr) {
@@ -267,26 +252,21 @@ export class TokenScanJob {
             }
 
             // SCAN SUMMARY
-            const totalRejected = lowLiqCount + weakMomentumCount + ghostCount + lowScoreCount;
+            const totalRejected = gateCount + weakCount;
             logger.info(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 [SCAN SUMMARY]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 🔍 Total Fetched: ${dexTokens.length}
-🔄 Cached (15m): ${cachedCount}
-🎯 Fresh Candidates: ${freshCandidates.length}
+🔄 Cached (4h): ${cachedCount}
+🎯 Fresh Processed: ${freshCandidates.length}
 
-🚫 REJECTED (${totalRejected}):
-  💧 Low Liquidity (<$5k or >90% MC): ${lowLiqCount}
-  💤 Weak Momentum (<0.5x): ${weakMomentumCount}
-  👻 Ghost Protocol: ${ghostCount}
-  ❌ Score <7: ${lowScoreCount}
+🛑 REJECTED (${totalRejected}):
+  ⛔ GATE (Liq/Risk): ${gateCount}
+  📉 WEAK (Score <70): ${weakCount}
 
-✅ ALERTS SENT: ${alertCount}
+✅ SNIPED: ${alertCount}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-
-            // Note: Scan interval is controlled by runLoop() setTimeout
-            // No additional sleep needed here to avoid double-delay
 
         } catch (err) {
             logger.error(`[Job] Cycle failed: ${err}`);

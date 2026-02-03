@@ -21,14 +21,19 @@ export class ScandexBot {
         if (config.TELEGRAM_BOT_TOKEN) {
             this.bot = new TelegramBot(config.TELEGRAM_BOT_TOKEN, { polling: false });
 
-            // Fix: Start polling manually to catch 409 Conflict
-            this.bot.startPolling().catch(err => {
-                if (err.code === 'ETELEGRAM' && err.message.includes('409')) {
-                    logger.error('[Telegram] 🚨 409 CONFLICT: Başka bir bot örneği çalışıyor! Lütfen diğer terminali kapatın.');
-                } else {
-                    logger.error(`[Telegram] Polling error: ${err.message}`);
-                }
-            });
+            // Fix: Start polling only if ENABLED in config to prevent 409 Conflict
+            if (config.ENABLE_TELEGRAM_POLLING) {
+                this.bot.startPolling().catch(err => {
+                    if (err.code === 'ETELEGRAM' && err.message.includes('409')) {
+                        logger.error('[Telegram] 🚨 409 CONFLICT: Başka bir bot örneği çalışıyor! Lütfen diğer terminali kapatın veya POLLING kapatın.');
+                    } else {
+                        logger.error(`[Telegram] Polling error: ${err.message}`);
+                    }
+                });
+                logger.info('[Telegram] 📡 Polling STARTED (ENABLE_TELEGRAM_POLLING=true)');
+            } else {
+                logger.info('[Telegram] 🔕 Polling DISABLED (ENABLE_TELEGRAM_POLLING=false). Bot is in SEND-ONLY mode.');
+            }
 
             this.initCommands();
         } else {

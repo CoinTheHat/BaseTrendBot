@@ -94,6 +94,10 @@ export class PostgresStorage {
             await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS sold_mc NUMERIC DEFAULT 0;`); // NEW
             await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS dip_target_mc NUMERIC DEFAULT 0;`); // NEW
 
+            // Fix: Add missing columns to seen_tokens (User Report verified)
+            await this.pool.query(`ALTER TABLE seen_tokens ADD COLUMN IF NOT EXISTS dip_target_mc NUMERIC DEFAULT 0;`);
+            await this.pool.query(`ALTER TABLE seen_tokens ADD COLUMN IF NOT EXISTS stored_analysis TEXT;`);
+
             // Backfill: found_mc = alert_mc, max_mc = ath_mc for existing rows
             await this.pool.query(`UPDATE token_performance SET found_mc = alert_mc WHERE found_mc IS NULL;`);
             await this.pool.query(`UPDATE token_performance SET max_mc = ath_mc WHERE max_mc IS NULL;`);
@@ -123,7 +127,12 @@ export class PostgresStorage {
                     found_mc, max_mc, found_at, sold_mc, dip_target_mc
                 )
                 VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $3, $4, $7, 0, $10)
-                ON CONFLICT(mint) DO NOTHING`,
+                ON CONFLICT(mint) DO UPDATE SET
+                    ath_mc = GREATEST(token_performance.ath_mc, EXCLUDED.ath_mc),
+                    current_mc = EXCLUDED.current_mc,
+                    last_updated = NOW(),
+                    dip_target_mc = COALESCE(token_performance.dip_target_mc, EXCLUDED.dip_target_mc),
+                    status = EXCLUDED.status`,
                 [
                     perf.mint,
                     perf.symbol,
