@@ -69,7 +69,8 @@ export class PostgresStorage {
                 alert_timestamp TIMESTAMP DEFAULT NOW(),
                 found_at TIMESTAMP DEFAULT NOW(),
                 last_updated TIMESTAMP DEFAULT NOW(),
-                entry_price NUMERIC DEFAULT 0
+                entry_price NUMERIC DEFAULT 0,
+                dip_target_mc NUMERIC DEFAULT 0
             );`,
             `CREATE TABLE IF NOT EXISTS keyword_alerts (
                 tweet_id TEXT PRIMARY KEY,
@@ -91,6 +92,7 @@ export class PostgresStorage {
             await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS max_mc NUMERIC;`);
             await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS found_at TIMESTAMP DEFAULT NOW();`);
             await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS sold_mc NUMERIC DEFAULT 0;`); // NEW
+            await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS dip_target_mc NUMERIC DEFAULT 0;`); // NEW
 
             // Backfill: found_mc = alert_mc, max_mc = ath_mc for existing rows
             await this.pool.query(`UPDATE token_performance SET found_mc = alert_mc WHERE found_mc IS NULL;`);
@@ -111,16 +113,16 @@ export class PostgresStorage {
 
     // --- Performance Monitor ---
 
-    async savePerformance(perf: TokenPerformance) {
+    async savePerformance(perf: TokenPerformance & { dipTargetMc?: number }) {
         // Prevent EVM/Base tokens
         if (perf.mint.startsWith('0x')) return;
         try {
             await this.pool.query(
                 `INSERT INTO token_performance(
                     mint, symbol, alert_mc, ath_mc, current_mc, status, alert_timestamp, last_updated, entry_price,
-                    found_mc, max_mc, found_at, sold_mc
+                    found_mc, max_mc, found_at, sold_mc, dip_target_mc
                 )
-                VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $3, $4, $7, 0)
+                VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $3, $4, $7, 0, $10)
                 ON CONFLICT(mint) DO NOTHING`,
                 [
                     perf.mint,
@@ -131,7 +133,8 @@ export class PostgresStorage {
                     perf.status,
                     perf.alertTimestamp,
                     perf.lastUpdated,
-                    perf.entryPrice || 0
+                    perf.entryPrice || 0,
+                    perf.dipTargetMc || 0
                 ]
             );
         } catch (err) {
@@ -532,6 +535,57 @@ export class PostgresStorage {
             );
         } catch (err) {
             logger.error(`[Postgres] archiveToken failed for ${mint}`, err);
+        }
+    }
+
+    async getWaitingForDipTokens(): Promise<(TokenPerformance & { dipTargetMc: number })[]> {
+        try {
+            const res = await this.pool.query(
+                `SELECT * FROM token_performance 
+                 WHERE status = 'WAITING_FOR_DIP'
+                 ORDER BY alert_timestamp ASC`
+            );
+            return res.rows.map(row => ({
+                ...this.mapPerformanceRow(row),
+                dipTargetMc: Number(row.dip_target_mc || 0)
+            }));
+        } catch (err) {
+            logger.error('[Postgres] getWaitingForDipTokens failed', err);
+            return [];
+        }
+    }
+
+    async activateDipToken(mint: string, entryPrice: number, entryMc: number) {
+        try {
+            await this.pool.query(
+                `UPDATE token_performance 
+                 SET status = 'TRACKING', 
+                     entry_price = $1, 
+                     found_mc = $2,
+                     alert_mc = $2, 
+                     current_mc = $2,
+                     ath_mc = $2,
+                     max_mc = $2,
+                     last_updated = NOW()
+                 WHERE mint = $3`,
+                [entryPrice, entryMc, mint]
+            );
+            logger.info(`[Postgres] Activated Dip Token: ${mint} @ $${entryPrice}`);
+        } catch (err) {
+            logger.error(`[Postgres] activateDipToken failed for ${mint}`, err);
+        }
+    }
+
+    async failDipToken(mint: string, reason: string) {
+        try {
+            await this.pool.query(
+                `UPDATE token_performance 
+                 SET status = $1, last_updated = NOW() 
+                 WHERE mint = $2`,
+                [reason, mint]
+            );
+        } catch (err) {
+            logger.error(`[Postgres] failDipToken failed for ${mint}`, err);
         }
     }
 }

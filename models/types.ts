@@ -119,8 +119,9 @@ export interface TokenPerformance {
     foundMc?: number; // Added for PnL
     soldMc?: number; // Added for PnL
     maxMc?: number; // Added for PnL
+    dipTargetMc?: number; // Added for Dip Tracking
     entryPrice?: number; // Added for V3 Autopsy
-    status: 'TRACKING' | 'MOONED' | 'RUGGED' | 'STABLE' | 'FAILED' | 'FAILED_NO_DATA' | 'FINALIZED' | 'FINALIZED_MOONED' | 'FINALIZED_FAILED';
+    status: 'TRACKING' | 'MOONED' | 'RUGGED' | 'STABLE' | 'FAILED' | 'FAILED_NO_DATA' | 'FINALIZED' | 'FINALIZED_MOONED' | 'FINALIZED_FAILED' | 'WAITING_FOR_DIP' | 'MISSED_DIP';
     alertTimestamp: Date;
     lastUpdated: Date;
 }

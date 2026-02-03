@@ -115,12 +115,12 @@ async function main() {
     );
 
     // 6. Performance & Dashboard
-    // const performanceJob = new PerformanceMonitorJob(storage, birdeye); // DISABLED (BirdEye Dependency)
+    const performanceJob = new PerformanceMonitorJob(storage, dexScreener, bot);
     const portfolioTracker = new PortfolioTrackerJob(storage); // BirdEye Removed
     // REMOVED: KeywordMonitorJob (Jeweler Mode) killed by user request.
     const dashboard = new DashboardServer(storage); // Railway auto-sets PORT env var
 
-    // performanceJob.start();
+    performanceJob.start();
     portfolioTracker.start();
     dashboard.start();
 

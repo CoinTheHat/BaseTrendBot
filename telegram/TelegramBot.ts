@@ -301,6 +301,30 @@ Güven Skoru: **${narrative.twitterStory.trustScore ?? 50}/100** (${(narrative.t
         }
     }
 
+    async sendDipAlert(token: { symbol: string; mint: string; currentMc: number; dipTargetMc: number }) {
+        if (!this.bot || !config.TELEGRAM_CHAT_ID) return;
+
+        const message = `📉 **CORRECTION ENTRY DETECTED** 📉
+**$${token.symbol}**
+        
+Correction target hit! Price pulled back from 5m pump.
+
+**Target MC:** $${Math.floor(token.dipTargetMc).toLocaleString()}
+**Current MC:** $${Math.floor(token.currentMc).toLocaleString()}
+**CA:** \`${token.mint}\`
+
+[DexScreener](https://dexscreener.com/solana/${token.mint})
+
+⚠️ _This entry is based on a momentum pullback strategy._`;
+
+        try {
+            await this.bot.sendMessage(config.TELEGRAM_CHAT_ID, message, { parse_mode: 'Markdown', disable_web_page_preview: true });
+            logger.info(`[Telegram] Dip Alert sent for ${token.symbol}`);
+        } catch (err) {
+            logger.error(`[Telegram] Failed to send Dip Alert: ${err}`);
+        }
+    }
+
     async stop() {
         if (this.bot) {
             logger.info('[Telegram] Stopping bot polling...');

@@ -270,6 +270,29 @@ export class TokenScanJob {
                         // --- STEP 7: SUCCESS - GEM SPOTTED ---
                         const { allowed } = await this.cooldown.canAlert(token.mint);
                         if (allowed) {
+                            // DIP ENTRY LOGIC
+                            const m5 = token.priceChange5m || 0;
+                            if (m5 > 30) {
+                                const currentMc = token.marketCapUsd || 0;
+                                const dipTargetMc = currentMc * (1 - (m5 / 200)); // Half of the rise % (e.g. 30% rise -> 15% discount target)
+
+                                logger.info(`[DIP WAIT] 📉 ${token.symbol} is up ${m5}% in 5m. Waiting for dip to ~$${Math.floor(dipTargetMc)} before alerting.`);
+
+                                await this.storage.savePerformance({
+                                    mint: token.mint,
+                                    symbol: token.symbol,
+                                    alertMc: currentMc,
+                                    athMc: currentMc,
+                                    currentMc: currentMc,
+                                    entryPrice: token.priceUsd || 0,
+                                    status: 'WAITING_FOR_DIP',
+                                    dipTargetMc: dipTargetMc,
+                                    alertTimestamp: new Date(),
+                                    lastUpdated: new Date()
+                                });
+                                return;
+                            }
+
                             alertCount++;
                             logger.info(`✅ [GEM SPOTTED] ${token.symbol} Score: ${aiScore}/10 -> Sending Alert!`);
 
