@@ -356,6 +356,27 @@
             <h2 class="text-xl font-bold text-white mb-4 flex items-center">
                 <span class="mr-2">🏆</span> Autopsy Report (True ATH)
             </h2>
+
+            <!-- SIMULATION CARDS -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                    <div class="text-gray-400 text-xs font-bold uppercase">Total Plays</div>
+                    <div class="text-3xl font-bold text-white mt-1" id="sim-count">0</div>
+                </div>
+                <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                    <div class="text-gray-400 text-xs font-bold uppercase">Investment ($100/ea)</div>
+                    <div class="text-3xl font-bold text-blue-400 mt-1" id="sim-invested">$0</div>
+                </div>
+                <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                    <div class="text-gray-400 text-xs font-bold uppercase">Portfolio Value (At Peak)</div>
+                    <div class="text-3xl font-bold text-green-400 mt-1" id="sim-value">$0</div>
+                </div>
+                <div class="bg-gray-800 p-4 rounded-xl border border-gray-700">
+                    <div class="text-gray-400 text-xs font-bold uppercase">Net Profit</div>
+                    <div class="text-3xl font-bold text-gray-500 mt-1" id="sim-pnl">$0</div>
+                </div>
+            </div>
+
             <div class="bg-gray-800 rounded-xl overflow-hidden shadow-lg border border-gray-700">
                 <table class="w-full text-left" id="perf-table">
                     <thead class="bg-gray-700 text-gray-300">
@@ -364,13 +385,14 @@
                             <th class="px-6 py-3">Token</th>
                             <th class="px-6 py-3">Entry MC</th>
                             <th class="px-6 py-3">True ATH</th>
+                            <th class="px-6 py-3">Peak Value ($100 bet)</th>
                             <th class="px-6 py-3">Multiplier</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-700" id="perf-body">
                         <!-- Populated via JS -->
                         <tr>
-                            <td colspan="5" class="px-6 py-4 text-center text-gray-500">Loading Report...</td>
+                            <td colspan="6" class="px-6 py-4 text-center text-gray-500">Loading Report...</td>
                         </tr>
                     </tbody>
                 </table>
@@ -410,11 +432,25 @@
                     tbody.innerHTML = '';
 
                     if (data.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No autopsy data yet.</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No data available.</td></tr>';
                         return;
                     }
 
+                    // SIMULATION VARIABLES
+                    const BET_SIZE = 100;
+                    let totalInvested = 0;
+                    let totalValue = 0;
+                    let count = 0;
+
                     data.forEach((item, index) => {
+                        count++;
+                        totalInvested += BET_SIZE;
+
+                        const m = parseFloat(item.multiplier);
+                        // Value = Bet * Multiplier
+                        const value = BET_SIZE * m;
+                        totalValue += value;
+
                         const rank = index + 1;
                         let rankColor = 'text-gray-400';
                         if (rank === 1) rankColor = 'text-yellow-400 font-bold text-xl';
@@ -422,30 +458,48 @@
                         else if (rank === 3) rankColor = 'text-orange-400 font-bold';
 
                         let multColor = 'text-gray-300';
-                        const m = parseFloat(item.multiplier);
                         if (m >= 10) multColor = 'text-purple-400 font-bold neon-text';
                         else if (m >= 5) multColor = 'text-green-400 font-bold';
                         else if (m >= 2) multColor = 'text-green-200';
                         else if (m < 0.5) multColor = 'text-red-400';
 
+                        // Format Status
+                        let statusBadge = '';
+                        if (item.status === 'RUGGED') statusBadge = '💀 RUG';
+                        else if (item.status === 'MOONED') statusBadge = '🚀 MOON';
+
                         const row = `
                             <tr class="hover:bg-gray-750 transition-colors">
                                 <td class="px-6 py-4 ${rankColor}">#${rank}</td>
                                 <td class="px-6 py-4 font-bold text-white">
-                                    ${item.symbol} <span class="text-xs text-gray-500 font-normal ml-2">${new Date(item.date).toLocaleDateString()}</span>
+                                    ${item.symbol} 
+                                    <span class="text-xs text-gray-500 font-normal ml-2">${new Date(item.date).toLocaleDateString()}</span>
+                                    ${statusBadge ? `<span class="ml-2 text-xs bg-gray-700 px-1 rounded text-white">${statusBadge}</span>` : ''}
                                 </td>
                                 <td class="px-6 py-4 text-gray-400 font-mono">$${(item.entryMc / 1000).toFixed(1)}k</td>
                                 <td class="px-6 py-4 text-white font-mono">$${(item.athMc / 1000).toFixed(1)}k</td>
+                                <td class="px-6 py-4 font-mono ${value > 100 ? 'text-green-400' : 'text-red-400'}">$${value.toFixed(2)}</td>
                                 <td class="px-6 py-4 ${multColor} text-lg">${item.multiplier}x</td>
                             </tr>
                         `;
                         tbody.innerHTML += row;
                     });
+
+                    // Update Sim Cards
+                    const pnl = totalValue - totalInvested;
+                    document.getElementById('sim-count').innerText = count;
+                    document.getElementById('sim-invested').innerText = `$${totalInvested.toLocaleString()}`;
+                    document.getElementById('sim-value').innerText = `$${totalValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+
+                    const pnlEl = document.getElementById('sim-pnl');
+                    pnlEl.innerText = `${pnl >= 0 ? '+' : ''}$${pnl.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                    pnlEl.className = `text-3xl font-bold mt-1 ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+
                     reportLoaded = true;
 
                 } catch (err) {
                     console.error(err);
-                    document.getElementById('perf-body').innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-red-500">Error loading report.</td></tr>';
+                    document.getElementById('perf-body').innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-red-500">Error loading report.</td></tr>';
                 }
             }
         </script>

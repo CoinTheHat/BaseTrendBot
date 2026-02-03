@@ -678,9 +678,9 @@ export class PostgresStorage {
                         ELSE 0 
                     END as multiplier
                 FROM token_performance
-                WHERE status = 'AUTOPSIED' OR status = 'FINALIZED' OR status = 'MOONED'
+                WHERE alert_mc > 0 -- Only tokens that were actually alerted
                 ORDER BY multiplier DESC
-                LIMIT 100
+                LIMIT 200 -- Increase limit to capture history
             `);
             return res.rows.map(row => ({
                 symbol: row.symbol,
