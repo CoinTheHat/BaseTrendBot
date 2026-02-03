@@ -2,6 +2,8 @@
 
 **SCANDEX** is an automated Solana meme trend scanner with a "degen alien" persona. It watches for new tokens, filters them against a watchlist, and sends alerts to Telegram (and optionally Twitter).
 
+* Last Updated: 2026-02-03 (Trigger)
+
 ## 🚀 Setup
 
 1.  **Install Dependencies**
