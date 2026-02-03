@@ -542,7 +542,7 @@ export class PostgresStorage {
         try {
             const res = await this.pool.query(
                 `SELECT * FROM token_performance 
-                 WHERE status = 'WAITING_FOR_DIP'
+                 WHERE status = 'WAITING_DIP'
                  ORDER BY alert_timestamp ASC`
             );
             return res.rows.map(row => ({

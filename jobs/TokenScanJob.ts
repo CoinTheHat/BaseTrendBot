@@ -43,20 +43,46 @@ export class TokenScanJob {
         private alphaSearch: AlphaSearchService
     ) { }
 
+    private async runLoop() {
+        if (!this.isRunning) return;
+
+        // Parallel Processes:
+        // 1. Main Scan (New Tokens) - Every SCAN_INTERVAL
+        // 2. Dip Monitor (Waiting Tokens) - Every 30 seconds (User Request)
+
+        this.runCycle().finally(() => {
+            const delay = config.SCAN_INTERVAL_SECONDS * 1000;
+            logger.info(`[Job] Scan complete. Next scan in ${config.SCAN_INTERVAL_SECONDS}s...`);
+            setTimeout(() => this.runLoop(), delay);
+        });
+    }
+
     start() {
         if (this.isRunning) return;
         this.isRunning = true;
         logger.info(`[Job] Token Scan Job started. Interval: ${config.SCAN_INTERVAL_SECONDS}s`);
+
+        // Start Main Loop
         this.runLoop();
+
+        // Start Dip Monitor Loop (Independent)
+        this.runDipMonitor();
     }
 
-    private async runLoop() {
+    private async runDipMonitor() {
         if (!this.isRunning) return;
-        await this.runCycle();
-        const delay = config.SCAN_INTERVAL_SECONDS * 1000;
-        logger.info(`[Job] Scan complete. Next scan in ${config.SCAN_INTERVAL_SECONDS}s...`);
-        setTimeout(() => this.runLoop(), delay);
+
+        try {
+            await this.monitorDipCandidates();
+        } catch (err) {
+            logger.error(`[DipMonitor] Error: ${err}`);
+        }
+
+        // Run every 30 seconds
+        setTimeout(() => this.runDipMonitor(), 30000);
     }
+
+    // ... (runCycle method remains here)
 
     private async runCycle() {
         if (this.isScanning) {
@@ -300,6 +326,17 @@ export class TokenScanJob {
 
                                 logger.info(`[DIP WAIT] 📉 ${token.symbol} (+${m5.toFixed(1)}%) Base: $${Math.floor(basePriceMc)} -> Peak: $${Math.floor(currentMc)}. Waiting for 50% drop to ~$${Math.floor(dipTargetMc)}.`);
 
+                                await this.storage.saveSeenToken(token.mint, {
+                                    symbol: token.symbol,
+                                    firstSeenAt: Date.now(),
+                                    lastAlertAt: 0, // Not alerted yet
+                                    lastScore: aiScore,
+                                    lastPhase: 'WAITING_DIP',
+                                    dipTargetMc: dipTargetMc,
+                                    storedAnalysis: JSON.stringify(narrative) // Save analysis for later
+                                });
+
+                                // Ensure it's in performance table for monitoring
                                 await this.storage.savePerformance({
                                     mint: token.mint,
                                     symbol: token.symbol,
@@ -307,25 +344,27 @@ export class TokenScanJob {
                                     athMc: currentMc,
                                     currentMc: currentMc,
                                     entryPrice: token.priceUsd || 0,
-                                    status: 'WAITING_FOR_DIP',
+                                    status: 'WAITING_DIP',
                                     dipTargetMc: dipTargetMc,
                                     alertTimestamp: new Date(),
                                     lastUpdated: new Date()
                                 });
-                                return;
+
+                                return; // DO NOT ALERT YET
                             }
 
+                            // NORMAL ALERT (Pump < 30%)
                             alertCount++;
                             logger.info(`✅ [GEM SPOTTED] ${token.symbol} Score: ${aiScore}/10 -> Sending Alert!`);
 
-                            // FAST ALERT REMOVED: User wants only one AI-verified alert
-                            // if (v1h > 10000 && impulseRatio > 1.0) {
-                            //     const mockMomentum = {
-                            //         volume: v1h,
-                            //         swaps: Math.floor(v1h / 1000)
-                            //     };
-                            //     await this.bot.sendFastAlert(token, mockMomentum);
-                            // }
+                            // Save as regular ALERTED
+                            await this.storage.saveSeenToken(token.mint, {
+                                symbol: token.symbol,
+                                firstSeenAt: Date.now(),
+                                lastAlertAt: Date.now(),
+                                lastScore: aiScore,
+                                lastPhase: 'ALERTED'
+                            });
 
                             await this.bot.sendAlert(narrative, enrichedToken, scoreRes);
                             if (aiScore >= 8) await this.twitter.postTweet(narrative, enrichedToken);
@@ -338,6 +377,7 @@ export class TokenScanJob {
                                 symbol: token.symbol,
                                 alertMc: token.marketCapUsd || 0,
                                 athMc: token.marketCapUsd || 0,
+                                // ... rest continues below in original file ...
                                 currentMc: token.marketCapUsd || 0,
                                 entryPrice: token.priceUsd || 0,
                                 status: 'TRACKING', // Fixed missing status
@@ -387,5 +427,75 @@ export class TokenScanJob {
         const res: T[][] = [];
         for (let i = 0; i < arr.length; i += size) { res.push(arr.slice(i, i + size)); }
         return res;
+    }
+
+    /**
+     * RAPID MONITOR: Checks 'WAITING_DIP' tokens every 30s.
+     * Uses cached analysis + fresh price to alert instantly on dip.
+     */
+    private async monitorDipCandidates() {
+        // 1. Get Waiting Tokens
+        const candidates = await this.storage.getWaitingForDipTokens();
+        if (candidates.length === 0) return;
+
+        logger.info(`[DipMonitor] 👀 Watching ${candidates.length} tokens for entry...`);
+
+        // 2. Fetch Live Prices (Bulk)
+        const mints = candidates.map(c => c.mint);
+        const liveTokens = await this.dexScreener.getTokens(mints);
+
+        // 3. Compare & Alert
+        for (const candidate of candidates) {
+            const liveToken = liveTokens.find(t => t.mint === candidate.mint);
+
+            // TIMEOUT CHECK (>30 Mins) (User Request: 30-60 mins)
+            const waitDuration = Date.now() - new Date(candidate.alertTimestamp).getTime();
+            if (waitDuration > 30 * 60 * 1000) {
+                logger.info(`[DipMonitor] ⌛ Timeout for ${candidate.symbol}. Missed Dip.`);
+                await this.storage.failDipToken(candidate.mint, 'MISSED_DIP');
+                continue;
+            }
+
+            if (!liveToken) continue;
+
+            const currentMc = liveToken.marketCapUsd || 0;
+            const targetMc = candidate.dipTargetMc || 0;
+
+            // ENTRY CONDITION: Price <= Target
+            if (currentMc > 0 && currentMc <= targetMc) {
+                logger.info(`[DipMonitor] 🎯 DIP HIT! ${candidate.symbol} dropped to $${Math.floor(currentMc)} (Target: $${Math.floor(targetMc)})`);
+
+                // Retrieve Stored Analysis
+                const seenData = await this.storage.getSeenToken(candidate.mint);
+                let narrative = null;
+
+                if (seenData?.storedAnalysis) {
+                    try {
+                        narrative = JSON.parse(seenData.storedAnalysis);
+                        // Update Data Section with FRESH numbers
+                        narrative.dataSection =
+                            `• MC: $${(currentMc).toLocaleString()}\n` +
+                            `• Liq: $${(liveToken.liquidityUsd ?? 0).toLocaleString()}\n` +
+                            `• Vol (24h): $${(liveToken.volume24hUsd ?? 0).toLocaleString()}\n` +
+                            `• Age: ${liveToken.createdAt ? Math.floor((Date.now() - liveToken.createdAt.getTime()) / (3600 * 1000)) + 'h' : 'N/A'}\n` +
+                            `• ✅ Dip Entry Triggered (Price dropped 50% from pump)`;
+
+                    } catch (e) {
+                        logger.error(`[DipMonitor] Failed to parse stored analysis for ${candidate.symbol}`);
+                    }
+                }
+
+                if (narrative) {
+                    // Send Alert using Full Format + Special Title
+                    await this.bot.sendTokenAlert(liveToken, narrative, `CORRECTION ENTRY: $${candidate.symbol} 📉`);
+
+                    // Update Status to TRACKING (so we track PnL from here)
+                    await this.storage.activateDipToken(candidate.mint, liveToken.priceUsd || 0, currentMc);
+                    await this.cooldown.recordAlert(liveToken.mint, seenData?.lastScore || 7, 'TRACKING', liveToken.priceUsd);
+                }
+            } else {
+                // logger.debug(`[DipMonitor] ${candidate.symbol} at $${Math.floor(currentMc)} (Target: $${Math.floor(targetMc)}) - Waiting...`);
+            }
+        }
     }
 }

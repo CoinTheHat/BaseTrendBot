@@ -232,16 +232,19 @@ export class ScandexBot {
         return false;
     }
 
-    async sendAlert(narrative: Narrative, token: TokenSnapshot, score: ScoreResult) {
+    async sendTokenAlert(token: TokenSnapshot, narrative: Narrative, customTitle?: string) {
+        return this.sendAlert(narrative, token, { totalScore: 0, breakdown: [], phase: 'SPOTTED' }, customTitle);
+    }
+
+    async sendAlert(narrative: Narrative, token: TokenSnapshot, score: ScoreResult, customTitle?: string) {
         if (!this.bot || !config.TELEGRAM_CHAT_ID) return;
 
         const isTrendLinked = !!narrative.twitterStory;
-        const phaseEmoji = score.phase === 'SPOTTED' ? '🛸' : score.phase === 'COOKING' ? '🔥' : score.phase === 'TRACKING' ? '📡' : '🍽';
 
-        let titleLine = `🚨 **TOKEN DETECTED: $${token.symbol}**`;
+        let titleLine = customTitle ? `🚨 **${customTitle}**` : `🚨 **TOKEN DETECTED: $${token.symbol}**`;
 
         // Breaking News Override (Viral/Trend)
-        if (isTrendLinked) {
+        if (isTrendLinked && !customTitle) {
             titleLine = `📈 **TREND ALERT: $${token.symbol}**`;
         }
 
