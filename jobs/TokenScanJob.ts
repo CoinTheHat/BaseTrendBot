@@ -243,11 +243,23 @@ export class TokenScanJob {
                         const narrative = await this.narrative.generate(enrichedToken, matchResult, scoreRes, tweets);
                         let aiScore = narrative.aiScore || 0;
 
-                        // AGE PENALTY: Deduct 1 point for tokens older than 36h (Focus on fresh hype)
-                        if (ageHours > 36) {
+                        // AGE SCORING (Tiered Strategy for Fast 2x)
+                        // 0-4h   : +1 Point (Fresh Hype)
+                        // 4-12h  :  0 Points (Neutral/Settling)
+                        // 12-24h : -1 Point (Caution/Slowing)
+                        // >24h   : -2 Points (Old/Stale)
+
+                        if (ageHours <= 4) {
+                            aiScore += 1;
+                            logger.info(`[Age Bonus] 🚀 ${token.symbol} is fresh (${ageHours.toFixed(1)}h). +1 Point (Score: ${aiScore}).`);
+                        } else if (ageHours > 12 && ageHours <= 24) {
                             aiScore -= 1;
-                            logger.info(`[Age Penalty] 📉 ${token.symbol} is ${ageHours.toFixed(1)}h old. Deducting 1 point (New Score: ${aiScore}).`);
+                            logger.info(`[Age Penalty] ⚠️ ${token.symbol} is slowing (${ageHours.toFixed(1)}h). -1 Point (Score: ${aiScore}).`);
+                        } else if (ageHours > 24) {
+                            aiScore -= 2;
+                            logger.info(`[Age Penalty] 📉 ${token.symbol} is old (${ageHours.toFixed(1)}h). -2 Points (Score: ${aiScore}).`);
                         }
+                        // 4-12h is neutral (0 change)
 
                         // --- STEP 6: THE GATEKEEPER (Strict Approval) ---
                         const minScore = strictMode ? 8.5 : 7; // Higher bar for re-alerts or pumped tokens

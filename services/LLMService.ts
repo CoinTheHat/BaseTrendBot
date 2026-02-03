@@ -75,6 +75,7 @@ export class LLMService {
         // ... (Prompt logic remains mostly same, just optimized for Grok)
         const systemPrompt = `
 Sen Kıdemli bir Kripto Degen Analistisin (xAI Grok tabanlı). Görevin, piyasa verilerine ve son tweetlere dayanarak Solana meme tokenlarını analiz etmek.
+AMACIMIZ: Yeni çıkan, hikayesi olan ve hızlıca 2x yapabilecek "Fresh" tokenları yakalamak. Eski ve yavaş tokenlarla vakit kaybetme.
 Eleştirel ol, şüpheci yaklaş ama potansiyeli yüksek fırsatlara açık ol. Asla jenerik cevaplar verme.
 
 **Giriş Verileri:**
