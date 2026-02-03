@@ -147,6 +147,26 @@ export class DashboardServer {
             }
         });
 
+        // NEW: Trigger ATH Correction (BirdEye)
+        this.app.post('/api/tokens/:mint/correct-ath', async (req, res) => {
+            try {
+                const { mint } = req.params;
+                const { trueAth } = req.body; // Optional: Manual override
+
+                // TODO: Integrate BirdEye Service to auto-fetch if no body provided
+                // For now, accept manual correction or just verify existence
+                if (trueAth) {
+                    await this.storage.correctATH(mint, Number(trueAth));
+                    return res.json({ success: true, method: 'manual' });
+                }
+
+                res.status(400).json({ error: 'Missing trueAth value' });
+            } catch (error) {
+                logger.error(`[API] Correct ATH failed: ${error}`);
+                res.status(500).json({ error: 'Internal Server Error' });
+            }
+        });
+
         // NEW: Toggle Status (Rugged / Tracking)
         this.app.post('/api/tokens/:mint/status', async (req, res) => {
             try {

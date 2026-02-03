@@ -237,12 +237,26 @@ export class PostgresStorage {
                  WHERE alert_timestamp > NOW() - INTERVAL '48 hours'
                  ORDER BY alert_timestamp DESC`
             );
-            return res.rows.map(row => this.mapPerformanceRow(row)); // Fixed 'this' context
+            return res.rows.map(row => this.mapPerformanceRow(row));
         } catch (err) {
             logger.error('[Postgres] getTrackingTokens failed', err);
             return [];
         }
     }
+
+    // NEW: Get single token performance for Autopsy/Details
+    async getPerformance(mint: string): Promise<TokenPerformance | null> {
+        try {
+            const res = await this.pool.query('SELECT * FROM token_performance WHERE mint = $1', [mint]);
+            if (res.rows.length === 0) return null;
+            return this.mapPerformanceRow(res.rows[0]);
+        } catch (err) {
+            logger.error('[Postgres] getPerformance failed', err);
+            return null;
+        }
+    }
+
+
 
     async getDashboardMetrics(): Promise<any> {
         try {
@@ -424,7 +438,6 @@ export class PostgresStorage {
 
     async saveTrends(trends: TrendItem[]) {
         // Full replace or Upsert? Strategy: Upsert.
-        // We might want to clear old trends, but for now let's just Upsert active ones.
         try {
             for (const t of trends) {
                 await this.pool.query(
@@ -439,6 +452,26 @@ export class PostgresStorage {
             }
         } catch (err) {
             logger.error('[Postgres] saveTrends failed', err);
+        }
+    }
+
+    /**
+     * Correction Mechanism for Autopsy
+     * Uses OHLC High to fix "Missed Peaks"
+     */
+    async correctATH(mint: string, trueAthMc: number) {
+        try {
+            await this.pool.query(
+                `UPDATE token_performance 
+                 SET ath_mc = GREATEST(ath_mc, $2), 
+                     max_mc = GREATEST(max_mc, $2),
+                     status = CASE WHEN $2 >= alert_mc * 2 THEN 'MOONED' ELSE status END
+                 WHERE mint = $1`,
+                [mint, trueAthMc]
+            );
+            // logger.info(`[Postgres] Corrected ATH for ${mint} to $${trueAthMc}`);
+        } catch (err) {
+            logger.error('[Postgres] correctATH failed', err);
         }
     }
 

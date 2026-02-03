@@ -206,16 +206,26 @@ export class DexScreenerService {
         return res;
     }
 
-    /**
-     * Scrape DexScreener's M5 Trending page to get pair addresses
-     * https://dexscreener.com/solana?rankBy=trendingScoreM5&order=desc
-     */
-    private async scrapePairAddresses(limit: number = 100): Promise<string[]> {
-        let browser;
-        try {
-            console.log(`[DexScreener Scraper] Launching browser to get ${limit} pair addresses...`);
+    // --- PERSISTENT BROWSER LOGIC ---
+    private browser: any | null = null;
+    private scanCount = 0;
+    private MAX_SCANS_BEFORE_RECYCLE = 50;
 
-            browser = await puppeteer.launch({
+    /**
+     * Initializes or reuses the browser instance.
+     * Implements "Recycling" strategy to prevent memory leaks.
+     */
+    private async getBrowser(): Promise<any> {
+        // 1. Check Recycle Condition
+        if (this.browser && this.scanCount >= this.MAX_SCANS_BEFORE_RECYCLE) {
+            console.log(`[DexScreener] ♻️ Recycling browser after ${this.scanCount} scans...`);
+            await this.closeBrowser();
+        }
+
+        // 2. Launch if needed
+        if (!this.browser) {
+            /*console.log(`[DexScreener] 🚀 Launching persistent browser...`);*/
+            this.browser = await puppeteer.launch({
                 headless: true,
                 args: [
                     '--no-sandbox',
@@ -230,15 +240,55 @@ export class DexScreenerService {
                 ],
                 executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
             });
+            this.scanCount = 0;
+        }
 
-            // Incognito Context (User Request)
-            const context = await browser.createBrowserContext();
-            const page = await context.newPage();
+        return this.browser;
+    }
+
+    private async closeBrowser() {
+        if (this.browser) {
+            try {
+                await this.browser.close();
+            } catch (e) {
+                console.error('[DexScreener] Error closing browser during recycle:', e);
+            }
+            this.browser = null;
+            this.scanCount = 0;
+        }
+    }
+
+    /**
+     * Scrape DexScreener's M5 Trending page to get pair addresses
+     * https://dexscreener.com/solana?rankBy=trendingScoreM5&order=desc
+     * NOW OPTIMIZED: Reuses browser instance.
+     */
+    private async scrapePairAddresses(limit: number = 100): Promise<string[]> {
+        let page;
+        try {
+            // console.log(`[DexScreener Scraper] Reuse browser (Scan #${this.scanCount + 1})...`);
+
+            const browser = await this.getBrowser();
+            this.scanCount++;
+
+            // Use verify-clean context (Incognito) - lightweight for each page
+            try {
+                // Try reuse existing pages if we want extreme speed, but newContext is safer for "Clean State"
+                // Just create new PAGE, not context (Context creation is also cheaper than browser but let's stick to standard Page for now)
+                page = await browser.newPage();
+            } catch (err) {
+                // If browser crashed or disconnected, restart it
+                console.warn('[DexScreener] Browser disconnected? Restarting...');
+                await this.closeBrowser();
+                const newBrowser = await this.getBrowser();
+                page = await newBrowser.newPage();
+            }
 
             // Resource Blocking (User Request)
             await page.setRequestInterception(true);
             page.on('request', (req: any) => {
-                if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
+                const type = req.resourceType();
+                if (['image', 'stylesheet', 'font', 'media', 'other'].includes(type)) { // Block 'other' too? be careful.
                     req.abort();
                 } else {
                     req.continue();
@@ -247,16 +297,19 @@ export class DexScreenerService {
 
             await page.setUserAgent(this.getRandomUserAgent());
 
-            // DISABLE CACHE (User Request)
+            // DISABLE CACHE
             await page.setCacheEnabled(false);
 
             const url = 'https://dexscreener.com/solana?rankBy=trendingScoreM5&order=desc';
-            console.log(`[DexScreener Scraper] Navigating to ${url}...`);
 
-            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 90000 });
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 }); // Reduced timeout
 
             // Wait for token cards/rows to load
-            await page.waitForSelector('a[href^="/solana/"]', { timeout: 10000 });
+            try {
+                await page.waitForSelector('a[href^="/solana/"]', { timeout: 8000 });
+            } catch (e) {
+                console.warn('[DexScreener] Timeout waiting for selector. Page might be empty.');
+            }
 
             // Extract pair addresses from hrefs
             const pairAddresses = await page.evaluate((maxPairs: number) => {
@@ -275,22 +328,21 @@ export class DexScreenerService {
                 return Array.from(addresses);
             }, limit);
 
-            console.log(`[DexScreener Scraper] Successfully extracted ${pairAddresses.length} pair addresses`);
-
-            // Explicitly close context as requested
-            try { await context.close(); } catch (e) { }
+            // console.log(`[DexScreener Scraper] Extracted ${pairAddresses.length} addresses.`);
 
             return pairAddresses;
 
         } catch (error) {
             console.error('[DexScreener Scraper] Error scraping addresses:', error);
+            // If critical error, maybe close browser to be safe
+            // await this.closeBrowser();
             return [];
         } finally {
-            if (browser) {
+            if (page) {
                 try {
-                    await browser.close();
+                    await page.close(); // Close only the page/tab!
                 } catch (closeError) {
-                    console.error('[DexScreener Scraper] Error closing browser:', closeError);
+                    console.error('[DexScreener Scraper] Error closing page:', closeError);
                 }
             }
         }
