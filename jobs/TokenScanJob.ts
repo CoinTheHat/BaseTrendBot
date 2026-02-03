@@ -300,7 +300,8 @@ export class TokenScanJob {
                                 firstSeenAt: Date.now(),
                                 lastAlertAt: 0,
                                 lastScore: aiScore,
-                                lastPhase: 'REJECTED_LOW_SCORE'
+                                lastPhase: 'REJECTED_LOW_SCORE',
+                                storedAnalysis: JSON.stringify(narrative) // Save for training
                             });
                             return; // DO NOT ALERT
                         }
@@ -363,7 +364,8 @@ export class TokenScanJob {
                                 firstSeenAt: Date.now(),
                                 lastAlertAt: Date.now(),
                                 lastScore: aiScore,
-                                lastPhase: 'ALERTED'
+                                lastPhase: 'ALERTED',
+                                storedAnalysis: JSON.stringify(narrative) // Save for training
                             });
 
                             await this.bot.sendAlert(narrative, enrichedToken, scoreRes);
