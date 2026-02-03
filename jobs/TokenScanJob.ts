@@ -457,9 +457,9 @@ export class TokenScanJob {
         for (const candidate of candidates) {
             const liveToken = liveTokens.find(t => t.mint === candidate.mint);
 
-            // TIMEOUT CHECK (>30 Mins) (User Request: 30-60 mins)
+            // TIMEOUT CHECK (>60 Mins) (User Request: 30-60 mins)
             const waitDuration = Date.now() - new Date(candidate.alertTimestamp).getTime();
-            if (waitDuration > 30 * 60 * 1000) {
+            if (waitDuration > 60 * 60 * 1000) {
                 logger.info(`[DipMonitor] ⌛ Timeout for ${candidate.symbol}. Missed Dip.`);
                 await this.storage.failDipToken(candidate.mint, 'MISSED_DIP');
                 continue;
