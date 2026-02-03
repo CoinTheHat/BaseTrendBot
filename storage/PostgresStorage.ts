@@ -662,4 +662,38 @@ export class PostgresStorage {
             logger.error('[Postgres] updateTrueAth failed', err);
         }
     }
+
+    async getAutopsyReport(): Promise<any[]> {
+        try {
+            const res = await this.pool.query(`
+                SELECT 
+                    mint, 
+                    symbol, 
+                    alert_mc, 
+                    ath_mc, 
+                    status, 
+                    alert_timestamp,
+                    CASE 
+                        WHEN alert_mc > 0 THEN ath_mc / alert_mc 
+                        ELSE 0 
+                    END as multiplier
+                FROM token_performance
+                WHERE status = 'AUTOPSIED' OR status = 'FINALIZED' OR status = 'MOONED'
+                ORDER BY multiplier DESC
+                LIMIT 100
+            `);
+            return res.rows.map(row => ({
+                symbol: row.symbol,
+                mint: row.mint,
+                entryMc: Number(row.alert_mc),
+                athMc: Number(row.ath_mc),
+                multiplier: Number(row.multiplier).toFixed(2),
+                date: row.alert_timestamp,
+                status: row.status
+            }));
+        } catch (err) {
+            logger.error('[Postgres] getAutopsyReport failed', err);
+            return [];
+        }
+    }
 }

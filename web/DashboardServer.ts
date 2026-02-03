@@ -107,6 +107,17 @@ export class DashboardServer {
             });
         });
 
+        // NEW: Autopsy Performance Report API
+        this.app.get('/api/performance', async (req, res) => {
+            try {
+                const report = await this.storage.getAutopsyReport();
+                res.json(report);
+            } catch (error) {
+                logger.error(`[API] /api/performance error: ${error}`);
+                res.status(500).json({ error: 'Internal Server Error' });
+            }
+        });
+
         // NEW: Portfolio Tracking API
         this.app.get('/api/tokens', async (req, res) => {
             try {

@@ -235,8 +235,20 @@
             </div>
         </div>
 
-        <!-- Recent Calls Table -->
-        <div>
+        <!-- Tabs -->
+        <div class="flex space-x-4 mb-6">
+            <button onclick="switchTab('live')" id="tab-live"
+                class="px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-500 transition-colors">
+                🔴 Live Trades
+            </button>
+            <button onclick="switchTab('performance')" id="tab-performance"
+                class="px-4 py-2 bg-gray-700 text-gray-400 rounded font-bold hover:bg-gray-600 hover:text-white transition-colors">
+                🧬 Bot Performance (Autopsy)
+            </button>
+        </div>
+
+        <!-- VIEW: LIVE TRADES -->
+        <div id="view-live">
             <h2 class="text-xl font-bold text-white mb-4 flex items-center">
                 <span class="mr-2">📝</span> Trade Log <span id="trade-count"
                     class="ml-3 text-sm text-gray-400 font-normal border border-gray-700 px-2 py-0.5 rounded-full">0
@@ -255,40 +267,25 @@
                     </thead>
                     <tbody class="divide-y divide-gray-700">
                         <% metrics.recentCalls.forEach(token=> {
-                            // Fallback to alertMc if foundMc is missing or 0
                             const baseMc = token.foundMc > 0 ? token.foundMc : token.alertMc;
                             %>
                             <tr class="hover:bg-gray-750 transition-colors token-row" data-mint="<%= token.mint %>"
                                 data-found-mc="<%= baseMc %>">
 
-                                <!-- TOKEN COLUMN (Preserved Style) -->
+                                <!-- TOKEN COLUMN -->
                                 <td class="px-6 py-4">
                                     <div class="flex flex-col">
                                         <span class="font-bold text-white text-lg">
                                             <%= token.symbol %>
                                         </span>
-
-                                        <!-- COPY CA BUTTON -->
                                         <button onclick="copyToClipboard('<%= token.mint %>', this)"
-                                            class="text-xs text-gray-500 font-mono text-left hover:text-white transition-colors focus:outline-none"
-                                            title="Click to Copy CA">
-                                            <%= token.mint.substring(0,6) %>... <span
-                                                    class="text-gray-600 hover:text-gray-300">📋</span>
+                                            class="text-xs text-gray-500 font-mono text-left hover:text-white transition-colors focus:outline-none">
+                                            <%= token.mint.substring(0,6) %>... 📋
                                         </button>
-
-                                        <!-- DELETE TOKEN BUTTON -->
-                                        <button onclick="deleteToken('<%= token.mint %>')"
-                                            class="ml-2 text-xs text-red-900 hover:text-red-500 transition-colors"
-                                            title="Delete Token from Database">
-                                            🗑️
-                                        </button>
-
                                         <div class="mt-1 flex items-center">
                                             <span class="text-xs text-gray-400">
                                                 <%= new Date(token.alertTimestamp).toLocaleTimeString() %>
                                             </span>
-
-                                            <!-- CHART LINK (Dynamic Chain) -->
                                             <% const isEVM=token.mint.startsWith('0x'); const chain=isEVM ? 'base'
                                                 : 'solana' ; %>
                                                 <a href="https://dexscreener.com/<%= chain %>/<%= token.mint %>"
@@ -314,10 +311,7 @@
                                             placeholder="Open"
                                             value="<%= token.status === 'RUGGED' ? '0' : (token.soldMc > 0 ? (token.soldMc / 1000).toFixed(1) : '') %>"
                                             onchange="saveSoldMc('<%= token.mint %>', this)">
-                                        <span class="text-gray-500 ml-1">k</span> <!-- Assumed input is full value? Or k? User usually types 100k or 100000. Let's assume full number but maybe placeholder implies it?
-                                    Looking at helper text 'Found MC' is $Xk.
-                                    If user types 500000, that's fine.
-                                    Adding auto-converter might be complex. Let's assume raw number. -->
+                                        <span class="text-gray-500 ml-1">k</span>
                                     </div>
                                 </td>
 
@@ -338,6 +332,11 @@
                                                 class="bg-red-900 hover:bg-red-800 text-red-200 text-xs font-bold py-1 px-3 rounded transition-colors border border-red-800">
                                                 💀 RUG
                                             </button>
+                                            <button onclick="deleteToken('<%= token.mint %>')"
+                                                class="ml-2 text-xs text-red-900 hover:text-red-500 transition-colors"
+                                                title="Delete">
+                                                🗑️
+                                            </button>
                                             <% } %>
                                 </td>
                             </tr>
@@ -351,6 +350,105 @@
                 </table>
             </div>
         </div>
+
+        <!-- VIEW: PERFORMANCE REPORT -->
+        <div id="view-performance" class="hidden">
+            <h2 class="text-xl font-bold text-white mb-4 flex items-center">
+                <span class="mr-2">🏆</span> Autopsy Report (True ATH)
+            </h2>
+            <div class="bg-gray-800 rounded-xl overflow-hidden shadow-lg border border-gray-700">
+                <table class="w-full text-left" id="perf-table">
+                    <thead class="bg-gray-700 text-gray-300">
+                        <tr>
+                            <th class="px-6 py-3">Rank</th>
+                            <th class="px-6 py-3">Token</th>
+                            <th class="px-6 py-3">Entry MC</th>
+                            <th class="px-6 py-3">True ATH</th>
+                            <th class="px-6 py-3">Multiplier</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-700" id="perf-body">
+                        <!-- Populated via JS -->
+                        <tr>
+                            <td colspan="5" class="px-6 py-4 text-center text-gray-500">Loading Report...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <script>
+            let reportLoaded = false;
+
+            function switchTab(tab) {
+                const liveBtn = document.getElementById('tab-live');
+                const perfBtn = document.getElementById('tab-performance');
+                const liveView = document.getElementById('view-live');
+                const perfView = document.getElementById('view-performance');
+
+                if (tab === 'live') {
+                    liveView.classList.remove('hidden');
+                    perfView.classList.add('hidden');
+                    liveBtn.className = "px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-500 transition-colors";
+                    perfBtn.className = "px-4 py-2 bg-gray-700 text-gray-400 rounded font-bold hover:bg-gray-600 hover:text-white transition-colors";
+                } else {
+                    liveView.classList.add('hidden');
+                    perfView.classList.remove('hidden');
+                    liveBtn.className = "px-4 py-2 bg-gray-700 text-gray-400 rounded font-bold hover:bg-gray-600 hover:text-white transition-colors";
+                    perfBtn.className = "px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-500 transition-colors";
+
+                    if (!reportLoaded) loadPerformanceReport();
+                }
+            }
+
+            async function loadPerformanceReport() {
+                try {
+                    const res = await fetch('/api/performance');
+                    const data = await res.json();
+
+                    const tbody = document.getElementById('perf-body');
+                    tbody.innerHTML = '';
+
+                    if (data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-gray-500">No autopsy data yet.</td></tr>';
+                        return;
+                    }
+
+                    data.forEach((item, index) => {
+                        const rank = index + 1;
+                        let rankColor = 'text-gray-400';
+                        if (rank === 1) rankColor = 'text-yellow-400 font-bold text-xl';
+                        else if (rank === 2) rankColor = 'text-gray-300 font-bold text-lg';
+                        else if (rank === 3) rankColor = 'text-orange-400 font-bold';
+
+                        let multColor = 'text-gray-300';
+                        const m = parseFloat(item.multiplier);
+                        if (m >= 10) multColor = 'text-purple-400 font-bold neon-text';
+                        else if (m >= 5) multColor = 'text-green-400 font-bold';
+                        else if (m >= 2) multColor = 'text-green-200';
+                        else if (m < 0.5) multColor = 'text-red-400';
+
+                        const row = `
+                            <tr class="hover:bg-gray-750 transition-colors">
+                                <td class="px-6 py-4 ${rankColor}">#${rank}</td>
+                                <td class="px-6 py-4 font-bold text-white">
+                                    ${item.symbol} <span class="text-xs text-gray-500 font-normal ml-2">${new Date(item.date).toLocaleDateString()}</span>
+                                </td>
+                                <td class="px-6 py-4 text-gray-400 font-mono">$${(item.entryMc / 1000).toFixed(1)}k</td>
+                                <td class="px-6 py-4 text-white font-mono">$${(item.athMc / 1000).toFixed(1)}k</td>
+                                <td class="px-6 py-4 ${multColor} text-lg">${item.multiplier}x</td>
+                            </tr>
+                        `;
+                        tbody.innerHTML += row;
+                    });
+                    reportLoaded = true;
+
+                } catch (err) {
+                    console.error(err);
+                    document.getElementById('perf-body').innerHTML = '<tr><td colspan="5" class="px-6 py-4 text-center text-red-500">Error loading report.</td></tr>';
+                }
+            }
+        </script>
     </div>
 </body>
 
