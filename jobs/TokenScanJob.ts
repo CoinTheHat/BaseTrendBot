@@ -18,6 +18,7 @@ import { TrendCollector } from '../trends/TrendCollector';
 import { TrendTokenMatcher } from '../core/TrendTokenMatcher';
 import { AlphaSearchService } from '../twitter/AlphaSearchService';
 import { DexScreenerService } from '../services/DexScreenerService';
+import { LLMService } from '../services/LLMService';
 
 export class TokenScanJob {
     private isRunning = false;
@@ -40,8 +41,65 @@ export class TokenScanJob {
         private storage: PostgresStorage,
         private trendCollector: TrendCollector,
         private trendMatcher: TrendTokenMatcher,
-        private alphaSearch: AlphaSearchService
+        private alphaSearch: AlphaSearchService,
+        private llmService: any // Need to inject LLMService or use global if not injected (Assuming injected or Import)
     ) { }
+
+    // --- AI QUEUE LOGIC ---
+    private analysisQueue: Array<{ token: TokenSnapshot; msgId: number }> = [];
+    private activeAnalysisCount = 0;
+    private MAX_CONCURRENT_ANALYSIS = 2;
+
+    private async enqueueAnalysis(token: TokenSnapshot, msgId: number) {
+        this.analysisQueue.push({ token, msgId });
+        this.processAnalysisQueue();
+    }
+
+    private async processAnalysisQueue() {
+        if (this.activeAnalysisCount >= this.MAX_CONCURRENT_ANALYSIS || this.analysisQueue.length === 0) return;
+
+        const item = this.analysisQueue.shift();
+        if (!item) return;
+
+        this.activeAnalysisCount++;
+        try {
+            // logger.info(`[AI Worker] Analyzing ${item.token.symbol}... (Queue: ${this.analysisQueue.length})`);
+
+            // 1. Run Analysis
+            // Note: We need access to LLMService. If not in constructor, we might need to import it or pass it.
+            // Assuming we added it to constructor or have access. Ideally constructor injection.
+            // For now, let's assume `this.llmService` exists. **WAIT**, I need to add it to Constructor!
+
+            // Temporary Fix: If LLMService is not in constructor, I'll use a direct import if possible, 
+            // BUT proper way is Constructor injection. I will update Constructor in next tool call.
+            // For this Replace block, I will assume `this.llmService` is available.
+
+            const analysis = await this.llmService.analyzePostSnipe(item.token);
+
+            if (analysis) {
+                // 2. Reply to Telegram
+                const emoji = analysis.riskLevel === 'LOW' ? '🟢' : analysis.riskLevel === 'MEDIUM' ? '🟡' : '🔴';
+                const replyText = `🧠 **AI ANALYST INSIGHT**\n\n` +
+                    `📊 **Momentum:** ${analysis.momentumPhase}\n` +
+                    `⚖️ **Price Context:** ${analysis.priceContext}\n` +
+                    `🛡️ **Risk Level:** ${emoji} ${analysis.riskLevel}\n\n` +
+                    `📝 *${analysis.explanation[0]}*\n` +
+                    (analysis.explanation[1] ? `📝 *${analysis.explanation[1]}*` : '');
+
+                await this.bot.replyToMessage(config.TELEGRAM_CHAT_ID as any, item.msgId, replyText);
+
+                // 3. Save Analysis Update to DB (Optional, for Dashboard)
+                // await this.storage.updateSeenTokenAnalysis(...) 
+            }
+
+        } catch (err) {
+            logger.error(`[AI Worker] Failed for ${item.token.symbol}: ${err}`);
+        } finally {
+            this.activeAnalysisCount--;
+            // Process next
+            setTimeout(() => this.processAnalysisQueue(), 100);
+        }
+    }
 
     private async runLoop() {
         if (!this.isRunning) return;
@@ -138,6 +196,11 @@ export class TokenScanJob {
             for (const chunk of chunks) {
                 await Promise.all(chunk.map(async (token) => {
                     try {
+                        // LRU-like Safety Check
+                        if (this.processedCache.size > 1000) {
+                            const oldest = this.processedCache.keys().next().value;
+                            if (oldest) this.processedCache.delete(oldest);
+                        }
                         this.processedCache.set(token.mint, Date.now());
 
                         // --- STEP 1: STRICT LIQUIDITY GATES (Sniper Firewall) ---
@@ -224,8 +287,8 @@ export class TokenScanJob {
                                 storedAnalysis: JSON.stringify(mechanicalNarrative)
                             });
 
-                            // ⚡ FIRE ALERT
-                            await this.bot.sendAlert(mechanicalNarrative, enrichedToken, scoreRes);
+                            // ⚡ FIRE ALERT & GET MSG ID
+                            const alertMsgId = await this.bot.sendAlert(mechanicalNarrative, enrichedToken, scoreRes);
 
                             await this.cooldown.recordAlert(token.mint, totalScore, 'TRACKING', token.priceUsd);
 
@@ -241,6 +304,13 @@ export class TokenScanJob {
                                 alertTimestamp: new Date(),
                                 lastUpdated: new Date()
                             });
+
+                            // --- 🧠 AI POST-ANALYSIS (ASYNC QUEUE) ---
+                            // Fire & Forget (Queue handles concurrency)
+                            if (alertMsgId) {
+                                this.enqueueAnalysis(token, alertMsgId);
+                            }
+
                         }
 
                     } catch (tokenErr) {
@@ -250,6 +320,8 @@ export class TokenScanJob {
                 // Tiny delay between chunks
                 await new Promise(r => setTimeout(r, 50));
             }
+
+
 
             // SCAN SUMMARY
             const totalRejected = gateCount + weakCount;

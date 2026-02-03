@@ -210,4 +210,79 @@ If no gems found, return: { "gems": [] }
             return [];
         }
     }
+
+    /**
+     * POST-SNIPE ANALYSIS
+     * Diagnostic review after mechanical alert.
+     */
+    async analyzePostSnipe(token: TokenSnapshot): Promise<{
+        momentumPhase: string;
+        priceContext: string;
+        riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+        explanation: string[];
+    } | null> {
+        const systemPrompt = `
+You are an analytical assistant reviewing a token that has ALREADY triggered a SNIPED alert.
+
+IMPORTANT RULES:
+- You MUST NOT make any buy/sell or entry decisions.
+- Entry logic is purely mechanical and already executed.
+- Your role is post-analysis, context building, and pattern recognition only.
+- Price changes are CONTEXTUAL, not signals.
+- You do NOT have volume data. Do NOT assume volume behavior.
+
+TOKEN SNAPSHOT:
+- Symbol: ${token.symbol}
+- Chain: Solana
+- Market Cap (USD): $${token.marketCapUsd?.toLocaleString() || '0'}
+- Liquidity (USD): $${token.liquidityUsd?.toLocaleString() || '0'}
+- Token Age (minutes): ${token.createdAt ? Math.floor((Date.now() - token.createdAt.getTime()) / 60000) : 'N/A'}
+
+TRANSACTION ACTIVITY (last 5 minutes):
+- Buy Transactions: ${token.txs5m?.buys || 0}
+- Sell Transactions: ${token.txs5m?.sells || 0}
+- Total Transactions (5m): ${(token.txs5m?.buys || 0) + (token.txs5m?.sells || 0)}
+- Buy Ratio (%): ${((token.txs5m?.buys || 0) / ((token.txs5m?.buys || 0) + (token.txs5m?.sells || 0) || 1) * 100).toFixed(1)}%
+
+PRICE CONTEXT (percentage change):
+- Price Change 5m: ${token.priceChange5m || 0}%
+- Price Change 1h: ${token.priceChange1h || 0}%
+- Price Change 6h: ${token.priceChange6h || 0}%
+
+TASK:
+Analyze the token ONLY from a contextual and diagnostic perspective using transaction activity and price movement timing.
+
+Focus on:
+1. Momentum Quality (Accelerating/Stable/Fading)
+2. Price vs Activity Relationship (Proportionate/Stretched)
+3. Timing Assessment (Early/Mid/Late)
+4. Risk Signals (Exhaustion/Overextension)
+
+OUTPUT FORMAT (STRICT JSON):
+{
+    "momentumPhase": "Early" | "Mid" | "Late" | "Exhausted",
+    "priceContext": "Fresh move" | "Extended" | "Overextended",
+    "riskLevel": "Low" | "Medium" | "High",
+    "explanation": ["Bullet 1", "Bullet 2", "Bullet 3"]
+}
+`;
+
+        try {
+            // logger.info(`[xAI] Starting Post-Snipe Analysis for ${token.symbol}...`);
+            const completion = await this.xai.chat.completions.create({
+                model: config.XAI_MODEL || "grok-4-1-fast-non-reasoning",
+                messages: [{ role: "system", content: systemPrompt }],
+                temperature: 0.1,
+                response_format: { type: "json_object" }
+            });
+
+            const content = completion.choices[0].message.content;
+            if (!content) return null;
+            return JSON.parse(content);
+
+        } catch (err: any) {
+            logger.error(`[xAI] Post-Snipe Analysis failed: ${err.message}`);
+            return null;
+        }
+    }
 }

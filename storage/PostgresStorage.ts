@@ -85,18 +85,18 @@ export class PostgresStorage {
                 await this.pool.query(q);
             }
             // Auto-Migration
+            // Auto-Migration (Ensure Columns Exist)
             await this.pool.query(`ALTER TABLE seen_tokens ADD COLUMN IF NOT EXISTS last_price NUMERIC;`);
-            await this.pool.query(`ALTER TABLE seen_tokens ADD COLUMN IF NOT EXISTS symbol TEXT;`); // New Migration
+            await this.pool.query(`ALTER TABLE seen_tokens ADD COLUMN IF NOT EXISTS symbol TEXT;`);
+            await this.pool.query(`ALTER TABLE seen_tokens ADD COLUMN IF NOT EXISTS dip_target_mc NUMERIC DEFAULT 0;`);
+            await this.pool.query(`ALTER TABLE seen_tokens ADD COLUMN IF NOT EXISTS stored_analysis TEXT;`);
+
             await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS entry_price NUMERIC DEFAULT 0;`);
             await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS found_mc NUMERIC;`);
             await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS max_mc NUMERIC;`);
             await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS found_at TIMESTAMP DEFAULT NOW();`);
-            await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS sold_mc NUMERIC DEFAULT 0;`); // NEW
-            await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS dip_target_mc NUMERIC DEFAULT 0;`); // NEW
-
-            // Fix: Add missing columns to seen_tokens (User Report verified)
-            await this.pool.query(`ALTER TABLE seen_tokens ADD COLUMN IF NOT EXISTS dip_target_mc NUMERIC DEFAULT 0;`);
-            await this.pool.query(`ALTER TABLE seen_tokens ADD COLUMN IF NOT EXISTS stored_analysis TEXT;`);
+            await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS sold_mc NUMERIC DEFAULT 0;`);
+            await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS dip_target_mc NUMERIC DEFAULT 0;`); // ENSURE THIS EXISTS
 
             // Backfill: found_mc = alert_mc, max_mc = ath_mc for existing rows
             await this.pool.query(`UPDATE token_performance SET found_mc = alert_mc WHERE found_mc IS NULL;`);
@@ -131,7 +131,8 @@ export class PostgresStorage {
                     ath_mc = GREATEST(token_performance.ath_mc, EXCLUDED.ath_mc),
                     current_mc = EXCLUDED.current_mc,
                     last_updated = NOW(),
-                    dip_target_mc = COALESCE(token_performance.dip_target_mc, EXCLUDED.dip_target_mc),
+                    dip_target_mc = COALESCE(NULLIF(EXCLUDED.dip_target_mc, 0), token_performance.dip_target_mc),
+                    entry_price = COALESCE(NULLIF(EXCLUDED.entry_price, 0), token_performance.entry_price),
                     status = EXCLUDED.status`,
                 [
                     perf.mint,

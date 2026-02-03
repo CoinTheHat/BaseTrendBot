@@ -11,11 +11,15 @@ export interface TokenSnapshot {
     liquidityUsd?: number;
     volume5mUsd?: number;
     volume30mUsd?: number;
-    volume24hUsd?: number; // Added for BirdEye
+    volume24hUsd?: number;
+    volumeTrend?: 'increasing' | 'flat' | 'decreasing'; // NEW
     buyers5m?: number;
+    sellers5m?: number; // NEW
     buyers30m?: number;
     priceChange5m?: number; // %
-    txs5m?: { buys: number; sells: number };
+    priceChange1h?: number; // NEW
+    priceChange6h?: number; // NEW
+    txs5m?: { buys: number; sells: number }; // Existing but robust
     createdAt?: Date; // Launch time
     updatedAt: Date;  // Last scan time
     devWalletConcentration?: number; // %

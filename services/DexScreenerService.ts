@@ -182,6 +182,8 @@ export class DexScreenerService {
             volume5mUsd: pair.volume?.m5 || 0,
             volume30mUsd: (pair.volume?.m5 || 0) + (pair.volume?.h1 ? pair.volume.h1 / 2 : 0),
             priceChange5m: pair.priceChange?.m5 || 0,
+            priceChange1h: pair.priceChange?.h1 || 0,
+            priceChange6h: pair.priceChange?.h6 || 0,
             txs5m: {
                 buys: pair.txns?.m5?.buys || 0,
                 sells: pair.txns?.m5?.sells || 0

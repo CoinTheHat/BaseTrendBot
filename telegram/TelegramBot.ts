@@ -302,10 +302,21 @@ Güven Skoru: **${narrative.twitterStory.trustScore ?? 50}/100** (${(narrative.t
 ⚠ _Yatırım Tavsiyesi Değildir._`;
 
         try {
-            await this.bot.sendMessage(config.TELEGRAM_CHAT_ID, message, { parse_mode: 'Markdown', disable_web_page_preview: true });
+            const sentMsg = await this.bot.sendMessage(config.TELEGRAM_CHAT_ID, message, { parse_mode: 'Markdown', disable_web_page_preview: true });
             logger.info(`[Telegram] Alert sent for ${token.symbol}`);
-        } catch (err) {
-            logger.error(`[Telegram] Failed to send alert: ${err} `);
+            return sentMsg.message_id;
+        } catch (err: any) {
+            logger.error(`[Telegram] Failed to send alert (Attempt 1): ${err.message}`);
+            // RETRY ONCE
+            try {
+                await new Promise(r => setTimeout(r, 1000)); // 1s wait
+                const retryMsg = await this.bot.sendMessage(config.TELEGRAM_CHAT_ID, message, { parse_mode: 'Markdown', disable_web_page_preview: true });
+                logger.info(`[Telegram] Alert sent for ${token.symbol} (Retry Success)`);
+                return retryMsg.message_id;
+            } catch (retryErr: any) {
+                logger.error(`[Telegram] Failed to send alert (Final): ${retryErr.message}`);
+                return undefined;
+            }
         }
     }
 
@@ -330,6 +341,19 @@ Correction target hit! Price pulled back from 5m pump.
             logger.info(`[Telegram] Dip Alert sent for ${token.symbol}`);
         } catch (err) {
             logger.error(`[Telegram] Failed to send Dip Alert: ${err}`);
+        }
+    }
+
+    async replyToMessage(chatId: number, messageId: number, text: string) {
+        if (!this.bot) return;
+        try {
+            await this.bot.sendMessage(chatId, text, {
+                parse_mode: 'Markdown',
+                reply_to_message_id: messageId,
+                disable_web_page_preview: true
+            });
+        } catch (err) {
+            logger.error(`[Telegram] Failed to reply: ${err}`);
         }
     }
 
