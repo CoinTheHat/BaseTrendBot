@@ -204,6 +204,18 @@ export class DashboardServer {
                 res.status(500).json({ error: 'Reset failed' });
             }
         });
+
+        // NEW: Delete Single Token
+        this.app.delete('/api/tokens/:mint', async (req, res) => {
+            try {
+                const { mint } = req.params;
+                await this.storage.deleteToken(mint);
+                res.json({ success: true });
+            } catch (error) {
+                logger.error(`[API] Delete Token failed: ${error}`);
+                res.status(500).json({ error: 'Delete failed' });
+            }
+        });
     }
 
     start() {

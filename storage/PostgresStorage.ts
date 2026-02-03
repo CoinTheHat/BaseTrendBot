@@ -599,6 +599,18 @@ export class PostgresStorage {
         } catch (err) {
             logger.error('[Postgres] Reset failed:', err);
             throw err;
+            throw err;
+        }
+    }
+
+    async deleteToken(mint: string): Promise<void> {
+        try {
+            await this.pool.query('DELETE FROM seen_tokens WHERE mint = $1', [mint]);
+            await this.pool.query('DELETE FROM token_performance WHERE mint = $1', [mint]);
+            logger.info(`[Postgres] Deleted token ${mint}`);
+        } catch (err) {
+            logger.error(`[Postgres] Failed to delete token ${mint}`, err);
+            throw err;
         }
     }
 }

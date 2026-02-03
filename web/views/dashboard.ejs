@@ -147,6 +147,25 @@
             }
         }
 
+        async function deleteToken(mint) {
+            if (!confirm('🗑️ Delete this token permanently?')) return;
+            try {
+                const res = await fetch(`/api/tokens/${mint}`, { method: 'DELETE' });
+                const json = await res.json();
+                if (json.success) {
+                    // Remove row instantly
+                    const row = document.querySelector(`tr[data-mint="${mint}"]`);
+                    if (row) row.remove();
+                    calculatePortfolio(); // Recalculate stats
+                } else {
+                    alert('Delete Failed');
+                }
+            } catch (err) {
+                console.error(err);
+                alert('Delete Request Failed');
+            }
+        }
+
         function copyToClipboard(text, btnElement) {
             navigator.clipboard.writeText(text).then(() => {
                 // Visual feedback
@@ -255,6 +274,13 @@
                                             title="Click to Copy CA">
                                             <%= token.mint.substring(0,6) %>... <span
                                                     class="text-gray-600 hover:text-gray-300">📋</span>
+                                        </button>
+
+                                        <!-- DELETE TOKEN BUTTON -->
+                                        <button onclick="deleteToken('<%= token.mint %>')"
+                                            class="ml-2 text-xs text-red-900 hover:text-red-500 transition-colors"
+                                            title="Delete Token from Database">
+                                            🗑️
                                         </button>
 
                                         <div class="mt-1 flex items-center">
