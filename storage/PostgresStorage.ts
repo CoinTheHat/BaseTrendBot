@@ -365,12 +365,14 @@ export class PostgresStorage {
             if (res.rows.length === 0) return null;
             const row = res.rows[0];
             return {
-                symbol: row.symbol, // New
+                symbol: row.symbol,
                 firstSeenAt: Number(row.first_seen_at),
                 lastAlertAt: Number(row.last_alert_at),
                 lastScore: row.last_score,
                 lastPhase: row.last_phase,
-                lastPrice: row.last_price ? Number(row.last_price) : undefined
+                lastPrice: row.last_price ? Number(row.last_price) : undefined,
+                dipTargetMc: row.dip_target_mc ? Number(row.dip_target_mc) : undefined,
+                storedAnalysis: row.stored_analysis // Added mapping
             };
         } catch (err) {
             logger.error('[Postgres] getSeenToken failed', err);
@@ -382,15 +384,27 @@ export class PostgresStorage {
         if (mint.startsWith('0x')) return;
         try {
             await this.pool.query(
-                `INSERT INTO seen_tokens(mint, symbol, first_seen_at, last_alert_at, last_score, last_phase, last_price)
-                 VALUES($1, $2, $3, $4, $5, $6, $7)
+                `INSERT INTO seen_tokens(mint, symbol, first_seen_at, last_alert_at, last_score, last_phase, last_price, dip_target_mc, stored_analysis)
+                 VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)
                  ON CONFLICT(mint) DO UPDATE SET
                     symbol = COALESCE(EXCLUDED.symbol, seen_tokens.symbol),
                     last_alert_at = EXCLUDED.last_alert_at,
                     last_score = EXCLUDED.last_score,
                     last_phase = EXCLUDED.last_phase,
-                    last_price = EXCLUDED.last_price;`,
-                [mint, data.symbol || null, data.firstSeenAt, data.lastAlertAt, data.lastScore, data.lastPhase, data.lastPrice || 0]
+                    last_price = EXCLUDED.last_price,
+                    dip_target_mc = EXCLUDED.dip_target_mc,
+                    stored_analysis = EXCLUDED.stored_analysis;`,
+                [
+                    mint,
+                    data.symbol || null,
+                    data.firstSeenAt,
+                    data.lastAlertAt,
+                    data.lastScore,
+                    data.lastPhase,
+                    data.lastPrice || 0,
+                    data.dipTargetMc || 0,
+                    data.storedAnalysis || null // Added parameter
+                ]
             );
         } catch (err) {
             logger.error('[Postgres] saveSeenToken failed', err);
