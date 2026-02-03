@@ -494,6 +494,20 @@ export class TokenScanJob {
                     }
                 }
 
+                // Fallback if no analysis found (e.g. old tokens before update)
+                if (!narrative) {
+                    narrative = {
+                        headline: `📉 DIP ENTRY TRIGGERED`,
+                        mainStory: `Price dropped to target zone. AI Analysis not available for this legacy token.`,
+                        narrativeText: `Price dropped to target zone. AI Analysis not available for this legacy token.`,
+                        dataSection: `• MC: $${(currentMc).toLocaleString()}\n• Target: $${(targetMc).toLocaleString()}`,
+                        tradeLens: `WAITING -> TRACKING`,
+                        vibeCheck: `Requires Manual Review`,
+                        aiScore: seenData?.lastScore || 0,
+                        aiApproved: true
+                    };
+                }
+
                 if (narrative) {
                     // Send Alert using Full Format + Special Title
                     await this.bot.sendTokenAlert(liveToken, narrative, `CORRECTION ENTRY: $${candidate.symbol} 📉`);
