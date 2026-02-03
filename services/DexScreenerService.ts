@@ -27,8 +27,17 @@ export class DexScreenerService {
 
     private async makeRequest(url: string): Promise<any> {
         try {
-            const response = await axios.get(url, {
-                headers: { 'User-Agent': this.getRandomUserAgent() }
+            // CACHE BUSTING: Add timestamp and headers to force fresh data (User Request: Prevent stale dump data)
+            const separator = url.includes('?') ? '&' : '?';
+            const freshUrl = `${url}${separator}t=${Date.now()}`;
+
+            const response = await axios.get(freshUrl, {
+                headers: {
+                    'User-Agent': this.getRandomUserAgent(),
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0'
+                }
             });
             return response.data;
         } catch (error: any) {
@@ -40,6 +49,10 @@ export class DexScreenerService {
             throw error;
         }
     }
+
+    // ... (rest of methods)
+
+
 
     /**
      * Fetch latest Solana profiles/pairs.
@@ -233,6 +246,9 @@ export class DexScreenerService {
             });
 
             await page.setUserAgent(this.getRandomUserAgent());
+
+            // DISABLE CACHE (User Request)
+            await page.setCacheEnabled(false);
 
             const url = 'https://dexscreener.com/solana?rankBy=trendingScoreM5&order=desc';
             console.log(`[DexScreener Scraper] Navigating to ${url}...`);
