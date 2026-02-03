@@ -1,0 +1,15 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": ".ec89645b6971f549e0c2ffa2c94a90624320c1d6-audit.json",
+    "files": [
+        {
+            "date": 1770156152875,
+            "name": "scandex-2026-02-04.log",
+            "hash": "0bd545f39bde1ab1e09ac7216be708c21658ad35a5ee3886db9381ec8273c681"
+        }
+    ],
+    "hashType": "sha256"
+}

@@ -627,4 +627,39 @@ export class PostgresStorage {
             throw err;
         }
     }
+    // --- Autopsy / AI Training Data ---
+
+    async getAutopsyCandidates(): Promise<TokenPerformance[]> {
+        try {
+            // Find tokens older than 24 hours that haven't been finalized with a True ATH check
+            // We assume if 'status' is not 'AUTOPSIED' it needs check, OR we check a new flag.
+            // For now, let's use a time check and status check.
+            const res = await this.pool.query(
+                `SELECT * FROM token_performance 
+                 WHERE alert_timestamp < NOW() - INTERVAL '24 hours'
+                 AND status != 'AUTOPSIED'
+                 LIMIT 50`
+            );
+            return res.rows.map(row => this.mapPerformanceRow(row));
+        } catch (err) {
+            logger.error('[Postgres] getAutopsyCandidates failed', err);
+            return [];
+        }
+    }
+
+    async updateTrueAth(mint: string, trueAthMc: number) {
+        try {
+            // We update status to 'AUTOPSIED' so we don't check again
+            await this.pool.query(
+                `UPDATE token_performance
+                 SET ath_mc = GREATEST(ath_mc, $2), -- Update ATH if we found a higher one
+                     status = 'AUTOPSIED'
+                 WHERE mint = $1`,
+                [mint, trueAthMc]
+            );
+            logger.info(`[Postgres] Autopsy Complete for ${mint}. Final ATH: $${trueAthMc}`);
+        } catch (err) {
+            logger.error('[Postgres] updateTrueAth failed', err);
+        }
+    }
 }
