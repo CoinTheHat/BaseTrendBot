@@ -210,6 +210,13 @@ export class TokenScanJob {
                             return;
                         }
 
+                        // NEW FILTER: Reject Suspiciously High Liquidity (Rug/Honeypot/Post-Dump)
+                        // User Request: Reject if Liq/MC > 90%
+                        if (liqMcRatio > 0.90) {
+                            logger.warn(`[Filter] 🚨 Suspicious Liquidity: ${token.symbol} (Ratio: ${(liqMcRatio * 100).toFixed(1)}%). Potential Rug/Honeypot.`);
+                            return;
+                        }
+
                         // FILTER 1: Liquidity (Min $5k)
                         if (liq < 5000) {
                             lowLiqCount++;
