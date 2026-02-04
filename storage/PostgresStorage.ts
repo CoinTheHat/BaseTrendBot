@@ -468,6 +468,18 @@ export class PostgresStorage {
         }
     }
 
+    async updateStoredAnalysis(mint: string, analysis: string) {
+        try {
+            await this.pool.query(
+                `UPDATE seen_tokens SET stored_analysis = $1 WHERE mint = $2`,
+                [analysis, mint]
+            );
+            logger.info(`[Postgres] Updated stored analysis for ${mint}`);
+        } catch (err) {
+            logger.error(`[Postgres] updateStoredAnalysis failed for ${mint}`, err);
+        }
+    }
+
     // --- Trends ---
 
     async saveTrends(trends: TrendItem[]) {

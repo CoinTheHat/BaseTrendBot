@@ -77,7 +77,8 @@ export class TokenScanJob {
             const analysis = await this.llmService.analyzePostSnipe(item.token);
 
             if (analysis) {
-                // 2. Reply to Telegram
+                // 2. Reply to Telegram (DISABLED by User Request - Background Save Only)
+                /*
                 const emoji = analysis.riskLevel === 'LOW' ? '🟢' : analysis.riskLevel === 'MEDIUM' ? '🟡' : '🔴';
                 const replyText = `🧠 **AI ANALYST INSIGHT**\n\n` +
                     `📊 **Momentum:** ${analysis.momentumPhase}\n` +
@@ -85,11 +86,13 @@ export class TokenScanJob {
                     `🛡️ **Risk Level:** ${emoji} ${analysis.riskLevel}\n\n` +
                     `📝 *${analysis.explanation[0]}*\n` +
                     (analysis.explanation[1] ? `📝 *${analysis.explanation[1]}*` : '');
-
+    
                 await this.bot.replyToMessage(config.TELEGRAM_CHAT_ID as any, item.msgId, replyText);
+                */
 
-                // 3. Save Analysis Update to DB (Optional, for Dashboard)
-                // await this.storage.updateSeenTokenAnalysis(...) 
+                // 3. Save Analysis Update to DB (Background)
+                logger.info(`[AI Worker] 🧠 Saving Analysis for ${item.token.symbol} (Silent Mode)`);
+                await this.storage.updateStoredAnalysis(item.token.mint, JSON.stringify(analysis));
             }
 
         } catch (err) {
