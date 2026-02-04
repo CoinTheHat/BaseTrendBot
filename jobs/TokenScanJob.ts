@@ -153,6 +153,13 @@ export class TokenScanJob {
         try {
             logger.info('[Job] 🔍 Starting DexScreener Scan...');
 
+            // --- RUG HOURS FILTER (00:00 - 05:00 UTC) ---
+            const currentHour = new Date().getUTCHours();
+            if (currentHour >= 0 && currentHour < 5) {
+                logger.warn(`[Job] 🌙 Sleeping during Rug Hours (00:00 - 05:00 UTC). Current UTC Hour: ${currentHour}`);
+                return;
+            }
+
             // 1. Fetch Candidates (DexScreener Latest Pairs)
             const dexTokens = await this.dexScreener.getLatestPairs();
             logger.info(`[Fetch] 📡 Received ${dexTokens.length} tokens from DexScreener`);
