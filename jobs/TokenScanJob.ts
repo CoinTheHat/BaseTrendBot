@@ -168,8 +168,8 @@ export class TokenScanJob {
 
             for (const token of dexTokens) {
                 const lastProcessed = this.processedCache.get(token.mint);
-                // SMART CACHE: Reverted to 4 hours
-                if (lastProcessed && (now - lastProcessed < 4 * 60 * 60 * 1000)) {
+                // SMART CACHE: Reverted to 1 hour
+                if (lastProcessed && (now - lastProcessed < 1 * 60 * 60 * 1000)) {
                     cachedCount++;
                     continue;
                 }
