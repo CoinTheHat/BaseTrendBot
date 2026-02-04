@@ -419,6 +419,41 @@
                         </div>
                     </div>
                 </div>
+            </div>
+            <!-- STRATEGY 2: THE 2x MOONSHOT -->
+            <div
+                class="mt-8 bg-gray-800 rounded-xl p-6 border border-purple-900/50 mb-8 shadow-lg relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 opacity-10 text-9xl">🚀</div>
+                <h3 class="text-2xl font-bold text-white mb-2 relative z-10">🚀 Strategy 2: "The 2x Moonshot"</h3>
+                <p class="text-gray-400 text-sm mb-6 relative z-10 max-w-2xl">
+                    Simulation based on $100 entry per token.<br>
+                    • <b>Target:</b> Sell 100% @ 2.0x (Double or Nothing) <br>
+                    • <b>Rule:</b> If hit 2x, +$100 profit. If missed (even 1.99x), assume 100% Loss (-$100).
+                </p>
+
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 relative z-10">
+                    <!-- Strategy PnL -->
+                    <div class="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
+                        <div class="text-gray-500 text-xs font-bold uppercase tracking-wider">Strategy Net Profit</div>
+                        <div class="text-3xl font-bold mt-1" id="strat2-pnl">Calculating...</div>
+                        <div class="text-xs text-gray-400 mt-1" id="strat2-roi">ROI: 0%</div>
+                    </div>
+
+                    <!-- Win Rate (2x) -->
+                    <div class="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
+                        <div class="text-gray-500 text-xs font-bold uppercase tracking-wider">Win Rate (2.0x)</div>
+                        <div class="text-3xl font-bold text-green-400 mt-1" id="strat2-win">0%</div>
+                        <div class="text-xs text-gray-400 mt-1" id="strat2-win-count">0 Tokens</div>
+                    </div>
+
+                    <!-- Rekt Rate -->
+                    <div class="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
+                        <div class="text-gray-500 text-xs font-bold uppercase tracking-wider">Loss Rate (<2.0x)< /div>
+                                <div class="text-3xl font-bold text-red-400 mt-1" id="strat2-rekt">0%</div>
+                                <div class="text-xs text-gray-400 mt-1 text-red-900" id="strat2-loss-val">-$0</div>
+                        </div>
+                    </div>
+                </div>
 
                 <div class="bg-gray-800 rounded-xl overflow-hidden shadow-lg border border-gray-700">
                     <table class="w-full text-left" id="perf-table">
@@ -538,51 +573,54 @@
                         pnlEl.innerText = `${pnl >= 0 ? '+' : ''}$${pnl.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
                         pnlEl.className = `text-3xl font-bold mt-1 ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
 
-                        // --- 🧪 STRATEGY LAB CALCULATION ---
+                        // --- 🧪 STRATEGY LAB 1 (1.5x / 2.5x) ---
                         let stratPnl = 0;
                         let tp1Hits = 0;
                         let tp2Hits = 0;
                         let failures = 0;
                         let totalStratLoss = 0;
 
+                        // --- 🚀 STRATEGY LAB 2 (2x Moonshot) ---
+                        let strat2Pnl = 0;
+                        let strat2Wins = 0;
+                        let strat2Failures = 0;
+                        let strat2LossAmount = 0;
+
                         const STRAT_BET = 100;
 
                         data.forEach(item => {
                             const m = parseFloat(item.multiplier);
 
-                            // Logic:
-                            // < 1.5x: Loss (-$100)
-                            // >= 1.5x: Sell 50% ($75). Remaining 50% risk free.
-                            // >= 2.5x: Sell other 50% ($125). Total $200.
-                            // If 1.5x <= m < 2.5x: Second half stops at Entry ($50). Total $125.
-
-                            let outcome = 0;
-
+                            // === STRATEGY 1: SPLIT ===
+                            let outcome1 = 0;
                             if (m < 1.5) {
-                                outcome = -STRAT_BET; // Loss
+                                outcome1 = -STRAT_BET;
                                 failures++;
                                 totalStratLoss += STRAT_BET;
                             } else if (m >= 1.5 && m < 2.5) {
-                                // Hit TP1, Missed TP2 (Stopped at BE)
-                                // 50% sold at 1.5 ($75)
-                                // 50% sold at 1.0 ($50)
-                                // Total Return: $125. Profit: +$25
-                                outcome = 25;
+                                outcome1 = 25; // 50% profit on half, BE on half
                                 tp1Hits++;
                             } else if (m >= 2.5) {
-                                // Hit TP1 & TP2
-                                // 50% sold at 1.5 ($75)
-                                // 50% sold at 2.5 ($125)
-                                // Total Return: $200. Profit: +$100
-                                outcome = 100;
-                                tp1Hits++; // Also counts as TP1 hit
+                                outcome1 = 100; // Full win
+                                tp1Hits++;
                                 tp2Hits++;
                             }
+                            stratPnl += outcome1;
 
-                            stratPnl += outcome;
+                            // === STRATEGY 2: 2x MOONSHOT ===
+                            let outcome2 = 0;
+                            if (m >= 2.0) {
+                                outcome2 = 100; // 100% Profit ($200 return - $100 bet)
+                                strat2Wins++;
+                            } else {
+                                outcome2 = -STRAT_BET; // 100% Loss
+                                strat2Failures++;
+                                strat2LossAmount += STRAT_BET;
+                            }
+                            strat2Pnl += outcome2;
                         });
 
-                        // Update Strategy UI
+                        // Update Strategy 1 UI
                         const stratPnlEl = document.getElementById('strat-pnl');
                         stratPnlEl.innerText = `${stratPnl >= 0 ? '+' : ''}$${stratPnl.toLocaleString()}`;
                         stratPnlEl.className = `text-3xl font-bold mt-1 ${stratPnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
@@ -601,6 +639,23 @@
                         const failRate = count > 0 ? (failures / count) * 100 : 0;
                         document.getElementById('strat-rekt').innerText = `${failRate.toFixed(1)}%`;
                         document.getElementById('strat-loss-val').innerText = `-$${totalStratLoss.toLocaleString()}`;
+
+
+                        // Update Strategy 2 UI
+                        const strat2PnlEl = document.getElementById('strat2-pnl');
+                        strat2PnlEl.innerText = `${strat2Pnl >= 0 ? '+' : ''}$${strat2Pnl.toLocaleString()}`;
+                        strat2PnlEl.className = `text-3xl font-bold mt-1 ${strat2Pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+
+                        const roi2 = (strat2Pnl / totalInvested) * 100;
+                        document.getElementById('strat2-roi').innerText = `ROI: ${roi2.toFixed(1)}%`;
+
+                        const winRate2 = count > 0 ? (strat2Wins / count) * 100 : 0;
+                        document.getElementById('strat2-win').innerText = `${winRate2.toFixed(1)}%`;
+                        document.getElementById('strat2-win-count').innerText = `${strat2Wins}/${count} Tokens`;
+
+                        const failRate2 = count > 0 ? (strat2Failures / count) * 100 : 0;
+                        document.getElementById('strat2-rekt').innerText = `${failRate2.toFixed(1)}%`;
+                        document.getElementById('strat2-loss-val').innerText = `-$${strat2LossAmount.toLocaleString()}`;
 
                         reportLoaded = true;
 
