@@ -454,6 +454,36 @@
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- STRATEGY 3: TIME-BASED EXIT (30m) -->
+            <div
+                class="mt-8 bg-gray-800 rounded-xl p-6 border border-yellow-900/50 mb-8 shadow-lg relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 opacity-10 text-9xl">⏳</div>
+                <h3 class="text-2xl font-bold text-white mb-2 relative z-10">⏳ Strategy 3: "30-Minute Exit"</h3>
+                <p class="text-gray-400 text-sm mb-6 relative z-10 max-w-2xl">
+                    Simulation based on $100 entry per token.<br>
+                    • <b>Rule:</b> Sell 100% exactly 30 minutes after entry.<br>
+                    • <b>Data:</b> Uses market price at Entry + 30m. If token died before 30m, assume 100% Loss.
+                </p>
+
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 relative z-10">
+                    <div class="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
+                        <div class="text-gray-500 text-xs font-bold uppercase tracking-wider">Strategy Net Profit</div>
+                        <div class="text-3xl font-bold mt-1" id="strat3-pnl">Calculating...</div>
+                        <div class="text-xs text-gray-400 mt-1" id="strat3-roi">ROI: 0%</div>
+                    </div>
+                    <div class="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
+                        <div class="text-gray-500 text-xs font-bold uppercase tracking-wider">Profitable Trades</div>
+                        <div class="text-3xl font-bold text-green-400 mt-1" id="strat3-wins">0</div>
+                        <div class="text-xs text-gray-400 mt-1" id="strat3-win-rate">0%</div>
+                    </div>
+                    <div class="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
+                        <div class="text-gray-500 text-xs font-bold uppercase tracking-wider">Rekt / Dead < 30m</div>
+                                <div class="text-3xl font-bold text-red-400 mt-1" id="strat3-losses">0</div>
+                        </div>
+                    </div>
+                </div>
 
                 <div class="bg-gray-800 rounded-xl overflow-hidden shadow-lg border border-gray-700">
                     <table class="w-full text-left" id="perf-table">
@@ -586,6 +616,11 @@
                         let strat2Failures = 0;
                         let strat2LossAmount = 0;
 
+                        // --- ⏳ STRATEGY LAB 3 (30m Exit) ---
+                        let strat3Pnl = 0;
+                        let strat3Wins = 0;
+                        let strat3Losses = 0;
+
                         const STRAT_BET = 100;
 
                         data.forEach(item => {
@@ -618,6 +653,25 @@
                                 strat2LossAmount += STRAT_BET;
                             }
                             strat2Pnl += outcome2;
+
+                            // === STRATEGY 3: 30-MIN EXIT ===
+                            // Use mc30m found in item. If 0 or missing, assume loss.
+                            let outcome3 = 0;
+                            const mc30 = item.mc30m || 0;
+                            const foundMc = item.foundMc || item.alertMc || 1;
+
+                            if (mc30 > 0 && foundMc > 0) {
+                                const exitVal = (mc30 / foundMc) * STRAT_BET; // e.g. (200k / 100k) * 100 = $200
+                                const profit = exitVal - STRAT_BET;
+                                outcome3 = profit;
+
+                                if (profit > 0) strat3Wins++;
+                                else strat3Losses++;
+                            } else {
+                                outcome3 = -STRAT_BET; // No data or Rekt -> Loss
+                                strat3Losses++;
+                            }
+                            strat3Pnl += outcome3;
                         });
 
                         // Update Strategy 1 UI
@@ -656,6 +710,20 @@
                         const failRate2 = count > 0 ? (strat2Failures / count) * 100 : 0;
                         document.getElementById('strat2-rekt').innerText = `${failRate2.toFixed(1)}%`;
                         document.getElementById('strat2-loss-val').innerText = `-$${strat2LossAmount.toLocaleString()}`;
+
+                        // Update Strategy 3 UI
+                        const strat3PnlEl = document.getElementById('strat3-pnl');
+                        strat3PnlEl.innerText = `${strat3Pnl >= 0 ? '+' : ''}$${Math.floor(strat3Pnl).toLocaleString()}`;
+                        strat3PnlEl.className = `text-3xl font-bold mt-1 ${strat3Pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+
+                        const roi3 = (strat3Pnl / totalInvested) * 100;
+                        document.getElementById('strat3-roi').innerText = `ROI: ${roi3.toFixed(1)}%`;
+
+                        const winRate3 = count > 0 ? (strat3Wins / count) * 100 : 0;
+                        document.getElementById('strat3-wins').innerText = `${strat3Wins}`;
+                        document.getElementById('strat3-win-rate').innerText = `${winRate3.toFixed(1)}%`;
+
+                        document.getElementById('strat3-losses').innerText = `${strat3Losses}`;
 
                         reportLoaded = true;
 

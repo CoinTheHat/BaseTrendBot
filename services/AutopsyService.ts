@@ -15,6 +15,7 @@ export class AutopsyService {
      * @returns The highest price (USD) seen in the 24h window
      */
     async calculateTrueAth(mint: string, entryTimestamp: number): Promise<number> {
+        // ... (existing code)
         const entryUnix = Math.floor(entryTimestamp / 1000);
         const end24h = entryUnix + (24 * 60 * 60);
 
@@ -62,6 +63,32 @@ export class AutopsyService {
 
         } catch (err) {
             logger.error(`[Autopsy] Failed to calculate True ATH for ${mint}: ${err}`);
+            return 0;
+        }
+    }
+
+    /**
+     * Get specific price at a target timestamp (e.g. 30 mins after entry)
+     * Precision: 1 minute
+     */
+    async getPriceAtTime(mint: string, targetTimestamp: number): Promise<number> {
+        const targetUnix = Math.floor(targetTimestamp / 1000);
+        // Look for candle between T and T+60s
+        try {
+            const candles = await this.birdeye.getHistoricalCandles(
+                mint,
+                '1m',
+                targetUnix,
+                targetUnix + 120 // 2 min window just in case
+            );
+
+            if (candles.length > 0) {
+                // Return Close price of first candle
+                return candles[0].c;
+            }
+            return 0;
+        } catch (err) {
+            logger.warn(`[Autopsy] Failed to get PriceAtTime for ${mint}: ${err}`);
             return 0;
         }
     }
