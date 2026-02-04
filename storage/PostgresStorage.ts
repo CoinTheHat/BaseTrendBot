@@ -168,12 +168,41 @@ export class PostgresStorage {
 
     async updateSoldMC(mint: string, soldMc: number) {
         try {
-            await this.pool.query(
+            const res = await this.pool.query(
                 `UPDATE token_performance
                  SET sold_mc = $1, last_updated = NOW()
                  WHERE mint = $2`,
                 [soldMc, mint]
             );
+
+            if (res.rowCount === 0) {
+                // Upsert: If not in performance, move it there so we can save sold_mc
+                const seen = await this.getSeenToken(mint);
+                if (seen) {
+                    const alertMc = seen.rawSnapshot?.marketCapUsd || 0;
+                    // Insert new performance record
+                    await this.pool.query(
+                        `INSERT INTO token_performance (
+                            mint, symbol, alert_mc, ath_mc, current_mc, 
+                            status, alert_timestamp, last_updated, entry_price, sold_mc
+                        ) VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7/1000), NOW(), $8, $9)`,
+                        [
+                            mint,
+                            seen.symbol,
+                            alertMc,
+                            alertMc,
+                            0,
+                            'TRACKING',
+                            seen.lastAlertAt || seen.firstSeenAt,
+                            seen.rawSnapshot?.priceUsd || 0,
+                            soldMc
+                        ]
+                    );
+                    logger.info(`[Postgres] Promoted ${mint} from Seen to Performance (Sold MC Update)`);
+                    return;
+                }
+            }
+
             logger.info(`[Postgres] Updated Sold MC for ${mint}: $${soldMc}`);
         } catch (err) {
             logger.error(`[Postgres] updateSoldMC failed for ${mint}`, err);
@@ -573,12 +602,40 @@ export class PostgresStorage {
 
     async updateTokenStatus(mint: string, status: 'TRACKING' | 'ARCHIVED' | 'RUGGED') {
         try {
-            await this.pool.query(
+            const res = await this.pool.query(
                 `UPDATE token_performance 
                  SET status = $1, last_updated = NOW() 
                  WHERE mint = $2`,
                 [status, mint]
             );
+
+            if (res.rowCount === 0 && status === 'RUGGED') {
+                // Upsert: If not in performance (Historic/Seen Only), move it there so we can track it as RUGGED
+                const seen = await this.getSeenToken(mint);
+                if (seen) {
+                    const alertMc = seen.rawSnapshot?.marketCapUsd || 0;
+                    // Insert new performance record
+                    await this.pool.query(
+                        `INSERT INTO token_performance (
+                            mint, symbol, alert_mc, ath_mc, current_mc, 
+                            status, alert_timestamp, last_updated, entry_price
+                        ) VALUES ($1, $2, $3, $4, $5, $6, to_timestamp($7/1000), NOW(), $8)`,
+                        [
+                            mint,
+                            seen.symbol,
+                            alertMc,
+                            alertMc, // Start ATH at Entry
+                            0,       // Current likely 0 if Rugged
+                            status,
+                            seen.lastAlertAt || seen.firstSeenAt,
+                            seen.rawSnapshot?.priceUsd || 0
+                        ]
+                    );
+                    logger.info(`[Postgres] Promoted ${mint} from Seen to Performance as ${status}`);
+                    return;
+                }
+            }
+
             logger.info(`[Postgres] Updated status for ${mint} to ${status}`);
         } catch (err) {
             logger.error(`[Postgres] updateTokenStatus failed for ${mint}`, err);
