@@ -216,14 +216,16 @@ export class TokenScanJob {
                         cachedCount++;
                         continue;
                     }
+
                     // 2. TTL Not Expired?
                     if (now < cacheData.blockedUntil) {
                         cachedCount++;
                         continue;
                     }
+
                     // 3. TTL Expired -> Allow Retry!
                     retryCount++;
-                    this.processedCache.delete(token.mint); // Remove from cache to re-process
+                    this.processedCache.delete(token.mint);
                     logger.info(`[Cache] ♻️ Retry allowed for ${token.symbol} (${cacheData.reason} expired)`);
                 }
 
@@ -294,7 +296,8 @@ export class TokenScanJob {
                         // Yes, so we need initial cache.
 
                         // Initial Cache: Block for 5 mins (Processing)
-                        this.processedCache.set(token.mint, { blockedUntil: Date.now() + 5 * 60000, reason: 'Processing' });
+                        // Processing Cache Removed by User Request (Step Id: 433)
+                        // this.processedCache.set(token.mint, { blockedUntil: Date.now() + 5 * 60000, reason: 'Processing' });
 
                         // --- STEP 1: STRICT LIQUIDITY GATES (Sniper Firewall) ---
 
