@@ -608,6 +608,77 @@ export class PostgresStorage {
         }
     }
 
+    async getAllTokensWithAnalysis(): Promise<any[]> {
+        try {
+            const res = await this.pool.query(`
+                SELECT 
+                    tp.*,
+                    st.stored_analysis,
+                    st.raw_snapshot,
+                    st.last_score
+                FROM token_performance tp
+                LEFT JOIN seen_tokens st ON tp.mint = st.mint
+                ORDER BY tp.alert_timestamp DESC
+            `);
+
+            return res.rows.map(row => ({
+                ...this.mapPerformanceRow(row),
+                storedAnalysis: row.stored_analysis ? row.stored_analysis : null,
+                rawSnapshot: row.raw_snapshot,
+                lastScore: row.last_score // NEW
+            }));
+        } catch (err) {
+            logger.error('[Postgres] getAllTokensWithAnalysis failed', err);
+            return [];
+        }
+    }
+
+    async getDailyStats(): Promise<{ scanned: number, passed: number }> {
+        try {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const startOfTodayMs = today.getTime();
+            const startOfTodayISO = today.toISOString();
+
+            const scannedRes = await this.pool.query(`
+                SELECT COUNT(*) FROM seen_tokens 
+                WHERE stored_analysis IS NOT NULL 
+                AND first_seen_at >= $1
+            `, [startOfTodayMs]);
+
+            const passedRes = await this.pool.query(`
+                SELECT COUNT(*) FROM token_performance 
+                WHERE alert_timestamp >= $1
+            `, [startOfTodayISO]);
+
+            return {
+                scanned: parseInt(scannedRes.rows[0].count),
+                passed: parseInt(passedRes.rows[0].count)
+            };
+        } catch (err) {
+            logger.error('[Postgres] getDailyStats failed', err);
+            return { scanned: 0, passed: 0 };
+        }
+    }
+
+    async getWeeklyStats(): Promise<any> {
+        const sinceDate = new Date();
+        sinceDate.setDate(sinceDate.getDate() - 7);
+        const sinceISO = sinceDate.toISOString();
+        const res = await this.pool.query(`
+            SELECT 
+                COUNT(*) as total,
+                COUNT(CASE WHEN max_mc >= alert_mc * 2 THEN 1 END) as mooned,
+                COUNT(CASE WHEN max_mc >= alert_mc * 1.3 AND max_mc < alert_mc * 2 THEN 1 END) as profit,
+                COUNT(CASE WHEN max_mc < alert_mc * 0.8 AND max_mc >= alert_mc * 0.5 THEN 1 END) as loss,
+                COUNT(CASE WHEN max_mc < alert_mc * 0.5 THEN 1 END) as rugged,
+                COUNT(CASE WHEN max_mc BETWEEN alert_mc * 0.8 AND alert_mc * 1.3 THEN 1 END) as stagnant
+            FROM token_performance
+            WHERE alert_timestamp >= $1
+        `, [sinceISO]);
+        return res.rows[0];
+    }
+
     async getAllTrackingTokens(): Promise<any[]> {
         try {
             const res = await this.pool.query(

@@ -210,6 +210,16 @@ export class TokenScanJob {
                         const liq = Number(token.liquidityUsd) || 0;
                         const mc = Number(token.marketCapUsd) || 0;
                         const liqMcRatio = mc > 0 ? liq / mc : 0;
+                        const ageMins = token.createdAt ? Math.floor((Date.now() - token.createdAt.getTime()) / 60000) : 0;
+
+                        // GATE 0: BLACKLIST (HARD BLOCK - BEFORE EVERYTHING)
+                        const BLACKLIST = ['pedo', 'child', 'nazi', 'jew', 'hitler', 'rape', 'terrorist', 'kill'];
+                        const tokenText = (token.name + ' ' + token.symbol).toLowerCase();
+                        if (BLACKLIST.some(word => tokenText.includes(word))) {
+                            logger.warn(`[Gate] ⛔ BLACKLIST: ${token.symbol} contains banned word`);
+                            gateCount++;
+                            return;
+                        }
 
                         // GATE A: Unplayable Liquidity
                         if (liq < 5000) {
@@ -218,15 +228,35 @@ export class TokenScanJob {
                         }
 
                         // GATE B: Rug / Scam Risk
+                        // > 90%: Likely HoneyPot (Dev adds all liq)
+                        // < 15%: Unstable / Slippage Hell
                         if (liqMcRatio > 0.90) {
                             gateCount++;
                             logger.warn(`[Gate] 🚫 High Liquidity Ratio: ${token.symbol} (${(liqMcRatio * 100).toFixed(1)}%). Potential Scam.`);
                             return;
                         }
+                        if (liqMcRatio < 0.15) {
+                            gateCount++;
+                            // logger.warn(`[Gate] 📉 Low Liquidity Ratio: ${token.symbol} (${(liqMcRatio * 100).toFixed(1)}%). Too Volatile.`);
+                            return;
+                        }
+
+                        // GATE C: Age Filter (The "Golden Window")
+                        // 20 mins (Pump done) to 120 mins (Still fresh)
+                        if (ageMins < 20) {
+                            // logger.debug(`[Gate] 👶 Too Young: ${token.symbol} (${ageMins}m)`);
+                            gateCount++;
+                            return;
+                        }
+                        if (ageMins > 120) {
+                            // logger.debug(`[Gate] 👴 Too Old: ${token.symbol} (${ageMins}m)`);
+                            gateCount++;
+                            return;
+                        }
 
                         // --- STEP 2: MECHANICAL SCORING (Speed Focus) ---
                         const matchResult = { memeMatch: false };
-                        const enrichedToken = token;
+                        let enrichedToken = token; // Mutable for enrichment
 
                         const scoreRes = this.scorer.score(enrichedToken, matchResult);
                         const { totalScore, phase } = scoreRes;
@@ -241,6 +271,46 @@ export class TokenScanJob {
                         if (totalScore < 70) {
                             weakCount++;
                             return;
+                        }
+
+
+
+
+
+
+                        // GATE D: RUGCHECK (API) - STRICT SECURITY
+                        // Only check if passed previous gates to save requests
+                        if (totalScore >= 70) {
+                            const rugCheck = await this.checkRugSecurity(token.mint);
+                            if (!rugCheck.safe) {
+                                logger.warn(`[Gate] 🔒 RugCheck Failed: ${token.symbol} (${rugCheck.reason})`);
+                                gateCount++;
+                                return;
+                            }
+                        }
+
+                        // --- STEP 2.5: SECURITY & HOLDER CHECK (API Cost Saver - only high scores) ---
+                        // Only fetch for potential gems to save API calls
+                        try {
+                            const sec = await this.birdeye.getTokenSecurity(token.mint);
+                            enrichedToken.holderCount = sec.holderCount;
+                            enrichedToken.top10HoldersSupply = sec.top10Percent;
+
+                            // GATE E: Whale Trap / Bot Activity
+                            if (sec.top10Percent > 50) {
+                                logger.info(`[Gate] 🐋 Whale Risk: ${token.symbol} (Top 10: ${sec.top10Percent.toFixed(1)}%)`);
+                                gateCount++;
+                                return;
+                            }
+                            if (sec.holderCount < 50) {
+                                logger.info(`[Gate] 🤖 Bot Risk: ${token.symbol} (Holders: ${sec.holderCount})`);
+                                gateCount++;
+                                return;
+                            }
+                        } catch (secErr) {
+                            logger.warn(`[Birdeye] Failed to fetch holders: ${secErr}. REJECTING for safety.`);
+                            gateCount++;
+                            return; // FAIL-SAFE: Reject if we can't verify holder data
                         }
 
                         // --- STEP 3: SNIPED! (Immediate Alert) ---
@@ -351,6 +421,66 @@ export class TokenScanJob {
         }
     }
 
+
+    /**
+     * RUGCHECK API INTEGRATION (FAIL-SAFE)
+     * Timeout: 3s
+     */
+    private async checkRugSecurity(mint: string): Promise<{ safe: boolean; reason?: string }> {
+        try {
+            const controller = new AbortController();
+            const timeout = setTimeout(() => controller.abort(), 3000); // 3s Hard Timeout
+
+            // Use axios with signal if supported, or raw fetch (Node 18+)
+            const response = await fetch(`https://api.rugcheck.xyz/v1/tokens/${mint}/report`, {
+                signal: controller.signal
+            });
+            clearTimeout(timeout);
+
+            if (!response.ok) {
+                return { safe: false, reason: 'RugCheck API Error' };
+            }
+
+            const data: any = await response.json();
+
+            // 0. Ensure RugCheck has indexed this token
+            if (!data.tokenMeta) {
+                return { safe: false, reason: 'Token not indexed by RugCheck yet' };
+            }
+
+            // 1. Mint Authority (Must be null/renounced)
+            if (data.tokenMeta.mintAuthority) {
+                return { safe: false, reason: 'Mint Authority Not Renounced' };
+            }
+
+            // 2. Freeze Authority (Must be null)
+            if (data.tokenMeta?.freezeAuthority) {
+                return { safe: false, reason: 'Freeze Authority Enabled' };
+            }
+
+            // 3. LP Lock Check (STRICT: >= 90%)
+            const markets = data.markets || [];
+            if (markets.length === 0) {
+                return { safe: false, reason: 'No LP Market Found' };
+            }
+
+            const isLpSafe = markets.some((m: any) => {
+                const lp = m.lp || {};
+                // lpLocked or lpBurned should be >= 90%
+                return (lp.lpLocked >= 90 || lp.lpBurned >= 90);
+            });
+
+            if (!isLpSafe) {
+                return { safe: false, reason: 'LP Not Locked/Burned (< 90%)' };
+            }
+
+            return { safe: true };
+
+        } catch (err) {
+            return { safe: false, reason: 'RugCheck Timeout/Failed' };
+        }
+    }
+
     private chunkArray<T>(arr: T[], size: number): T[][] {
         const res: T[][] = [];
         for (let i = 0; i < arr.length; i += size) { res.push(arr.slice(i, i + size)); }
@@ -376,7 +506,7 @@ export class TokenScanJob {
         for (const candidate of candidates) {
             const liveToken = liveTokens.find(t => t.mint === candidate.mint);
 
-            // TIMEOUT CHECK (>60 Mins) (User Request: 30-60 mins)
+            // TIMEOUT CHECK (>60 Mins)
             const waitDuration = Date.now() - new Date(candidate.alertTimestamp).getTime();
             if (waitDuration > 60 * 60 * 1000) {
                 logger.info(`[DipMonitor] ⌛ Timeout for ${candidate.symbol}. Missed Dip.`);
@@ -400,7 +530,6 @@ export class TokenScanJob {
                 if (seenData?.storedAnalysis) {
                     try {
                         narrative = JSON.parse(seenData.storedAnalysis);
-                        // Update Data Section with FRESH numbers
                         narrative.dataSection =
                             `• MC: $${(currentMc).toLocaleString()}\n` +
                             `• Liq: $${(liveToken.liquidityUsd ?? 0).toLocaleString()}\n` +
@@ -413,25 +542,11 @@ export class TokenScanJob {
                     }
                 }
 
-                // Fallback if no analysis found (e.g. old tokens before update)
-                // Fallback if no analysis found (e.g. old tokens before update)
                 if (!narrative) {
                     narrative = {
                         headline: `📉 DIP ENTRY TRIGGERED`,
-                        mainStory: `Wait for breakout confirmation.`,
-                        // Mimic the AI structure manually
-                        narrativeText: `✨ **POTANSİYEL VAR** • Puan: ${seenData?.lastScore || 7}/10
-🔥 **DIP FIRSATI YAKALANDI**
-
-🧐 **ANALİST ÖZETİ:**
-Bu token, güçlü bir yükseliş sonrası beklenen düzeltme seviyesine (%50 geri çekilme) geldi. AI analizi bu eski kayıt için mevcut değil ancak teknik göstergeler "Dip Alım" fırsatını işaret ediyor. Hacim ve likidite oranları sağlıklı görünüyor.
-
-📊 **Teknik Görünüm:**
-Fiyat, pump sonrası 0.5 fib seviyesine (veya eşdeğerine) geri çekildi. Bu seviye genellikle tepki alımlarının geldiği noktadır. Likidite/MC oranı izlenmeli.
-
-🚀 **STRATEJİ:**
-Kademeli alım düşünülebilir. Stop-loss'u dip seviyesinin %5-10 altına koyarak tepki yükselişini bekle.`,
-                        dataSection: `• MC: $${(currentMc).toLocaleString()}\n• Target: $${(targetMc).toLocaleString()}\n• ✅ Dip Entry Triggered`,
+                        narrativeText: `Dip Entry Triggered`,
+                        dataSection: `• MC: $${(currentMc).toLocaleString()}\n• Target: $${(targetMc).toLocaleString()}`,
                         tradeLens: `WAITING -> TRACKING`,
                         vibeCheck: `Requires Manual Review`,
                         aiScore: seenData?.lastScore || 7,
@@ -440,15 +555,10 @@ Kademeli alım düşünülebilir. Stop-loss'u dip seviyesinin %5-10 altına koya
                 }
 
                 if (narrative) {
-                    // Send Alert using Full Format + Special Title
                     await this.bot.sendTokenAlert(liveToken, narrative, `CORRECTION ENTRY: $${candidate.symbol} 📉`);
-
-                    // Update Status to TRACKING (so we track PnL from here)
                     await this.storage.activateDipToken(candidate.mint, liveToken.priceUsd || 0, currentMc);
                     await this.cooldown.recordAlert(liveToken.mint, seenData?.lastScore || 7, 'TRACKING', liveToken.priceUsd);
                 }
-            } else {
-                // logger.debug(`[DipMonitor] ${candidate.symbol} at $${Math.floor(currentMc)} (Target: $${Math.floor(targetMc)}) - Waiting...`);
             }
         }
     }

@@ -278,6 +278,38 @@ export class BirdeyeService {
         }
     }
 
+    /**
+     * Get Token Security & Holder Stats
+     * Endpoint: /defi/token_security (Official Birdeye endpoint)
+     * Returns: holderCount and top10HoldersPercent
+     */
+    async getTokenSecurity(address: string): Promise<{ holderCount: number, top10Percent: number }> {
+        try {
+            // Official endpoint: /defi/token_security
+            const response = await axios.get(`${this.baseUrl}/defi/token_security`, {
+                headers: { ...this.headers, 'x-chain': 'solana' },
+                params: { address }
+            });
+
+            const data = response.data?.data;
+            if (!data) return { holderCount: 0, top10Percent: 0 };
+
+            // Extract holder stats from security response
+            const holderCount = data.total_holders || 0;
+            const top10Percent = data.top10_holder_percent || 0;
+
+            return {
+                holderCount,
+                top10Percent
+            };
+
+        } catch (err) {
+            // If API fails, return null values (will be rejected in TokenScanJob)
+            logger.warn(`[Birdeye] Token Security API failed: ${err}`);
+            throw new Error(`Birdeye Security API failed: ${err}`);
+        }
+    }
+
     // --- Helpers ---
 
     private mapListingToSnapshot(item: any, chain: 'solana' | 'base'): TokenSnapshot {

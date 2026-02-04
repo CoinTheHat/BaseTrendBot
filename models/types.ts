@@ -23,6 +23,7 @@ export interface TokenSnapshot {
     createdAt?: Date; // Launch time
     updatedAt: Date;  // Last scan time
     devWalletConcentration?: number; // %
+    holderCount?: number; // NEW: Total holders
     top10HoldersSupply?: number; // %
     mintAuthority?: boolean; // true if mint is open
     lpLocked?: boolean;
