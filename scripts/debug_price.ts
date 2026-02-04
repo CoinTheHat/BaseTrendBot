@@ -12,6 +12,7 @@ async function main() {
     await storage.connect();
     // GoyAI
     const mint = "Cce9MqAGnR996GchYrgcqe6NZYRxfbKTYg5vmDKwpump";
+    const solMint = "So11111111111111111111111111111111111111112";
 
     const tokens = await storage.getAllPerformanceTokens();
     const row = tokens.find(t => t.mint === mint);
