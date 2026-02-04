@@ -246,10 +246,10 @@ export class TokenScanJob {
                             logger.info(`[REJECT] ${token.symbol} -> High Liq Ratio (${(liqMcRatio * 100).toFixed(0)}%)`);
                             return;
                         }
-                        if (liqMcRatio < 0.15) {
+                        if (liqMcRatio < 0.10) {
                             gateCount++;
                             // logger.warn(`[Gate] 📉 Low Liquidity Ratio: ${token.symbol} (${(liqMcRatio * 100).toFixed(1)}%). Too Volatile.`);
-                            recordRejection('Low Liq Ratio (<15%)');
+                            recordRejection('Low Liq Ratio (<10%)');
                             logger.info(`[REJECT] ${token.symbol} -> Low Liq Ratio (${(liqMcRatio * 100).toFixed(0)}%)`);
                             return;
                         }
