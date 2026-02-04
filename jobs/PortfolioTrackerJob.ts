@@ -2,6 +2,7 @@ import { PostgresStorage } from '../storage/PostgresStorage';
 import { BirdeyeService } from '../services/BirdeyeService';
 import { AutopsyService } from '../services/AutopsyService';
 import { logger } from '../utils/Logger';
+import { TokenPerformance } from '../models/types';
 
 export class PortfolioTrackerJob {
     private isRunning = false;
@@ -84,7 +85,7 @@ export class PortfolioTrackerJob {
 
                     // D. Determine Verdict
                     const multiple = trueAthMc / entryMc; // Judge by ATH
-                    let status = 'FINALIZED';
+                    let status: TokenPerformance['status'] = 'FINALIZED';
 
                     if (multiple >= 2.0) status = 'MOONED';
                     else if (multiple <= 0.5) status = 'FAILED'; // Strict failure 
