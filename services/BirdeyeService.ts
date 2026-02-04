@@ -280,13 +280,13 @@ export class BirdeyeService {
 
     /**
      * Get Token Security & Holder Stats
-     * Endpoint: /defi/token_security (Official Birdeye endpoint)
+     * Endpoint: /defi/token_holder_distribution (More reliable than token_security)
      * Returns: holderCount and top10HoldersPercent
      */
     async getTokenSecurity(address: string): Promise<{ holderCount: number, top10Percent: number }> {
         try {
-            // Official endpoint: /defi/token_security
-            const response = await axios.get(`${this.baseUrl}/defi/token_security`, {
+            // More reliable endpoint: /defi/token_holder_distribution
+            const response = await axios.get(`${this.baseUrl}/defi/token_holder_distribution`, {
                 headers: { ...this.headers, 'x-chain': 'solana' },
                 params: { address }
             });
@@ -294,19 +294,25 @@ export class BirdeyeService {
             const data = response.data?.data;
             if (!data) return { holderCount: 0, top10Percent: 0 };
 
-            // Extract holder stats from security response
-            const holderCount = data.total_holders || 0;
-            const top10Percent = data.top10_holder_percent || 0;
+            // 1. Get total holder count
+            const holderCount = data.total || 0;
+
+            // 2. Calculate top 10 holders percentage manually
+            // API returns holders sorted from largest to smallest
+            const items = data.items || [];
+            const top10Percent = items
+                .slice(0, 10)
+                .reduce((sum: number, holder: any) => sum + (holder.percent || 0), 0);
 
             return {
                 holderCount,
-                top10Percent
+                top10Percent: top10Percent * 100 // Convert to percentage (0.45 -> 45)
             };
 
         } catch (err) {
             // If API fails, return null values (will be rejected in TokenScanJob)
-            logger.warn(`[Birdeye] Token Security API failed: ${err}`);
-            throw new Error(`Birdeye Security API failed: ${err}`);
+            logger.warn(`[Birdeye] Token Holder Distribution API failed: ${err}`);
+            throw new Error(`Birdeye Holder Distribution API failed: ${err}`);
         }
     }
 
