@@ -177,7 +177,6 @@ export class AlphaSearchService {
     private async scrapeSingle(page: any, token: { symbol: string, name: string }): Promise<AlphaSearchResult> {
         let query: string;
 
-        // --- SINGLE SHOT LOGIC ---
         // --- SINGLE SHOT LOGIC (STRICT SOLANA CONTEXT) ---
         // Refined Query to avoid Cross-Chain Confusion (e.g. Clanker on Base vs Solana)
 
@@ -210,6 +209,18 @@ export class AlphaSearchService {
             throw new Error('Rate limit detected (Retry Button)');
         }
 
+        // --- SCROLL LOGIC FOR CONTEXT (Getting ~20 tweets) ---
+        try {
+            for (let i = 0; i < 3; i++) {
+                const count = await page.evaluate(() => document.querySelectorAll('article').length);
+                if (count >= 20) break;
+                await page.evaluate(() => window.scrollBy(0, 1500));
+                await new Promise(r => setTimeout(r, 1000));
+            }
+        } catch (e) {
+            // Ignore scroll errors
+        }
+
         // Extraction
         const tweetData: any[] = await page.evaluate(() => {
             const now = Date.now();
@@ -232,13 +243,15 @@ export class AlphaSearchService {
             }).filter(t => t !== null);
         });
 
+        // Use ALL fetched tweets for analysis context (Limited to 20), but only RECENT for Velocity
+        const allTweets = tweetData.map((t: any) => t.text).slice(0, 20);
         const recentTweets = tweetData.filter((t: any) => t.isRecent);
         const authors = new Set(recentTweets.map((t: any) => t.handle));
 
         return {
             velocity: recentTweets.length,
             uniqueAuthors: authors.size,
-            tweets: recentTweets.map((t: any) => t.text),
+            tweets: allTweets, // Send full context for AI
             isEarlyAlpha: authors.size >= 10,
             isSuperAlpha: authors.size >= 30
         };

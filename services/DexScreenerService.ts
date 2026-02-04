@@ -61,14 +61,14 @@ export class DexScreenerService {
      */
     async getLatestPairs(): Promise<TokenSnapshot[]> {
         try {
-            console.log(`[DexScreener] Scraping 70 pair addresses from M5 trending to ensure 50 candidate buffer...`);
+            console.log(`[DexScreener] Scraping 150 pair addresses from M5 trending to ensure 100 candidate buffer...`);
 
-            // 1. Get 70 pair addresses from the trending page (Buffer for API filtering)
-            const pairAddresses = await this.scrapePairAddresses(70);
+            // 1. Get 150 pair addresses from the trending page (Buffer for API filtering)
+            const pairAddresses = await this.scrapePairAddresses(150);
 
             if (pairAddresses.length === 0) {
                 console.log(`[DexScreener] Found 0 pairs via scraping. Falling back to search...`);
-                return (await this.search("solana")).slice(0, 50);
+                return (await this.search("solana")).slice(0, 100);
             }
 
             console.log(`[DexScreener] Found ${pairAddresses.length} pairs. Fetching full data via API...`);
@@ -94,7 +94,7 @@ export class DexScreenerService {
             }
 
             console.log(`[DexScreener] Successfully retrieved ${results.length} tokens with accurate metrics`);
-            return results.slice(0, 50);
+            return results.slice(0, 100);
 
         } catch (error) {
             console.error('[DexScreener] Hybrid fetching failed:', error);

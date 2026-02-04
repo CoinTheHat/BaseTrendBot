@@ -232,12 +232,18 @@ If no gems found, return: { "gems": [] }
      * POST-SNIPE ANALYSIS
      * Diagnostic review after mechanical alert.
      */
-    async analyzePostSnipe(token: TokenSnapshot): Promise<{
+    async analyzePostSnipe(token: TokenSnapshot, tweets: string[] = []): Promise<{
         momentumPhase: string;
         priceContext: string;
         riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
         explanation: string[];
+        socialSummary: string;
     } | null> {
+
+        const tweetSection = tweets.length > 0
+            ? `SOCIAL SENTIMENT (RAW TWEETS):\n${tweets.slice(0, 20).map(t => `- ${t.replace(/\n/g, ' ').substring(0, 100)}...`).join('\n')}`
+            : `SOCIAL SENTIMENT: No Data Available due to rate limits or newness.`;
+
         const systemPrompt = `
 You are an analytical assistant reviewing a token that has ALREADY triggered a SNIPED alert.
 
@@ -246,7 +252,7 @@ IMPORTANT RULES:
 - Entry logic is purely mechanical and already executed.
 - Your role is post-analysis, context building, and pattern recognition only.
 - Price changes are CONTEXTUAL, not signals.
-- You do NOT have volume data. Do NOT assume volume behavior.
+- You do NOT have volume data beyond what is provided.
 
 TOKEN SNAPSHOT:
 - Symbol: ${token.symbol}
@@ -266,21 +272,20 @@ PRICE CONTEXT (percentage change):
 - Price Change 1h: ${token.priceChange1h || 0}%
 - Price Change 6h: ${token.priceChange6h || 0}%
 
-TASK:
-Analyze the token ONLY from a contextual and diagnostic perspective using transaction activity and price movement timing.
+${tweetSection}
 
-Focus on:
-1. Momentum Quality (Accelerating/Stable/Fading)
-2. Price vs Activity Relationship (Proportionate/Stretched)
-3. Timing Assessment (Early/Mid/Late)
-4. Risk Signals (Exhaustion/Overextension)
+TASK:
+Analyze the token ONLY from a contextual and diagnostic perspective.
+1. Determine Momentum Phase & Price Context.
+2. Summarize the Social Vibe based on the provided tweets (Are they shilling, skeptical, hyped, or generic spam?).
 
 OUTPUT FORMAT (STRICT JSON):
 {
     "momentumPhase": "Early" | "Mid" | "Late" | "Exhausted",
     "priceContext": "Fresh move" | "Extended" | "Overextended",
     "riskLevel": "Low" | "Medium" | "High",
-    "explanation": ["Bullet 1", "Bullet 2", "Bullet 3"]
+    "socialSummary": "1-2 sentence summary of what people are saying (Turkish Language)",
+    "explanation": ["Bullet 1 (Technical)", "Bullet 2 (Social/Risk)", "Bullet 3 (Context)"]
 }
 `;
 
@@ -289,7 +294,7 @@ OUTPUT FORMAT (STRICT JSON):
             const completion = await this.xai.chat.completions.create({
                 model: config.XAI_MODEL || "grok-4-1-fast-non-reasoning",
                 messages: [{ role: "system", content: systemPrompt }],
-                temperature: 0.1,
+                temperature: 0.2,
                 response_format: { type: "json_object" }
             });
 

@@ -192,6 +192,11 @@ export class TokenScanJob {
             let gateCount = 0; // Hard Rejects (Liq, Fake Pump)
             let weakCount = 0; // Low Score (<70)
             let alertCount = 0;
+            const rejectionReasons: Record<string, number> = {};
+
+            const recordRejection = (reason: string) => {
+                rejectionReasons[reason] = (rejectionReasons[reason] || 0) + 1;
+            };
 
             // Process in chunks
             const chunks = this.chunkArray(freshCandidates, 2);
@@ -218,12 +223,14 @@ export class TokenScanJob {
                         if (BLACKLIST.some(word => tokenText.includes(word))) {
                             logger.warn(`[Gate] ⛔ BLACKLIST: ${token.symbol} contains banned word`);
                             gateCount++;
+                            recordRejection('BLACKLIST');
                             return;
                         }
 
                         // GATE A: Unplayable Liquidity
                         if (liq < 5000) {
                             gateCount++;
+                            recordRejection('Low Liquidity (<$5k)');
                             return;
                         }
 
@@ -233,11 +240,13 @@ export class TokenScanJob {
                         if (liqMcRatio > 0.90) {
                             gateCount++;
                             logger.warn(`[Gate] 🚫 High Liquidity Ratio: ${token.symbol} (${(liqMcRatio * 100).toFixed(1)}%). Potential Scam.`);
+                            recordRejection('High Liq Ratio (>90%)');
                             return;
                         }
                         if (liqMcRatio < 0.15) {
                             gateCount++;
                             // logger.warn(`[Gate] 📉 Low Liquidity Ratio: ${token.symbol} (${(liqMcRatio * 100).toFixed(1)}%). Too Volatile.`);
+                            recordRejection('Low Liq Ratio (<15%)');
                             return;
                         }
 
@@ -246,11 +255,13 @@ export class TokenScanJob {
                         if (ageMins < 20) {
                             // logger.debug(`[Gate] 👶 Too Young: ${token.symbol} (${ageMins}m)`);
                             gateCount++;
+                            recordRejection('Too Young (<20m)');
                             return;
                         }
                         if (ageMins > 120) {
                             // logger.debug(`[Gate] 👴 Too Old: ${token.symbol} (${ageMins}m)`);
                             gateCount++;
+                            recordRejection('Too Old (>120m)');
                             return;
                         }
 
@@ -265,6 +276,7 @@ export class TokenScanJob {
                         // Threshold: 70/100
                         if (phase === 'REJECTED_RISK') {
                             gateCount++; // Fake pump or other hard risk from engine
+                            recordRejection('Risk Engine (Fake Pump)');
                             return;
                         }
 
@@ -285,6 +297,7 @@ export class TokenScanJob {
                             if (!rugCheck.safe) {
                                 logger.warn(`[Gate] 🔒 RugCheck Failed: ${token.symbol} (${rugCheck.reason})`);
                                 gateCount++;
+                                recordRejection(`RugCheck (${rugCheck.reason ?? 'Failed'})`);
                                 return;
                             }
                         }
@@ -300,16 +313,19 @@ export class TokenScanJob {
                             if (sec.top10Percent > 50) {
                                 logger.info(`[Gate] 🐋 Whale Risk: ${token.symbol} (Top 10: ${sec.top10Percent.toFixed(1)}%)`);
                                 gateCount++;
+                                recordRejection('Whale Risk (Top10 >50%)');
                                 return;
                             }
                             if (sec.holderCount < 50) {
                                 logger.info(`[Gate] 🤖 Bot Risk: ${token.symbol} (Holders: ${sec.holderCount})`);
                                 gateCount++;
+                                recordRejection('Bot Risk (Holders <50)');
                                 return;
                             }
                         } catch (secErr) {
                             logger.warn(`[Birdeye] Failed to fetch holders: ${secErr}. REJECTING for safety.`);
                             gateCount++;
+                            recordRejection('Birdeye API Fail');
                             return; // FAIL-SAFE: Reject if we can't verify holder data
                         }
 
@@ -326,26 +342,48 @@ export class TokenScanJob {
 
                             logger.info(`🔫 [SNIPED] [${segmentLog}] ${token.symbol} Score: ${totalScore}/100 | Liq: $${Math.floor(liq)} | MC: $${Math.floor(mc)}`);
 
-                            // Create Mechanical Narrative (No AI Latency)
+                            // --- 🧠 AI SYNTHESIS (User Request: Contextual Analysis) ---
+                            // 1. Fetch Tweets
+                            let tweetContext: string[] = [];
+                            try {
+                                logger.info(`[Scan] 🐦 Fetching Twitter context for $${token.symbol}...`);
+                                const alphaResult = await this.alphaSearch.checkAlpha(token.symbol);
+                                tweetContext = alphaResult.tweets;
+                            } catch (e) {
+                                logger.warn(`[Scan] ⚠️ Failed to fetch tweets: ${e}`);
+                            }
+
+                            // 2. Run AI Analysis
+                            let aiAnalysis: any = null;
+                            try {
+                                aiAnalysis = await this.llmService.analyzePostSnipe(enrichedToken, tweetContext);
+                            } catch (e) {
+                                logger.warn(`[Scan] ⚠️ AI Analysis failed: ${e}`);
+                            }
+
+                            // Create Narrative (Enriched with AI)
                             const displayScore = (totalScore / 10).toFixed(1);
+                            const aiSummary = aiAnalysis?.socialSummary ? `\n\n🧠 **AI VIBE:**\n${aiAnalysis.socialSummary}` : '';
+                            const riskBadge = aiAnalysis?.riskLevel ? ` • Risk: ${aiAnalysis.riskLevel}` : '';
 
                             const mechanicalNarrative = {
-                                headline: `🔫 SNIPER ALERT: ${token.symbol}`,
+                                headline: `🔫 SNIPER ALERT: ${token.symbol} ${riskBadge}`,
                                 narrativeText: `⚡ **MECHANICAL ENTRY** • Score: ${displayScore}/10
 🚀 **MOMENTUM SIGNAL**
 • Txns Accelerating
 • Liquidity Healthy ($${(liq / 1000).toFixed(1)}k)
-• MC Segment: ${segmentLog}
+• MC Segment: ${segmentLog}${aiSummary}
 
 ⚠️ **RISK CHECK:**
 • Volatility: High
-• Entry Type: ${segmentLog === 'SEED' ? 'Small Size' : 'Full Size'}`,
+• Entry Type: ${segmentLog === 'SEED' ? 'Small Size' : 'Full Size'}
+• Phase: ${aiAnalysis?.momentumPhase || 'Unknown'}`,
                                 dataSection: `• MC: $${(mc / 1000).toFixed(1)}k
 • Liq: $${(liq / 1000).toFixed(1)}k
 • Vol: $${(token.volume5mUsd || 0).toFixed(0)}
 • Age: ${token.createdAt ? Math.floor((Date.now() - token.createdAt.getTime()) / 60000) + 'm' : 'N/A'}`,
                                 tradeLens: `SNIPE`,
-                                vibeCheck: `MECHANICAL`,
+                                vibeCheck: aiAnalysis?.riskLevel ? `Risk: ${aiAnalysis.riskLevel}` : `MECHANICAL`,
                                 aiScore: totalScore,
                                 aiApproved: true
                             };
@@ -358,7 +396,7 @@ export class TokenScanJob {
                                 lastScore: totalScore,
                                 lastPhase: 'ALERTED',
                                 storedAnalysis: JSON.stringify(mechanicalNarrative),
-                                rawSnapshot: enrichedToken // NEW: Save Full Object for AI Training
+                                rawSnapshot: enrichedToken
                             });
 
                             // ⚡ FIRE ALERT & GET MSG ID
@@ -379,12 +417,6 @@ export class TokenScanJob {
                                 lastUpdated: new Date()
                             });
 
-                            // --- 🧠 AI POST-ANALYSIS (ASYNC QUEUE) ---
-                            // Fire & Forget (Queue handles concurrency)
-                            if (alertMsgId) {
-                                this.enqueueAnalysis(token, alertMsgId);
-                            }
-
                         }
 
                     } catch (tokenErr) {
@@ -399,6 +431,11 @@ export class TokenScanJob {
 
             // SCAN SUMMARY
             const totalRejected = gateCount + weakCount;
+            const rejectionBreakdown = Object.entries(rejectionReasons)
+                .sort((a, b) => b[1] - a[1]) // Sort by count descending
+                .map(([reason, count]) => `   • ${reason}: ${count}`)
+                .join('\n');
+
             logger.info(`
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 [SCAN SUMMARY]
@@ -409,6 +446,7 @@ export class TokenScanJob {
 
 🛑 REJECTED (${totalRejected}):
   ⛔ GATE (Liq/Risk): ${gateCount}
+${rejectionBreakdown}
   📉 WEAK (Score <70): ${weakCount}
 
 ✅ SNIPED: ${alertCount}
