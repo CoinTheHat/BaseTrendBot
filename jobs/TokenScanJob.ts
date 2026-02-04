@@ -209,27 +209,31 @@ export class TokenScanJob {
 
             for (const token of dexTokens) {
                 const cacheData = this.processedCache.get(token.mint);
+                let shouldProcess = true;
 
                 if (cacheData) {
                     // 1. Permanent Block?
                     if (cacheData.blockedUntil === null) {
                         cachedCount++;
-                        continue;
+                        shouldProcess = false;
                     }
-
                     // 2. TTL Not Expired?
-                    if (now < cacheData.blockedUntil) {
+                    else if (now < cacheData.blockedUntil) {
                         cachedCount++;
-                        continue;
+                        shouldProcess = false;
                     }
-
                     // 3. TTL Expired -> Allow Retry!
-                    retryCount++;
-                    this.processedCache.delete(token.mint);
-                    logger.info(`[Cache] ♻️ Retry allowed for ${token.symbol} (${cacheData.reason} expired)`);
+                    else {
+                        retryCount++;
+                        this.processedCache.delete(token.mint); // Remove from cache to re-process
+                        logger.info(`[Cache] ♻️ Retry allowed for ${token.symbol} (${cacheData.reason} expired)`);
+                        shouldProcess = true;
+                    }
                 }
 
-                freshCandidates.push(token);
+                if (shouldProcess) {
+                    freshCandidates.push(token);
+                }
             }
 
             logger.info(`[Cache] 🔄 Filtered ${cachedCount} seen tokens. Retrying ${retryCount} expired tokens.`);
@@ -296,8 +300,8 @@ export class TokenScanJob {
                         // Yes, so we need initial cache.
 
                         // Initial Cache: Block for 5 mins (Processing)
-                        // Processing Cache Removed by User Request (Step Id: 433)
-                        // this.processedCache.set(token.mint, { blockedUntil: Date.now() + 5 * 60000, reason: 'Processing' });
+                        // Processing Cache Logic REMOVED per user request
+                        // No initial cache set - only rejections are cached.
 
                         // --- STEP 1: STRICT LIQUIDITY GATES (Sniper Firewall) ---
 
