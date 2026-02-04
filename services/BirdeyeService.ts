@@ -366,7 +366,23 @@ export class BirdeyeService {
 
         } catch (err: any) {
             // FAIL-SAFE: Rejections handled in TokenScanJob
-            logger.warn(`[Birdeye] Global Holder Failure for ${address}: ${err.message}`);
+            // Enhanced Error Logging for Diagnosis
+            const statusCode = err.response?.status;
+            const errorData = err.response?.data;
+
+            if (statusCode === 404) {
+                logger.info(`[Birdeye] Token not indexed yet: ${address} (404)`);
+            } else if (statusCode === 429) {
+                logger.warn(`[Birdeye] Rate limit hit for ${address} (429) - Retries exhausted`);
+            } else if (statusCode === 401 || statusCode === 403) {
+                logger.error(`[Birdeye] Authentication issue for ${address} (${statusCode}) - Check API key`);
+            } else if (err.message.includes('supply/metrics missing')) {
+                logger.warn(`[Birdeye] Supply data is zero/null for ${address} (Fallback failed)`);
+            } else {
+                logger.warn(`[Birdeye] Global Holder Failure for ${address}: ${err.message} (Status: ${statusCode})`);
+                if (errorData) logger.debug(`[Birdeye] Error Details: ${JSON.stringify(errorData)}`);
+            }
+
             throw err;
         }
     }
