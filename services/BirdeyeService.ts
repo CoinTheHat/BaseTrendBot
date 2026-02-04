@@ -366,6 +366,8 @@ export class BirdeyeService {
                     const top10Raw = holders.slice(0, 10).reduce((s: number, h: any) => s + (Number(h.ui_amount) || 0), 0);
                     const top10Percent = top10Raw / supply;
 
+                    logger.debug(`[Birdeye] Holder Calc for ${address}: Top10=${top10Raw.toFixed(0)}, Supply=${supply.toFixed(0)}, Percent=${(top10Percent * 100).toFixed(1)}%`);
+
                     return {
                         holderCount: totalHolders,
                         top10Percent: top10Percent * 100
