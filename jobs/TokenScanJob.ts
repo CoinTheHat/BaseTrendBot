@@ -25,7 +25,41 @@ export class TokenScanJob {
     private isScanning = false;
     private scraper = new TwitterScraper();
     private storyEngine = new TwitterStoryEngine();
-    private processedCache = new Map<string, number>();
+    // SMART CACHE: TTL Support
+    private processedCache = new Map<string, { blockedUntil: number | null, reason: string }>();
+
+    // RETRY SETTINGS (Time in ms)
+    private static CACHE_TTL: Record<string, number | null> = {
+        'Too Young': 15 * 60 * 1000,           // 15 mins
+        'Weak Score': 20 * 60 * 1000,          // 20 mins
+        'Low Liq Ratio': 30 * 60 * 1000,       // 30 mins
+        'Birdeye API Fail': 5 * 60 * 1000,     // 5 mins
+        'RugCheck Failed': 10 * 60 * 1000,     // 10 mins
+        // Others are Permanent (null)
+    };
+
+    private getTTL(reason: string): number | null {
+        if (reason.includes('Too Young')) return TokenScanJob.CACHE_TTL['Too Young']!;
+        if (reason.includes('Weak Score')) return TokenScanJob.CACHE_TTL['Weak Score']!;
+        if (reason.includes('Low Liq Ratio')) return TokenScanJob.CACHE_TTL['Low Liq Ratio']!;
+        if (reason.includes('Birdeye API Fail')) return TokenScanJob.CACHE_TTL['Birdeye API Fail']!;
+        if (reason.includes('RugCheck')) return TokenScanJob.CACHE_TTL['RugCheck Failed']!;
+        return null; // Permanent
+    }
+
+    private cleanupExpiredCache() {
+        const now = Date.now();
+        let cleanedCount = 0;
+        for (const [mint, data] of this.processedCache.entries()) {
+            if (data.blockedUntil && data.blockedUntil < now) {
+                this.processedCache.delete(mint);
+                cleanedCount++;
+            }
+        }
+        if (cleanedCount > 0) {
+            logger.info(`[Cache] 🧹 Cleaned ${cleanedCount} expired entries (Ready for retry)`);
+        }
+    }
 
     constructor(
         private pumpFun: PumpFunService,
@@ -151,6 +185,9 @@ export class TokenScanJob {
             return;
         }
 
+        // Cache Maintenance
+        this.cleanupExpiredCache();
+
         this.isScanning = true;
 
         try {
@@ -168,25 +205,39 @@ export class TokenScanJob {
             const freshCandidates: TokenSnapshot[] = [];
             const now = Date.now();
             let cachedCount = 0;
+            let retryCount = 0;
 
             for (const token of dexTokens) {
-                const lastProcessed = this.processedCache.get(token.mint);
-                // SMART CACHE: Reverted to 1 hour
-                if (lastProcessed && (now - lastProcessed < 1 * 60 * 60 * 1000)) {
-                    cachedCount++;
-                    continue;
+                const cacheData = this.processedCache.get(token.mint);
+
+                if (cacheData) {
+                    // 1. Permanent Block?
+                    if (cacheData.blockedUntil === null) {
+                        cachedCount++;
+                        continue;
+                    }
+                    // 2. TTL Not Expired?
+                    if (now < cacheData.blockedUntil) {
+                        cachedCount++;
+                        continue;
+                    }
+                    // 3. TTL Expired -> Allow Retry!
+                    retryCount++;
+                    this.processedCache.delete(token.mint); // Remove from cache to re-process
+                    logger.info(`[Cache] ♻️ Retry allowed for ${token.symbol} (${cacheData.reason} expired)`);
                 }
+
                 freshCandidates.push(token);
             }
 
-            logger.info(`[Cache] 🔄 Filtered out ${cachedCount} recently seen tokens`);
+            logger.info(`[Cache] 🔄 Filtered ${cachedCount} seen tokens. Retrying ${retryCount} expired tokens.`);
 
             if (freshCandidates.length === 0) {
                 logger.info(`[Scan] ⚠️ No fresh candidates to process. Next cycle in 120s.`);
                 return;
             }
 
-            logger.info(`[Job] 🔍 Processing ${freshCandidates.length} fresh candidates...`);
+            logger.info(`[Job] 🔍 Processing ${freshCandidates.length} candidates...`);
 
             // Scan Statistics
             let gateCount = 0; // Hard Rejects (Liq, Fake Pump)
@@ -194,8 +245,25 @@ export class TokenScanJob {
             let alertCount = 0;
             const rejectionReasons: Record<string, number> = {};
 
-            const recordRejection = (reason: string) => {
+            // Helper to handle rejection with TTL
+            const handleRejection = (token: TokenSnapshot, reason: string) => {
                 rejectionReasons[reason] = (rejectionReasons[reason] || 0) + 1;
+
+                const ttl = this.getTTL(reason);
+                const blockedUntil = ttl === null ? null : Date.now() + ttl;
+
+                this.processedCache.set(token.mint, {
+                    reason,
+                    blockedUntil
+                });
+
+                // Detailed Log for Retries
+                if (blockedUntil) {
+                    const mins = Math.ceil(ttl! / 60000);
+                    logger.info(`[REJECT] ${token.symbol} -> ${reason} (Retry in ${mins}m)`);
+                } else {
+                    logger.info(`[REJECT] ${token.symbol} -> ${reason} (Permanent)`);
+                }
             };
 
             // Process in chunks
@@ -204,14 +272,32 @@ export class TokenScanJob {
             for (const chunk of chunks) {
                 await Promise.all(chunk.map(async (token) => {
                     try {
-                        // LRU-like Safety Check
+                        // LRU Safety Check
                         if (this.processedCache.size > 1000) {
                             const oldest = this.processedCache.keys().next().value;
                             if (oldest) this.processedCache.delete(oldest);
                         }
-                        this.processedCache.set(token.mint, Date.now());
+
+                        // Mark as currently processing (Short TTL in case of crash)
+                        // If it passes, we will update or remove this? 
+                        // Actually, if it passes, we don't add to processedCache yet? 
+                        // NO, we MUST add to processedCache to avoid double processing in next cycle if it takes long.
+                        // Let's set a temporary "Processing" state.
+                        // For simplicity, we only cache REJECTIONS. Passed tokens are handled by "seen_tokens" DB check potentially?
+                        // Wait, previous logic was: processedCache.set(token.mint, Date.now()) -> Permanent block.
+                        // So if we pass, we should also cache it to avoid reprocessing.
+                        // Passed tokens: Permanent Block (until restart?) or maybe 1 hour?
+                        // Let's stick to simple: If passed, cached as "Processed" (Permanent for this session).
+
+                        // NOTE: We only cache rejections via handleRejection.
+                        // If we don't cache here, it might be processed again immediately?
+                        // Yes, so we need initial cache.
+
+                        // Initial Cache: Block for 5 mins (Processing)
+                        this.processedCache.set(token.mint, { blockedUntil: Date.now() + 5 * 60000, reason: 'Processing' });
 
                         // --- STEP 1: STRICT LIQUIDITY GATES (Sniper Firewall) ---
+
                         const liq = Number(token.liquidityUsd) || 0;
                         const mc = Number(token.marketCapUsd) || 0;
                         const liqMcRatio = mc > 0 ? liq / mc : 0;
@@ -223,7 +309,7 @@ export class TokenScanJob {
                         if (BLACKLIST.some(word => tokenText.includes(word))) {
                             logger.warn(`[Gate] ⛔ BLACKLIST: ${token.symbol} contains banned word`);
                             gateCount++;
-                            recordRejection('BLACKLIST');
+                            handleRejection(token, 'BLACKLIST');
                             logger.info(`[REJECT] ${token.symbol} -> BLACKLIST`);
                             return;
                         }
@@ -231,7 +317,7 @@ export class TokenScanJob {
                         // GATE A: Unplayable Liquidity
                         if (liq < 5000) {
                             gateCount++;
-                            recordRejection('Low Liquidity (<$5k)');
+                            handleRejection(token, 'Low Liquidity (<$5k)');
                             logger.info(`[REJECT] ${token.symbol} -> Low Liquidity ($${Math.floor(liq)})`);
                             return;
                         }
@@ -242,7 +328,7 @@ export class TokenScanJob {
                         if (liqMcRatio > 0.90) {
                             gateCount++;
                             logger.warn(`[Gate] 🚫 High Liquidity Ratio: ${token.symbol} (${(liqMcRatio * 100).toFixed(1)}%). Potential Scam.`);
-                            recordRejection('High Liq Ratio (>90%)');
+                            handleRejection(token, 'High Liq Ratio (>90%)');
                             logger.info(`[REJECT] ${token.symbol} -> High Liq Ratio (${(liqMcRatio * 100).toFixed(0)}%)`);
                             return;
                         }
@@ -250,14 +336,14 @@ export class TokenScanJob {
                         if (liqMcRatio < 0.05) {
                             // <5%: Always reject (extreme volatility)
                             gateCount++;
-                            recordRejection('Liq Ratio <5% (Extreme)');
+                            handleRejection(token, 'Liq Ratio <5% (Extreme)');
                             logger.info(`[REJECT] ${token.symbol} -> Liq Ratio <5% (${(liqMcRatio * 100).toFixed(1)}%)`);
                             return;
                         }
                         if (liqMcRatio >= 0.05 && liqMcRatio < 0.10 && liq < 20000) {
                             // 5-10% + low absolute liquidity: Reject
                             gateCount++;
-                            recordRejection('Low Liq Ratio + Low Absolute Liq');
+                            handleRejection(token, 'Low Liq Ratio + Low Absolute Liq');
                             logger.info(`[REJECT] ${token.symbol} -> Liq ${(liqMcRatio * 100).toFixed(1)}% + $${Math.floor(liq / 1000)}k`);
                             return;
                         }
@@ -269,14 +355,14 @@ export class TokenScanJob {
                         if (ageMins < 20) {
                             // logger.debug(`[Gate] 👶 Too Young: ${token.symbol} (${ageMins}m)`);
                             gateCount++;
-                            recordRejection('Too Young (<20m)');
+                            handleRejection(token, 'Too Young (<20m)');
                             logger.info(`[REJECT] ${token.symbol} -> Too Young (${ageMins}m)`);
                             return;
                         }
                         if (ageMins > 1440) { // 24 Hours
                             // logger.debug(`[Gate] 👴 Too Old: ${token.symbol} (${ageMins}m)`);
                             gateCount++;
-                            recordRejection('Too Old (>24h)');
+                            handleRejection(token, 'Too Old (>24h)');
                             logger.info(`[REJECT] ${token.symbol} -> Too Old (${ageMins}m)`);
                             return;
                         }
@@ -292,13 +378,14 @@ export class TokenScanJob {
                         // Threshold: 70/100
                         if (phase === 'REJECTED_RISK') {
                             gateCount++; // Fake pump or other hard risk from engine
-                            recordRejection('Risk Engine (Fake Pump)');
+                            handleRejection(token, 'Risk Engine (Fake Pump)');
                             logger.info(`[REJECT] ${token.symbol} -> Risk Engine (Fake Pump/Dump)`);
                             return;
                         }
 
                         if (totalScore < 60) {
                             weakCount++;
+                            handleRejection(token, 'Weak Score');
                             logger.info(`[REJECT] ${token.symbol} -> Weak Score (${totalScore}/60)`);
                             return;
                         }
@@ -315,7 +402,7 @@ export class TokenScanJob {
                             if (!rugCheck.safe) {
                                 logger.warn(`[Gate] 🔒 RugCheck Failed: ${token.symbol} (${rugCheck.reason})`);
                                 gateCount++;
-                                recordRejection(`RugCheck (${rugCheck.reason ?? 'Failed'})`);
+                                handleRejection(token, 'RugCheck Failed');
                                 logger.info(`[REJECT] ${token.symbol} -> RugCheck (${rugCheck.reason})`);
                                 return;
                             }
@@ -336,14 +423,14 @@ export class TokenScanJob {
                             if (sec.top10Percent > 50) {
                                 logger.info(`[Gate] 🐋 Whale Risk: ${token.symbol} (Top 10: ${sec.top10Percent.toFixed(1)}%)`);
                                 gateCount++;
-                                recordRejection('Whale Risk (Top10 >50%)');
+                                handleRejection(token, 'Whale Risk (Top10 >50%)');
                                 logger.info(`[REJECT] ${token.symbol} -> Whale Risk (${sec.top10Percent.toFixed(0)}%)`);
                                 return;
                             }
                             if (sec.holderCount < 50) {
                                 logger.info(`[Gate] 🤖 Bot Risk: ${token.symbol} (Holders: ${sec.holderCount})`);
                                 gateCount++;
-                                recordRejection('Bot Risk (Holders <50)');
+                                handleRejection(token, 'Bot Risk (Holders <50)');
                                 logger.info(`[REJECT] ${token.symbol} -> Bot Risk (${sec.holderCount} Holders)`);
                                 return;
                             }
@@ -362,7 +449,7 @@ export class TokenScanJob {
                                 // Real API error (404, 429, auth issue, etc.)
                                 logger.warn(`[Birdeye] Failed to fetch holders: ${secErr}. REJECTING for safety.`);
                                 gateCount++;
-                                recordRejection('Birdeye API Fail');
+                                handleRejection(token, 'Birdeye API Fail');
                                 return; // FAIL-SAFE: Reject if we can't verify holder data
                             }
                         }
