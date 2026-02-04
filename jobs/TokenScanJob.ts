@@ -246,13 +246,23 @@ export class TokenScanJob {
                             logger.info(`[REJECT] ${token.symbol} -> High Liq Ratio (${(liqMcRatio * 100).toFixed(0)}%)`);
                             return;
                         }
-                        if (liqMcRatio < 0.10) {
+                        // NUANCED LIQ RATIO: Combine percentage with absolute liquidity
+                        if (liqMcRatio < 0.05) {
+                            // <5%: Always reject (extreme volatility)
                             gateCount++;
-                            // logger.warn(`[Gate] 📉 Low Liquidity Ratio: ${token.symbol} (${(liqMcRatio * 100).toFixed(1)}%). Too Volatile.`);
-                            recordRejection('Low Liq Ratio (<10%)');
-                            logger.info(`[REJECT] ${token.symbol} -> Low Liq Ratio (${(liqMcRatio * 100).toFixed(0)}%)`);
+                            recordRejection('Liq Ratio <5% (Extreme)');
+                            logger.info(`[REJECT] ${token.symbol} -> Liq Ratio <5% (${(liqMcRatio * 100).toFixed(1)}%)`);
                             return;
                         }
+                        if (liqMcRatio >= 0.05 && liqMcRatio < 0.10 && liq < 20000) {
+                            // 5-10% + low absolute liquidity: Reject
+                            gateCount++;
+                            recordRejection('Low Liq Ratio + Low Absolute Liq');
+                            logger.info(`[REJECT] ${token.symbol} -> Liq ${(liqMcRatio * 100).toFixed(1)}% + $${Math.floor(liq / 1000)}k`);
+                            return;
+                        }
+                        // 5-10% + $20k+ liquidity: Pass
+                        // >10%: Pass
 
                         // GATE C: Age Filter (The "Golden Window")
                         // 20 mins to 24 Hours (Softened)
@@ -287,9 +297,9 @@ export class TokenScanJob {
                             return;
                         }
 
-                        if (totalScore < 70) {
+                        if (totalScore < 60) {
                             weakCount++;
-                            logger.info(`[REJECT] ${token.symbol} -> Weak Score (${totalScore}/70)`);
+                            logger.info(`[REJECT] ${token.symbol} -> Weak Score (${totalScore}/60)`);
                             return;
                         }
 
