@@ -39,11 +39,11 @@ export class PerformanceMonitorJob {
 
             await this.storage.backfillMissingTokens();
 
-            // 2. Monitor Active Tracking Tokens
-            await this.monitorTrackingTokens();
+            // 2. Monitor Active Tracking Tokens (DISABLED - Saving CPU, using BirdEye API later)
+            // await this.monitorTrackingTokens();
 
-            // 3. Run Autopsy (True ATH for AI Training)
-            await this.runAutopsy();
+            // 3. Run Autopsy (True ATH for AI Training) (DISABLED)
+            // await this.runAutopsy();
 
         } catch (error) {
             logger.error('[AutopsyJob] Failed:', error);
@@ -143,10 +143,7 @@ export class PerformanceMonitorJob {
 
         if (tokens.length === 0) return;
 
-        const FIFTEEN_MINUTES = 15 * 60 * 1000;
-        const now = Date.now();
-
-        logger.info(`[Autopsy] 🩺 Vital Check on ${tokens.length} active tokens...`);
+        // logger.debug(`[Autopsy] 🩺 Vital Check on ${tokens.length} active tokens...`); // Silenced by user request
 
         // Bulk Fetch
         const mints = tokens.map(t => t.mint);
@@ -168,7 +165,7 @@ export class PerformanceMonitorJob {
                 // 2. Calculate Multiplier
                 const entry = token.entryPrice || 0;
                 if (entry === 0) {
-                    logger.warn(`[Autopsy] ${token.symbol} has no entry price. Skipping.`);
+                    // logger.warn(`[Autopsy] ${token.symbol} has no entry price. Skipping.`);
                     continue;
                 }
 
@@ -202,24 +199,8 @@ export class PerformanceMonitorJob {
                     continue;
                 }
 
-                // 6. TIMEOUT CHECK (15 minutes since alert)
-                const alertTime = new Date(token.alertTimestamp).getTime();
-                const timeElapsed = now - alertTime;
-                if (timeElapsed > FIFTEEN_MINUTES) {
-                    logger.info(`[Autopsy] ⏱️  ${token.symbol} STALE (15m timeout). ${multiplier.toFixed(2)}x. Finalizing.`);
-                    // Determine final status
-                    let finalStatus = 'FINALIZED';
-                    if (multiplier > 1.5) finalStatus = 'FINALIZED_MOONED'; // Soft win
-                    else if (multiplier < 0.5) finalStatus = 'FINALIZED_FAILED';
-
-                    await this.storage.updatePerformance({
-                        ...token,
-                        athMc,
-                        currentMc,
-                        status: (finalStatus as any) // Cast needed if strict literal check
-                    });
-                    continue;
-                }
+                // 6. TIMEOUT CHECK REMOVED
+                // Tokens now stay in TRACKING until 48h (handled by Portfolio or Cleanup)
 
                 // 7. STILL TRACKING - Update ATH
                 await this.storage.updatePerformance({
@@ -233,4 +214,3 @@ export class PerformanceMonitorJob {
             }
         }
     }
-}

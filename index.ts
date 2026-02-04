@@ -99,7 +99,7 @@ async function main() {
 
     // 7. Performance & Dashboard
     const performanceJob = new PerformanceMonitorJob(storage, dexScreener, bot, autopsyService);
-    const portfolioTracker = new PortfolioTrackerJob(storage); // BirdEye Removed
+    const portfolioTracker = new PortfolioTrackerJob(storage, birdeye, autopsyService); // Autopsy Injected
     // REMOVED: KeywordMonitorJob (Jeweler Mode) killed by user request.
     const dashboard = new DashboardServer(storage); // Railway auto-sets PORT env var
 
