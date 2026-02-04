@@ -251,17 +251,17 @@ export class TokenScanJob {
                         }
 
                         // GATE C: Age Filter (The "Golden Window")
-                        // 20 mins (Pump done) to 120 mins (Still fresh)
+                        // 20 mins to 24 Hours (Softened)
                         if (ageMins < 20) {
                             // logger.debug(`[Gate] 👶 Too Young: ${token.symbol} (${ageMins}m)`);
                             gateCount++;
                             recordRejection('Too Young (<20m)');
                             return;
                         }
-                        if (ageMins > 120) {
+                        if (ageMins > 1440) { // 24 Hours
                             // logger.debug(`[Gate] 👴 Too Old: ${token.symbol} (${ageMins}m)`);
                             gateCount++;
-                            recordRejection('Too Old (>120m)');
+                            recordRejection('Too Old (>24h)');
                             return;
                         }
 
