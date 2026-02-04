@@ -90,6 +90,7 @@ export class PostgresStorage {
             await this.pool.query(`ALTER TABLE seen_tokens ADD COLUMN IF NOT EXISTS symbol TEXT;`);
             await this.pool.query(`ALTER TABLE seen_tokens ADD COLUMN IF NOT EXISTS dip_target_mc NUMERIC DEFAULT 0;`);
             await this.pool.query(`ALTER TABLE seen_tokens ADD COLUMN IF NOT EXISTS stored_analysis TEXT;`);
+            await this.pool.query(`ALTER TABLE seen_tokens ADD COLUMN IF NOT EXISTS raw_snapshot JSONB;`); // NEW: FULL AI DATA
 
             await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS entry_price NUMERIC DEFAULT 0;`);
             await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS found_mc NUMERIC;`);
@@ -396,7 +397,8 @@ export class PostgresStorage {
                 lastPhase: row.last_phase,
                 lastPrice: row.last_price ? Number(row.last_price) : undefined,
                 dipTargetMc: row.dip_target_mc ? Number(row.dip_target_mc) : undefined,
-                storedAnalysis: row.stored_analysis // Added mapping
+                storedAnalysis: row.stored_analysis,
+                rawSnapshot: row.raw_snapshot // Mapped from JSONB
             };
         } catch (err) {
             logger.error('[Postgres] getSeenToken failed', err);
@@ -408,8 +410,8 @@ export class PostgresStorage {
         if (mint.startsWith('0x')) return;
         try {
             await this.pool.query(
-                `INSERT INTO seen_tokens(mint, symbol, first_seen_at, last_alert_at, last_score, last_phase, last_price, dip_target_mc, stored_analysis)
-                 VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                `INSERT INTO seen_tokens(mint, symbol, first_seen_at, last_alert_at, last_score, last_phase, last_price, dip_target_mc, stored_analysis, raw_snapshot)
+                 VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
                  ON CONFLICT(mint) DO UPDATE SET
                     symbol = COALESCE(EXCLUDED.symbol, seen_tokens.symbol),
                     last_alert_at = EXCLUDED.last_alert_at,
@@ -417,7 +419,8 @@ export class PostgresStorage {
                     last_phase = EXCLUDED.last_phase,
                     last_price = EXCLUDED.last_price,
                     dip_target_mc = EXCLUDED.dip_target_mc,
-                    stored_analysis = EXCLUDED.stored_analysis;`,
+                    stored_analysis = EXCLUDED.stored_analysis,
+                    raw_snapshot = COALESCE(EXCLUDED.raw_snapshot, seen_tokens.raw_snapshot);`,
                 [
                     mint,
                     data.symbol || null,
@@ -427,7 +430,8 @@ export class PostgresStorage {
                     data.lastPhase,
                     data.lastPrice || 0,
                     data.dipTargetMc || 0,
-                    data.storedAnalysis || null // Added parameter
+                    data.storedAnalysis || null,
+                    data.rawSnapshot ? JSON.stringify(data.rawSnapshot) : null // Store full token object
                 ]
             );
         } catch (err) {

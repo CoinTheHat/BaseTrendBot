@@ -16,6 +16,7 @@ export interface SeenTokenData {
     lastPrice?: number;
     dipTargetMc?: number;       // For Dip Entry
     storedAnalysis?: string;    // For Dip Entry
+    rawSnapshot?: any;          // AI Training Data (Full Token Object)
 }
 
 export class JsonStorage {

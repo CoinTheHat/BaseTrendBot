@@ -284,7 +284,8 @@ export class TokenScanJob {
                                 lastAlertAt: Date.now(),
                                 lastScore: totalScore,
                                 lastPhase: 'ALERTED',
-                                storedAnalysis: JSON.stringify(mechanicalNarrative)
+                                storedAnalysis: JSON.stringify(mechanicalNarrative),
+                                rawSnapshot: enrichedToken // NEW: Save Full Object for AI Training
                             });
 
                             // ⚡ FIRE ALERT & GET MSG ID
