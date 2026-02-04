@@ -356,8 +356,8 @@ export class PostgresStorage {
             const recentRes = await this.pool.query(`
                 SELECT * FROM (${combinedView}) combined
                 ORDER BY alert_timestamp DESC 
-                LIMIT 50
-            `); // Capabilities boosted to 50 for better PnL view
+                LIMIT 1000
+            `); // Capabilities boosted to 1000
 
             return {
                 totalCalls,

@@ -69,24 +69,14 @@ export class AutopsyService {
 
     /**
      * Get specific price at a target timestamp (e.g. 30 mins after entry)
-     * Precision: 1 minute
+     * Precision: Exact Unix Timestamp via Birdeye API
      */
     async getPriceAtTime(mint: string, targetTimestamp: number): Promise<number> {
         const targetUnix = Math.floor(targetTimestamp / 1000);
-        // Look for candle between T and T+60s
         try {
-            const candles = await this.birdeye.getHistoricalCandles(
-                mint,
-                '1m',
-                targetUnix,
-                targetUnix + 120 // 2 min window just in case
-            );
-
-            if (candles.length > 0) {
-                // Return Close price of first candle
-                return candles[0].c;
-            }
-            return 0;
+            // New Method: Direct Historical Price API
+            const price = await this.birdeye.getHistoricalPriceUnix(mint, targetUnix);
+            return price;
         } catch (err) {
             logger.warn(`[Autopsy] Failed to get PriceAtTime for ${mint}: ${err}`);
             return 0;

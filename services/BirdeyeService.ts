@@ -252,6 +252,32 @@ export class BirdeyeService {
         }
     }
 
+    /**
+     * Get Historical Price at specific Unix Timestamp
+     * Endpoint: /defi/historical_price_unix
+     */
+    async getHistoricalPriceUnix(address: string, unixtime: number): Promise<number> {
+        try {
+            // URL: https://public-api.birdeye.so/defi/historical_price_unix?address=...&unixtime=...
+            const response = await axios.get(`${this.baseUrl}/defi/historical_price_unix`, {
+                headers: { ...this.headers, 'x-chain': 'solana' },
+                params: {
+                    address: address,
+                    unixtime: unixtime
+                }
+            });
+
+            if (response.data && response.data.success && response.data.data) {
+                return response.data.data.value || 0;
+            }
+            return 0;
+
+        } catch (error: any) {
+            // logger.warn(`[Birdeye] Historical Price failed for ${address}: ${error.message}`);
+            return 0;
+        }
+    }
+
     // --- Helpers ---
 
     private mapListingToSnapshot(item: any, chain: 'solana' | 'base'): TokenSnapshot {
