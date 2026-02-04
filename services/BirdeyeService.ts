@@ -349,8 +349,10 @@ export class BirdeyeService {
                 const supply = respB2.data.data.supply || 0;
                 const totalHolders = respB1.data.data.total || 0;
 
+                // User Note: Calculate Top 10 percentage manually using supply
                 if (supply > 0) {
-                    const top10Raw = holders.slice(0, 10).reduce((s: number, h: any) => s + (Number(h.amount) || 0), 0);
+                    // Use ui_amount (float) for calculation to matches supply units
+                    const top10Raw = holders.slice(0, 10).reduce((s: number, h: any) => s + (Number(h.ui_amount) || 0), 0);
                     const top10Percent = top10Raw / supply;
 
                     return {
@@ -360,7 +362,7 @@ export class BirdeyeService {
                 }
             }
 
-            throw new Error(`Holder data indexed but supply missing/zero for ${address}`);
+            throw new Error(`Holder data retrieved but supply/metrics missing for ${address}`);
 
         } catch (err: any) {
             // FAIL-SAFE: Rejections handled in TokenScanJob
