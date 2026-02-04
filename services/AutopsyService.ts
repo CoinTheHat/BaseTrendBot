@@ -92,4 +92,32 @@ export class AutopsyService {
             return 0;
         }
     }
+
+    /**
+     * Get High Price within the first 30 minutes of entry.
+     */
+    async getHigh30m(mint: string, entryTimestamp: number): Promise<number> {
+        const entryUnix = Math.floor(entryTimestamp / 1000);
+        const end30m = entryUnix + (30 * 60);
+
+        try {
+            // Get 30 mins of 1m candles
+            const candles = await this.birdeye.getHistoricalCandles(
+                mint,
+                '1m',
+                entryUnix,
+                end30m
+            );
+
+            let maxH = 0;
+            for (const c of candles) {
+                if (c.h > maxH) maxH = c.h;
+            }
+            return maxH;
+
+        } catch (err) {
+            logger.warn(`[Autopsy] Failed to get High30m for ${mint}: ${err}`);
+            return 0;
+        }
+    }
 }

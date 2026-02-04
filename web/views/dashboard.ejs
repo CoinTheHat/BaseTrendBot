@@ -484,99 +484,130 @@
                         </div>
                     </div>
                 </div>
+            </div>
 
-                <div class="bg-gray-800 rounded-xl overflow-hidden shadow-lg border border-gray-700">
-                    <table class="w-full text-left" id="perf-table">
-                        <thead class="bg-gray-700 text-gray-300">
-                            <tr>
-                                <th class="px-6 py-3">Rank</th>
-                                <th class="px-6 py-3">Token</th>
-                                <th class="px-6 py-3">Entry MC</th>
-                                <th class="px-6 py-3">True ATH</th>
-                                <th class="px-6 py-3">Peak Value ($100 bet)</th>
-                                <th class="px-6 py-3">Multiplier</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-700" id="perf-body">
-                            <!-- Populated via JS -->
-                            <tr>
-                                <td colspan="6" class="px-6 py-4 text-center text-gray-500">Loading Report...</td>
-                            </tr>
-                        </tbody>
-                    </table>
+            <!-- STRATEGY 3: 30-MINUTE TIME-LIMIT EXIT -->
+            <div
+                class="mt-8 bg-gray-800 rounded-xl p-6 border border-yellow-900/50 mb-8 shadow-lg relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 opacity-10 text-9xl">⏱️</div>
+                <h3 class="text-2xl font-bold text-white mb-2 relative z-10">⏱️ Strategy 3: "30-Minute Time Limit"</h3>
+                <p class="text-gray-400 text-sm mb-6 relative z-10 max-w-2xl">
+                    Apply Strat 1 (Split) & Strat 2 (Moonshot) with a 30m Hard Stop.<br>
+                    • <b>Rule:</b> If targets (1.5x/2x) NOT hit in 30 mins -> Force Sell at 30m Market Price.<br>
+                    • <b>Success:</b> Targets hit within 30 mins = Win.
+                </p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 relative z-10">
+                    <!-- Hybrid Strat 1 -->
+                    <div class="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
+                        <div class="text-gray-500 text-xs font-bold uppercase tracking-wider">Split Strategy (30m Limit)
+                        </div>
+                        <div class="text-3xl font-bold mt-1" id="hybrid1-pnl">Calculating...</div>
+                        <div class="text-xs text-gray-400 mt-1">1.5x / 2.5x or Sell @ 30m</div>
+                    </div>
+
+                    <!-- Hybrid Strat 2 -->
+                    <div class="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
+                        <div class="text-gray-500 text-xs font-bold uppercase tracking-wider">Moonshot Strategy (30m
+                            Limit)</div>
+                        <div class="text-3xl font-bold mt-1" id="hybrid2-pnl">Calculating...</div>
+                        <div class="text-xs text-gray-400 mt-1">2.0x Target or Sell @ 30m</div>
+                    </div>
                 </div>
             </div>
 
-            <script>
-                let reportLoaded = false;
+            <div class="bg-gray-800 rounded-xl overflow-hidden shadow-lg border border-gray-700">
+                <table class="w-full text-left" id="perf-table">
+                    <thead class="bg-gray-700 text-gray-300">
+                        <tr>
+                            <th class="px-6 py-3">Rank</th>
+                            <th class="px-6 py-3">Token</th>
+                            <th class="px-6 py-3">Entry MC</th>
+                            <th class="px-6 py-3">True ATH</th>
+                            <th class="px-6 py-3">Peak Value ($100 bet)</th>
+                            <th class="px-6 py-3">Multiplier</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-700" id="perf-body">
+                        <!-- Populated via JS -->
+                        <tr>
+                            <td colspan="6" class="px-6 py-4 text-center text-gray-500">Loading Report...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
 
-                function switchTab(tab) {
-                    const liveBtn = document.getElementById('tab-live');
-                    const perfBtn = document.getElementById('tab-performance');
-                    const liveView = document.getElementById('view-live');
-                    const perfView = document.getElementById('view-performance');
+        <script>
+            let reportLoaded = false;
 
-                    if (tab === 'live') {
-                        liveView.classList.remove('hidden');
-                        perfView.classList.add('hidden');
-                        liveBtn.className = "px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-500 transition-colors";
-                        perfBtn.className = "px-4 py-2 bg-gray-700 text-gray-400 rounded font-bold hover:bg-gray-600 hover:text-white transition-colors";
-                    } else {
-                        liveView.classList.add('hidden');
-                        perfView.classList.remove('hidden');
-                        liveBtn.className = "px-4 py-2 bg-gray-700 text-gray-400 rounded font-bold hover:bg-gray-600 hover:text-white transition-colors";
-                        perfBtn.className = "px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-500 transition-colors";
+            function switchTab(tab) {
+                const liveBtn = document.getElementById('tab-live');
+                const perfBtn = document.getElementById('tab-performance');
+                const liveView = document.getElementById('view-live');
+                const perfView = document.getElementById('view-performance');
 
-                        if (!reportLoaded) loadPerformanceReport();
-                    }
+                if (tab === 'live') {
+                    liveView.classList.remove('hidden');
+                    perfView.classList.add('hidden');
+                    liveBtn.className = "px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-500 transition-colors";
+                    perfBtn.className = "px-4 py-2 bg-gray-700 text-gray-400 rounded font-bold hover:bg-gray-600 hover:text-white transition-colors";
+                } else {
+                    liveView.classList.add('hidden');
+                    perfView.classList.remove('hidden');
+                    liveBtn.className = "px-4 py-2 bg-gray-700 text-gray-400 rounded font-bold hover:bg-gray-600 hover:text-white transition-colors";
+                    perfBtn.className = "px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-500 transition-colors";
+
+                    if (!reportLoaded) loadPerformanceReport();
                 }
+            }
 
-                async function loadPerformanceReport() {
-                    try {
-                        const res = await fetch('/api/performance');
-                        const data = await res.json();
+            async function loadPerformanceReport() {
+                try {
+                    const res = await fetch('/api/performance');
+                    const data = await res.json();
 
-                        const tbody = document.getElementById('perf-body');
-                        tbody.innerHTML = '';
+                    const tbody = document.getElementById('perf-body');
+                    tbody.innerHTML = '';
 
-                        if (data.length === 0) {
-                            tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No data available.</td></tr>';
-                            return;
-                        }
+                    if (data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No data available.</td></tr>';
+                        return;
+                    }
 
-                        // SIMULATION VARIABLES
-                        const BET_SIZE = 100;
-                        let totalInvested = 0;
-                        let totalValue = 0;
-                        let count = 0;
+                    // SIMULATION VARIABLES
+                    const BET_SIZE = 100;
+                    let totalInvested = 0;
+                    let totalValue = 0;
+                    let count = 0;
 
-                        data.forEach((item, index) => {
-                            count++;
-                            totalInvested += BET_SIZE;
+                    data.forEach((item, index) => {
+                        count++;
+                        totalInvested += BET_SIZE;
 
-                            const m = parseFloat(item.multiplier);
-                            // Value = Bet * Multiplier
-                            const value = BET_SIZE * m;
-                            totalValue += value;
+                        const m = parseFloat(item.multiplier);
+                        // Value = Bet * Multiplier
+                        const value = BET_SIZE * m;
+                        totalValue += value;
 
-                            const rank = index + 1;
-                            let rankColor = 'text-gray-400';
-                            if (rank === 1) rankColor = 'text-yellow-400 font-bold text-xl';
-                            else if (rank === 2) rankColor = 'text-gray-300 font-bold text-lg';
-                            else if (rank === 3) rankColor = 'text-orange-400 font-bold';
+                        const rank = index + 1;
+                        let rankColor = 'text-gray-400';
+                        if (rank === 1) rankColor = 'text-yellow-400 font-bold text-xl';
+                        else if (rank === 2) rankColor = 'text-gray-300 font-bold text-lg';
+                        else if (rank === 3) rankColor = 'text-orange-400 font-bold';
 
-                            let multColor = 'text-gray-300';
-                            if (m >= 10) multColor = 'text-purple-400 font-bold neon-text';
-                            else if (m >= 5) multColor = 'text-green-400 font-bold';
-                            else if (m >= 2) multColor = 'text-green-200';
-                            else if (m < 0.5) multColor = 'text-red-400';
+                        let multColor = 'text-gray-300';
+                        if (m >= 10) multColor = 'text-purple-400 font-bold neon-text';
+                        else if (m >= 5) multColor = 'text-green-400 font-bold';
+                        else if (m >= 2) multColor = 'text-green-200';
+                        else if (m < 0.5) multColor = 'text-red-400';
 
-                            // Format Status
-                            let statusBadge = '';
-                            if (item.status === 'RUGGED') statusBadge = '💀 RUG';
-                            else if (item.status === 'MOONED') statusBadge = '🚀 MOON';
+                        // Format Status
+                        let statusBadge = '';
+                        if (item.status === 'RUGGED') statusBadge = '💀 RUG';
+                        else if (item.status === 'MOONED') statusBadge = '🚀 MOON';
 
-                            const row = `
+                        const row = `
                             <tr class="hover:bg-gray-750 transition-colors">
                                 <td class="px-6 py-4 ${rankColor}">#${rank}</td>
                                 <td class="px-6 py-4 font-bold text-white">
@@ -590,150 +621,214 @@
                                 <td class="px-6 py-4 ${multColor} text-lg">${item.multiplier}x</td>
                             </tr>
                         `;
-                            tbody.innerHTML += row;
-                        });
+                        tbody.innerHTML += row;
+                    });
 
-                        // Update Sim Cards
-                        const pnl = totalValue - totalInvested;
-                        document.getElementById('sim-count').innerText = count;
-                        document.getElementById('sim-invested').innerText = `$${totalInvested.toLocaleString()}`;
-                        document.getElementById('sim-value').innerText = `$${totalValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                    // Update Sim Cards
+                    const pnl = totalValue - totalInvested;
+                    document.getElementById('sim-count').innerText = count;
+                    document.getElementById('sim-invested').innerText = `$${totalInvested.toLocaleString()}`;
+                    document.getElementById('sim-value').innerText = `$${totalValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
-                        const pnlEl = document.getElementById('sim-pnl');
-                        pnlEl.innerText = `${pnl >= 0 ? '+' : ''}$${pnl.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-                        pnlEl.className = `text-3xl font-bold mt-1 ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+                    const pnlEl = document.getElementById('sim-pnl');
+                    pnlEl.innerText = `${pnl >= 0 ? '+' : ''}$${pnl.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                    pnlEl.className = `text-3xl font-bold mt-1 ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
 
-                        // --- 🧪 STRATEGY LAB 1 (1.5x / 2.5x) ---
-                        let stratPnl = 0;
-                        let tp1Hits = 0;
-                        let tp2Hits = 0;
-                        let failures = 0;
-                        let totalStratLoss = 0;
+                    // --- 🧪 STRATEGY LAB 1 (1.5x / 2.5x) ---
+                    let stratPnl = 0;
+                    let tp1Hits = 0;
+                    let tp2Hits = 0;
+                    let failures = 0;
+                    let totalStratLoss = 0;
 
-                        // --- 🚀 STRATEGY LAB 2 (2x Moonshot) ---
-                        let strat2Pnl = 0;
-                        let strat2Wins = 0;
-                        let strat2Failures = 0;
-                        let strat2LossAmount = 0;
+                    // --- 🚀 STRATEGY LAB 2 (2x Moonshot) ---
+                    let strat2Pnl = 0;
+                    let strat2Wins = 0;
+                    let strat2Failures = 0;
+                    let strat2LossAmount = 0;
 
-                        // --- ⏳ STRATEGY LAB 3 (30m Exit) ---
-                        let strat3Pnl = 0;
-                        let strat3Wins = 0;
-                        let strat3Losses = 0;
+                    // --- ⏳ STRATEGY LAB 3 (30m Exit) ---
+                    let strat3Pnl = 0;
+                    let strat3Wins = 0;
+                    let strat3Losses = 0;
 
-                        const STRAT_BET = 100;
+                    const STRAT_BET = 100;
 
-                        data.forEach(item => {
-                            const m = parseFloat(item.multiplier);
+                    data.forEach(item => {
+                        const m = parseFloat(item.multiplier);
 
-                            // === STRATEGY 1: SPLIT ===
-                            let outcome1 = 0;
-                            if (m < 1.5) {
-                                outcome1 = -STRAT_BET;
-                                failures++;
-                                totalStratLoss += STRAT_BET;
-                            } else if (m >= 1.5 && m < 2.5) {
-                                outcome1 = 25; // 50% profit on half, BE on half
-                                tp1Hits++;
-                            } else if (m >= 2.5) {
-                                outcome1 = 100; // Full win
-                                tp1Hits++;
-                                tp2Hits++;
-                            }
-                            stratPnl += outcome1;
+                        // === STRATEGY 1: SPLIT ===
+                        let outcome1 = 0;
+                        if (m < 1.5) {
+                            outcome1 = -STRAT_BET;
+                            failures++;
+                            totalStratLoss += STRAT_BET;
+                        } else if (m >= 1.5 && m < 2.5) {
+                            outcome1 = 25; // 50% profit on half, BE on half
+                            tp1Hits++;
+                        } else if (m >= 2.5) {
+                            outcome1 = 100; // Full win
+                            tp1Hits++;
+                            tp2Hits++;
+                        }
+                        stratPnl += outcome1;
 
-                            // === STRATEGY 2: 2x MOONSHOT ===
-                            let outcome2 = 0;
-                            if (m >= 2.0) {
-                                outcome2 = 100; // 100% Profit ($200 return - $100 bet)
-                                strat2Wins++;
-                            } else {
-                                outcome2 = -STRAT_BET; // 100% Loss
-                                strat2Failures++;
-                                strat2LossAmount += STRAT_BET;
-                            }
-                            strat2Pnl += outcome2;
+                        // === STRATEGY 2: 2x MOONSHOT ===
+                        let outcome2 = 0;
+                        if (m >= 2.0) {
+                            outcome2 = 100; // 100% Profit ($200 return - $100 bet)
+                            strat2Wins++;
+                        } else {
+                            outcome2 = -STRAT_BET; // 100% Loss
+                            strat2Failures++;
+                            strat2LossAmount += STRAT_BET;
+                        }
+                        strat2Pnl += outcome2;
 
-                            // === STRATEGY 3: 30-MIN EXIT ===
-                            // Use mc30m found in item. If 0 or missing, assume loss.
-                            let outcome3 = 0;
-                            const mc30 = item.mc30m || 0;
-                            const foundMc = item.foundMc || item.alertMc || 1;
+                        // === STRATEGY 3: 30-MIN EXIT ===
+                        // Use mc30m found in item. If 0 or missing, assume loss.
+                        let outcome3 = 0;
+                        const mc30 = item.mc30m || 0;
+                        const foundMc = item.foundMc || item.alertMc || 1;
 
-                            if (mc30 > 0 && foundMc > 0) {
-                                const exitVal = (mc30 / foundMc) * STRAT_BET; // e.g. (200k / 100k) * 100 = $200
-                                const profit = exitVal - STRAT_BET;
-                                outcome3 = profit;
+                        if (mc30 > 0 && foundMc > 0) {
+                            const exitVal = (mc30 / foundMc) * STRAT_BET; // e.g. (200k / 100k) * 100 = $200
+                            const profit = exitVal - STRAT_BET;
+                            outcome3 = profit;
 
-                                if (profit > 0) strat3Wins++;
-                                else strat3Losses++;
-                            } else {
-                                outcome3 = -STRAT_BET; // No data or Rekt -> Loss
-                                strat3Losses++;
-                            }
-                            strat3Pnl += outcome3;
-                        });
+                            if (profit > 0) strat3Wins++;
+                            else strat3Losses++;
+                        } else {
+                            outcome3 = -STRAT_BET; // No data or Rekt -> Loss
+                            strat3Losses++;
+                        }
+                        strat3Pnl += outcome3;
+                    });
 
-                        // Update Strategy 1 UI
-                        const stratPnlEl = document.getElementById('strat-pnl');
-                        stratPnlEl.innerText = `${stratPnl >= 0 ? '+' : ''}$${stratPnl.toLocaleString()}`;
-                        stratPnlEl.className = `text-3xl font-bold mt-1 ${stratPnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+                    // Update Strategy 1 UI
+                    const stratPnlEl = document.getElementById('strat-pnl');
+                    stratPnlEl.innerText = `${stratPnl >= 0 ? '+' : ''}$${stratPnl.toLocaleString()}`;
+                    stratPnlEl.className = `text-3xl font-bold mt-1 ${stratPnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
 
-                        const roi = (stratPnl / totalInvested) * 100;
-                        document.getElementById('strat-roi').innerText = `ROI: ${roi.toFixed(1)}%`;
+                    const roi = (stratPnl / totalInvested) * 100;
+                    document.getElementById('strat-roi').innerText = `ROI: ${roi.toFixed(1)}%`;
 
-                        const tp1Rate = count > 0 ? (tp1Hits / count) * 100 : 0;
-                        document.getElementById('strat-tp1').innerText = `${tp1Rate.toFixed(1)}%`;
-                        document.getElementById('strat-tp1-count').innerText = `${tp1Hits}/${count} Tokens`;
+                    const tp1Rate = count > 0 ? (tp1Hits / count) * 100 : 0;
+                    document.getElementById('strat-tp1').innerText = `${tp1Rate.toFixed(1)}%`;
+                    document.getElementById('strat-tp1-count').innerText = `${tp1Hits}/${count} Tokens`;
 
-                        const tp2Rate = count > 0 ? (tp2Hits / count) * 100 : 0;
-                        document.getElementById('strat-tp2').innerText = `${tp2Rate.toFixed(1)}%`;
-                        document.getElementById('strat-tp2-count').innerText = `${tp2Hits}/${count} Tokens`;
+                    const tp2Rate = count > 0 ? (tp2Hits / count) * 100 : 0;
+                    document.getElementById('strat-tp2').innerText = `${tp2Rate.toFixed(1)}%`;
+                    document.getElementById('strat-tp2-count').innerText = `${tp2Hits}/${count} Tokens`;
 
-                        const failRate = count > 0 ? (failures / count) * 100 : 0;
-                        document.getElementById('strat-rekt').innerText = `${failRate.toFixed(1)}%`;
-                        document.getElementById('strat-loss-val').innerText = `-$${totalStratLoss.toLocaleString()}`;
+                    const failRate = count > 0 ? (failures / count) * 100 : 0;
+                    document.getElementById('strat-rekt').innerText = `${failRate.toFixed(1)}%`;
+                    document.getElementById('strat-loss-val').innerText = `-$${totalStratLoss.toLocaleString()}`;
 
 
-                        // Update Strategy 2 UI
-                        const strat2PnlEl = document.getElementById('strat2-pnl');
-                        strat2PnlEl.innerText = `${strat2Pnl >= 0 ? '+' : ''}$${strat2Pnl.toLocaleString()}`;
-                        strat2PnlEl.className = `text-3xl font-bold mt-1 ${strat2Pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+                    // Update Strategy 2 UI
+                    const strat2PnlEl = document.getElementById('strat2-pnl');
+                    strat2PnlEl.innerText = `${strat2Pnl >= 0 ? '+' : ''}$${strat2Pnl.toLocaleString()}`;
+                    strat2PnlEl.className = `text-3xl font-bold mt-1 ${strat2Pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
 
-                        const roi2 = (strat2Pnl / totalInvested) * 100;
-                        document.getElementById('strat2-roi').innerText = `ROI: ${roi2.toFixed(1)}%`;
+                    const roi2 = (strat2Pnl / totalInvested) * 100;
+                    document.getElementById('strat2-roi').innerText = `ROI: ${roi2.toFixed(1)}%`;
 
-                        const winRate2 = count > 0 ? (strat2Wins / count) * 100 : 0;
-                        document.getElementById('strat2-win').innerText = `${winRate2.toFixed(1)}%`;
-                        document.getElementById('strat2-win-count').innerText = `${strat2Wins}/${count} Tokens`;
+                    const winRate2 = count > 0 ? (strat2Wins / count) * 100 : 0;
+                    document.getElementById('strat2-win').innerText = `${winRate2.toFixed(1)}%`;
+                    document.getElementById('strat2-win-count').innerText = `${strat2Wins}/${count} Tokens`;
 
-                        const failRate2 = count > 0 ? (strat2Failures / count) * 100 : 0;
-                        document.getElementById('strat2-rekt').innerText = `${failRate2.toFixed(1)}%`;
-                        document.getElementById('strat2-loss-val').innerText = `-$${strat2LossAmount.toLocaleString()}`;
+                    const failRate2 = count > 0 ? (strat2Failures / count) * 100 : 0;
+                    document.getElementById('strat2-rekt').innerText = `${failRate2.toFixed(1)}%`;
+                    document.getElementById('strat2-loss-val').innerText = `-$${strat2LossAmount.toLocaleString()}`;
 
-                        // Update Strategy 3 UI
-                        const strat3PnlEl = document.getElementById('strat3-pnl');
-                        strat3PnlEl.innerText = `${strat3Pnl >= 0 ? '+' : ''}$${Math.floor(strat3Pnl).toLocaleString()}`;
-                        strat3PnlEl.className = `text-3xl font-bold mt-1 ${strat3Pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+                    // Update Strategy 3 UI
+                    const strat3PnlEl = document.getElementById('strat3-pnl');
+                    strat3PnlEl.innerText = `${strat3Pnl >= 0 ? '+' : ''}$${Math.floor(strat3Pnl).toLocaleString()}`;
+                    strat3PnlEl.className = `text-3xl font-bold mt-1 ${strat3Pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
 
-                        const roi3 = (strat3Pnl / totalInvested) * 100;
-                        document.getElementById('strat3-roi').innerText = `ROI: ${roi3.toFixed(1)}%`;
+                    const roi3 = (strat3Pnl / totalInvested) * 100;
+                    document.getElementById('strat3-roi').innerText = `ROI: ${roi3.toFixed(1)}%`;
 
-                        const winRate3 = count > 0 ? (strat3Wins / count) * 100 : 0;
-                        document.getElementById('strat3-wins').innerText = `${strat3Wins}`;
-                        document.getElementById('strat3-win-rate').innerText = `${winRate3.toFixed(1)}%`;
+                    const winRate3 = count > 0 ? (strat3Wins / count) * 100 : 0;
+                    document.getElementById('strat3-wins').innerText = `${strat3Wins}`;
+                    document.getElementById('strat3-win-rate').innerText = `${winRate3.toFixed(1)}%`;
 
-                        document.getElementById('strat3-losses').innerText = `${strat3Losses}`;
+                    document.getElementById('strat3-losses').innerText = `${strat3Losses}`;
 
-                        reportLoaded = true;
+                    // --- ⏱️ STRATEGY 3: TIME-BOUNDED (HYBRID) ---
+                    // We calculate both Strat 1 and Strat 2 with a 30m Hard Stop.
+                    let hybrid1Pnl = 0;
+                    let hybrid2Pnl = 0;
 
-                    } catch (err) {
-                        console.error(err);
-                        document.getElementById('perf-body').innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-red-500">Error loading report.</td></tr>';
-                    }
+                    data.forEach(item => {
+                        // If missing 30m data, assume loss (conservative)
+                        // max_mult_30m: Highest we got in 30 mins
+                        // exit_mult_30m: Where we force close at 30 mins
+                        const maxMc30 = item.maxMc30m || 0;
+                        const closeMc30 = item.mc30m || 0;
+                        const startMc = item.foundMc || item.alertMc || 1;
+
+                        if (maxMc30 === 0 || closeMc30 === 0) {
+                            // Missing data -> Count as total loss for fairness
+                            hybrid1Pnl -= STRAT_BET;
+                            hybrid2Pnl -= STRAT_BET;
+                            return;
+                        }
+
+                        const maxM = maxMc30 / startMc;
+                        const closeM = closeMc30 / startMc;
+                        const exitVal = (closeMc30 / startMc) * STRAT_BET; // Value at 30m
+
+                        // --- Hybrid Strategy 1 ---
+                        // Check if targets hit strictly WITHIN 30m
+                        // TP1: 1.5x, TP2: 2.5x
+                        let h1 = 0;
+                        if (maxM >= 2.5) {
+                            h1 = 100; // TP1 & TP2 Hit within 30m
+                        } else if (maxM >= 1.5) {
+                            // Hit TP1 ($75 secured), Missed TP2
+                            // Remaining 50% ($50 cost)
+                            // Did it stop out at BE? 
+                            // Assume we hold the rest until 30m? Or BE?
+                            // Standard rule: Stop to Entry. So if Close30 < 1.0, we stopped at BE.
+                            // If Close30 > 1.0, we sell at Close30? No, user said "sell at 30m if target not hit".
+                            // Let's stick to: TP1 Hit -> Stop at BE.
+                            // So remaining $50 is safe. Total +$25.
+                            h1 = 25;
+                        } else {
+                            // Missed TP1 within 30m. Force sell ALL at 30m.
+                            h1 = exitVal - STRAT_BET;
+                        }
+                        hybrid1Pnl += h1;
+
+                        // --- Hybrid Strategy 2 ---
+                        // Target: 2.0x within 30m
+                        let h2 = 0;
+                        if (maxM >= 2.0) {
+                            h2 = 100; // Hit 2x!
+                        } else {
+                            // Missed 2x. Force sell ALL at 30m.
+                            h2 = exitVal - STRAT_BET;
+                        }
+                        hybrid2Pnl += h2;
+                    });
+
+                    document.getElementById('hybrid1-pnl').innerText = `${hybrid1Pnl >= 0 ? '+' : ''}$${Math.floor(hybrid1Pnl).toLocaleString()}`;
+                    document.getElementById('hybrid1-pnl').className = `text-2xl font-bold ${hybrid1Pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+
+                    document.getElementById('hybrid2-pnl').innerText = `${hybrid2Pnl >= 0 ? '+' : ''}$${Math.floor(hybrid2Pnl).toLocaleString()}`;
+                    document.getElementById('hybrid2-pnl').className = `text-2xl font-bold ${hybrid2Pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+
+                    reportLoaded = true;
+
+                } catch (err) {
+                    console.error("Report Error:", err);
+                    document.getElementById('perf-body').innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-red-500">Error loading report.</td></tr>';
                 }
-            </script>
-        </div>
+            }
+        </script>
+    </div>
 </body>
 
 </html>

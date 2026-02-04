@@ -98,7 +98,8 @@ export class PostgresStorage {
             await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS found_at TIMESTAMP DEFAULT NOW();`);
             await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS sold_mc NUMERIC DEFAULT 0;`);
             await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS dip_target_mc NUMERIC DEFAULT 0;`);
-            await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS mc_30m NUMERIC DEFAULT 0;`); // Strategy 3
+            await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS mc_30m NUMERIC DEFAULT 0;`); // Strategy 3 (Close)
+            await this.pool.query(`ALTER TABLE token_performance ADD COLUMN IF NOT EXISTS max_mc_30m NUMERIC DEFAULT 0;`); // Strategy 3 (High)
 
             // Backfill: found_mc = alert_mc, max_mc = ath_mc for existing rows
             await this.pool.query(`UPDATE token_performance SET found_mc = alert_mc WHERE found_mc IS NULL;`);
@@ -383,8 +384,22 @@ export class PostgresStorage {
             lastUpdated: row.last_updated,
             entryPrice: row.entry_price ? Number(row.entry_price) : 0,
             soldMc: row.sold_mc ? Number(row.sold_mc) : 0,
-            mc30m: row.mc_30m ? Number(row.mc_30m) : 0 // NEW Strategy 3
+            mc30m: row.mc_30m ? Number(row.mc_30m) : 0, // NEW Strategy 3
+            maxMc30m: row.max_mc_30m ? Number(row.max_mc_30m) : 0 // NEW Hybrid
         };
+    }
+
+    async updateHybrid30m(mint: string, maxMc30m: number) {
+        try {
+            await this.pool.query(
+                `UPDATE token_performance
+                 SET max_mc_30m = $1, last_updated = NOW()
+                 WHERE mint = $2`,
+                [maxMc30m, mint]
+            );
+        } catch (err) {
+            logger.error(`[Postgres] updateHybrid30m failed for ${mint}`, err);
+        }
     }
 
     // --- Watchlist ---

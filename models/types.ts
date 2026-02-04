@@ -126,6 +126,7 @@ export interface TokenPerformance {
     dipTargetMc?: number; // Added for Dip Tracking
     entryPrice?: number; // Added for V3 Autopsy
     mc30m?: number; // Added for Strategy 3 (Time-Based Exit)
+    maxMc30m?: number; // Added for Hybrid 30m Strategy
     status: 'TRACKING' | 'MOONED' | 'RUGGED' | 'STABLE' | 'FAILED' | 'FAILED_NO_DATA' | 'FINALIZED' | 'FINALIZED_MOONED' | 'FINALIZED_FAILED' | 'WAITING_FOR_DIP' | 'MISSED_DIP' | 'WAITING_DIP';
     alertTimestamp: Date;
     lastUpdated: Date;
