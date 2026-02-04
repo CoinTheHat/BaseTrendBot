@@ -564,6 +564,19 @@ export class PostgresStorage {
 
     // === PORTFOLIO TRACKING METHODS ===
 
+    // NEW: Fetch ALL performance records for Backfill/PnL Analysis
+    async getAllPerformanceTokens(): Promise<TokenPerformance[]> {
+        try {
+            const res = await this.pool.query(
+                `SELECT * FROM token_performance ORDER BY alert_timestamp DESC`
+            );
+            return res.rows.map(row => this.mapPerformanceRow(row));
+        } catch (err) {
+            logger.error('[Postgres] getAllPerformanceTokens failed', err);
+            return [];
+        }
+    }
+
     async getAllTrackingTokens(): Promise<any[]> {
         try {
             const res = await this.pool.query(

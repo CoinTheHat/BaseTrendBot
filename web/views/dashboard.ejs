@@ -377,98 +377,141 @@
                 </div>
             </div>
 
-            <div class="bg-gray-800 rounded-xl overflow-hidden shadow-lg border border-gray-700">
-                <table class="w-full text-left" id="perf-table">
-                    <thead class="bg-gray-700 text-gray-300">
-                        <tr>
-                            <th class="px-6 py-3">Rank</th>
-                            <th class="px-6 py-3">Token</th>
-                            <th class="px-6 py-3">Entry MC</th>
-                            <th class="px-6 py-3">True ATH</th>
-                            <th class="px-6 py-3">Peak Value ($100 bet)</th>
-                            <th class="px-6 py-3">Multiplier</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-700" id="perf-body">
-                        <!-- Populated via JS -->
-                        <tr>
-                            <td colspan="6" class="px-6 py-4 text-center text-gray-500">Loading Report...</td>
-                        </tr>
-                    </tbody>
-                </table>
+            <!-- STRATEGY LAB -->
+            <div class="bg-gray-800 rounded-xl p-6 border border-blue-900/50 mb-8 shadow-lg relative overflow-hidden">
+                <div class="absolute top-0 right-0 p-4 opacity-10 text-9xl">🧪</div>
+                <h3 class="text-2xl font-bold text-white mb-2 relative z-10">🧪 Strategy Lab: "The 1.5x / 2.5x Split"
+                </h3>
+                <p class="text-gray-400 text-sm mb-6 relative z-10 max-w-2xl">
+                    Simulation based on $100 entry per token.<br>
+                    • <b>TP1:</b> Sell 50% @ 1.5x <br>
+                    • <b>TP2:</b> Sell 50% @ 2.5x <br>
+                    • <b>Rule:</b> If TP1 hit, Stop Loss moves to Entry (Break Even). If TP1 missed, assume 100% Loss.
+                </p>
+
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 relative z-10">
+                    <!-- Strategy PnL -->
+                    <div class="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
+                        <div class="text-gray-500 text-xs font-bold uppercase tracking-wider">Strategy Net Profit</div>
+                        <div class="text-3xl font-bold mt-1" id="strat-pnl">Calculating...</div>
+                        <div class="text-xs text-gray-400 mt-1" id="strat-roi">ROI: 0%</div>
+                    </div>
+
+                    <!-- Hit Rate (1.5x) -->
+                    <div class="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
+                        <div class="text-gray-500 text-xs font-bold uppercase tracking-wider">TP1 Hit Rate (1.5x)</div>
+                        <div class="text-3xl font-bold text-blue-400 mt-1" id="strat-tp1">0%</div>
+                        <div class="text-xs text-gray-400 mt-1" id="strat-tp1-count">0 Tokens</div>
+                    </div>
+
+                    <!-- Full Win Rate (2.5x) -->
+                    <div class="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
+                        <div class="text-gray-500 text-xs font-bold uppercase tracking-wider">Full Win Rate (2.5x)</div>
+                        <div class="text-3xl font-bold text-green-400 mt-1" id="strat-tp2">0%</div>
+                        <div class="text-xs text-gray-400 mt-1" id="strat-tp2-count">0 Tokens</div>
+                    </div>
+
+                    <!-- Rekt Rate -->
+                    <div class="bg-gray-900/50 p-4 rounded-lg border border-gray-700">
+                        <div class="text-gray-500 text-xs font-bold uppercase tracking-wider">Loss Rate (<1.5x)< /div>
+                                <div class="text-3xl font-bold text-red-400 mt-1" id="strat-rekt">0%</div>
+                                <div class="text-xs text-gray-400 mt-1 text-red-900" id="strat-loss-val">-$0</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-gray-800 rounded-xl overflow-hidden shadow-lg border border-gray-700">
+                    <table class="w-full text-left" id="perf-table">
+                        <thead class="bg-gray-700 text-gray-300">
+                            <tr>
+                                <th class="px-6 py-3">Rank</th>
+                                <th class="px-6 py-3">Token</th>
+                                <th class="px-6 py-3">Entry MC</th>
+                                <th class="px-6 py-3">True ATH</th>
+                                <th class="px-6 py-3">Peak Value ($100 bet)</th>
+                                <th class="px-6 py-3">Multiplier</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-700" id="perf-body">
+                            <!-- Populated via JS -->
+                            <tr>
+                                <td colspan="6" class="px-6 py-4 text-center text-gray-500">Loading Report...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
-        </div>
 
-        <script>
-            let reportLoaded = false;
+            <script>
+                let reportLoaded = false;
 
-            function switchTab(tab) {
-                const liveBtn = document.getElementById('tab-live');
-                const perfBtn = document.getElementById('tab-performance');
-                const liveView = document.getElementById('view-live');
-                const perfView = document.getElementById('view-performance');
+                function switchTab(tab) {
+                    const liveBtn = document.getElementById('tab-live');
+                    const perfBtn = document.getElementById('tab-performance');
+                    const liveView = document.getElementById('view-live');
+                    const perfView = document.getElementById('view-performance');
 
-                if (tab === 'live') {
-                    liveView.classList.remove('hidden');
-                    perfView.classList.add('hidden');
-                    liveBtn.className = "px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-500 transition-colors";
-                    perfBtn.className = "px-4 py-2 bg-gray-700 text-gray-400 rounded font-bold hover:bg-gray-600 hover:text-white transition-colors";
-                } else {
-                    liveView.classList.add('hidden');
-                    perfView.classList.remove('hidden');
-                    liveBtn.className = "px-4 py-2 bg-gray-700 text-gray-400 rounded font-bold hover:bg-gray-600 hover:text-white transition-colors";
-                    perfBtn.className = "px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-500 transition-colors";
+                    if (tab === 'live') {
+                        liveView.classList.remove('hidden');
+                        perfView.classList.add('hidden');
+                        liveBtn.className = "px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-500 transition-colors";
+                        perfBtn.className = "px-4 py-2 bg-gray-700 text-gray-400 rounded font-bold hover:bg-gray-600 hover:text-white transition-colors";
+                    } else {
+                        liveView.classList.add('hidden');
+                        perfView.classList.remove('hidden');
+                        liveBtn.className = "px-4 py-2 bg-gray-700 text-gray-400 rounded font-bold hover:bg-gray-600 hover:text-white transition-colors";
+                        perfBtn.className = "px-4 py-2 bg-blue-600 text-white rounded font-bold hover:bg-blue-500 transition-colors";
 
-                    if (!reportLoaded) loadPerformanceReport();
-                }
-            }
-
-            async function loadPerformanceReport() {
-                try {
-                    const res = await fetch('/api/performance');
-                    const data = await res.json();
-
-                    const tbody = document.getElementById('perf-body');
-                    tbody.innerHTML = '';
-
-                    if (data.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No data available.</td></tr>';
-                        return;
+                        if (!reportLoaded) loadPerformanceReport();
                     }
+                }
 
-                    // SIMULATION VARIABLES
-                    const BET_SIZE = 100;
-                    let totalInvested = 0;
-                    let totalValue = 0;
-                    let count = 0;
+                async function loadPerformanceReport() {
+                    try {
+                        const res = await fetch('/api/performance');
+                        const data = await res.json();
 
-                    data.forEach((item, index) => {
-                        count++;
-                        totalInvested += BET_SIZE;
+                        const tbody = document.getElementById('perf-body');
+                        tbody.innerHTML = '';
 
-                        const m = parseFloat(item.multiplier);
-                        // Value = Bet * Multiplier
-                        const value = BET_SIZE * m;
-                        totalValue += value;
+                        if (data.length === 0) {
+                            tbody.innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-gray-500">No data available.</td></tr>';
+                            return;
+                        }
 
-                        const rank = index + 1;
-                        let rankColor = 'text-gray-400';
-                        if (rank === 1) rankColor = 'text-yellow-400 font-bold text-xl';
-                        else if (rank === 2) rankColor = 'text-gray-300 font-bold text-lg';
-                        else if (rank === 3) rankColor = 'text-orange-400 font-bold';
+                        // SIMULATION VARIABLES
+                        const BET_SIZE = 100;
+                        let totalInvested = 0;
+                        let totalValue = 0;
+                        let count = 0;
 
-                        let multColor = 'text-gray-300';
-                        if (m >= 10) multColor = 'text-purple-400 font-bold neon-text';
-                        else if (m >= 5) multColor = 'text-green-400 font-bold';
-                        else if (m >= 2) multColor = 'text-green-200';
-                        else if (m < 0.5) multColor = 'text-red-400';
+                        data.forEach((item, index) => {
+                            count++;
+                            totalInvested += BET_SIZE;
 
-                        // Format Status
-                        let statusBadge = '';
-                        if (item.status === 'RUGGED') statusBadge = '💀 RUG';
-                        else if (item.status === 'MOONED') statusBadge = '🚀 MOON';
+                            const m = parseFloat(item.multiplier);
+                            // Value = Bet * Multiplier
+                            const value = BET_SIZE * m;
+                            totalValue += value;
 
-                        const row = `
+                            const rank = index + 1;
+                            let rankColor = 'text-gray-400';
+                            if (rank === 1) rankColor = 'text-yellow-400 font-bold text-xl';
+                            else if (rank === 2) rankColor = 'text-gray-300 font-bold text-lg';
+                            else if (rank === 3) rankColor = 'text-orange-400 font-bold';
+
+                            let multColor = 'text-gray-300';
+                            if (m >= 10) multColor = 'text-purple-400 font-bold neon-text';
+                            else if (m >= 5) multColor = 'text-green-400 font-bold';
+                            else if (m >= 2) multColor = 'text-green-200';
+                            else if (m < 0.5) multColor = 'text-red-400';
+
+                            // Format Status
+                            let statusBadge = '';
+                            if (item.status === 'RUGGED') statusBadge = '💀 RUG';
+                            else if (item.status === 'MOONED') statusBadge = '🚀 MOON';
+
+                            const row = `
                             <tr class="hover:bg-gray-750 transition-colors">
                                 <td class="px-6 py-4 ${rankColor}">#${rank}</td>
                                 <td class="px-6 py-4 font-bold text-white">
@@ -482,28 +525,92 @@
                                 <td class="px-6 py-4 ${multColor} text-lg">${item.multiplier}x</td>
                             </tr>
                         `;
-                        tbody.innerHTML += row;
-                    });
+                            tbody.innerHTML += row;
+                        });
 
-                    // Update Sim Cards
-                    const pnl = totalValue - totalInvested;
-                    document.getElementById('sim-count').innerText = count;
-                    document.getElementById('sim-invested').innerText = `$${totalInvested.toLocaleString()}`;
-                    document.getElementById('sim-value').innerText = `$${totalValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                        // Update Sim Cards
+                        const pnl = totalValue - totalInvested;
+                        document.getElementById('sim-count').innerText = count;
+                        document.getElementById('sim-invested').innerText = `$${totalInvested.toLocaleString()}`;
+                        document.getElementById('sim-value').innerText = `$${totalValue.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
 
-                    const pnlEl = document.getElementById('sim-pnl');
-                    pnlEl.innerText = `${pnl >= 0 ? '+' : ''}$${pnl.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
-                    pnlEl.className = `text-3xl font-bold mt-1 ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+                        const pnlEl = document.getElementById('sim-pnl');
+                        pnlEl.innerText = `${pnl >= 0 ? '+' : ''}$${pnl.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
+                        pnlEl.className = `text-3xl font-bold mt-1 ${pnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
 
-                    reportLoaded = true;
+                        // --- 🧪 STRATEGY LAB CALCULATION ---
+                        let stratPnl = 0;
+                        let tp1Hits = 0;
+                        let tp2Hits = 0;
+                        let failures = 0;
+                        let totalStratLoss = 0;
 
-                } catch (err) {
-                    console.error(err);
-                    document.getElementById('perf-body').innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-red-500">Error loading report.</td></tr>';
+                        const STRAT_BET = 100;
+
+                        data.forEach(item => {
+                            const m = parseFloat(item.multiplier);
+
+                            // Logic:
+                            // < 1.5x: Loss (-$100)
+                            // >= 1.5x: Sell 50% ($75). Remaining 50% risk free.
+                            // >= 2.5x: Sell other 50% ($125). Total $200.
+                            // If 1.5x <= m < 2.5x: Second half stops at Entry ($50). Total $125.
+
+                            let outcome = 0;
+
+                            if (m < 1.5) {
+                                outcome = -STRAT_BET; // Loss
+                                failures++;
+                                totalStratLoss += STRAT_BET;
+                            } else if (m >= 1.5 && m < 2.5) {
+                                // Hit TP1, Missed TP2 (Stopped at BE)
+                                // 50% sold at 1.5 ($75)
+                                // 50% sold at 1.0 ($50)
+                                // Total Return: $125. Profit: +$25
+                                outcome = 25;
+                                tp1Hits++;
+                            } else if (m >= 2.5) {
+                                // Hit TP1 & TP2
+                                // 50% sold at 1.5 ($75)
+                                // 50% sold at 2.5 ($125)
+                                // Total Return: $200. Profit: +$100
+                                outcome = 100;
+                                tp1Hits++; // Also counts as TP1 hit
+                                tp2Hits++;
+                            }
+
+                            stratPnl += outcome;
+                        });
+
+                        // Update Strategy UI
+                        const stratPnlEl = document.getElementById('strat-pnl');
+                        stratPnlEl.innerText = `${stratPnl >= 0 ? '+' : ''}$${stratPnl.toLocaleString()}`;
+                        stratPnlEl.className = `text-3xl font-bold mt-1 ${stratPnl >= 0 ? 'text-green-400' : 'text-red-400'}`;
+
+                        const roi = (stratPnl / totalInvested) * 100;
+                        document.getElementById('strat-roi').innerText = `ROI: ${roi.toFixed(1)}%`;
+
+                        const tp1Rate = count > 0 ? (tp1Hits / count) * 100 : 0;
+                        document.getElementById('strat-tp1').innerText = `${tp1Rate.toFixed(1)}%`;
+                        document.getElementById('strat-tp1-count').innerText = `${tp1Hits}/${count} Tokens`;
+
+                        const tp2Rate = count > 0 ? (tp2Hits / count) * 100 : 0;
+                        document.getElementById('strat-tp2').innerText = `${tp2Rate.toFixed(1)}%`;
+                        document.getElementById('strat-tp2-count').innerText = `${tp2Hits}/${count} Tokens`;
+
+                        const failRate = count > 0 ? (failures / count) * 100 : 0;
+                        document.getElementById('strat-rekt').innerText = `${failRate.toFixed(1)}%`;
+                        document.getElementById('strat-loss-val').innerText = `-$${totalStratLoss.toLocaleString()}`;
+
+                        reportLoaded = true;
+
+                    } catch (err) {
+                        console.error(err);
+                        document.getElementById('perf-body').innerHTML = '<tr><td colspan="6" class="px-6 py-4 text-center text-red-500">Error loading report.</td></tr>';
+                    }
                 }
-            }
-        </script>
-    </div>
+            </script>
+        </div>
 </body>
 
 </html>
