@@ -279,40 +279,93 @@ export class BirdeyeService {
     }
 
     /**
-     * Get Token Security & Holder Stats
-     * Endpoint: /defi/token_holder_distribution (More reliable than token_security)
-     * Returns: holderCount and top10HoldersPercent
+     * Get Token Security & Holder Stats (Hybrid Robust Strategy)
+     * Primary: /defi/token_holder_distribution (token_address)
+     * Fallback: /defi/v3/token/holder (address) + /defi/token_overview (address)
+     * Includes 429 Rate Limit Handling and User-Specific Field Requirements
      */
     async getTokenSecurity(address: string): Promise<{ holderCount: number, top10Percent: number }> {
+        const makeRequest = async (url: string, params: any, retries = 2): Promise<any> => {
+            try {
+                return await axios.get(url, {
+                    headers: { ...this.headers, 'x-chain': 'solana' },
+                    params
+                });
+            } catch (err: any) {
+                if (err.response?.status === 429 && retries > 0) {
+                    const wait = (3 - retries) * 2000;
+                    logger.warn(`[Birdeye] 429 Rate Limit. Retrying in ${wait}ms...`);
+                    await new Promise(r => setTimeout(r, wait));
+                    return makeRequest(url, params, retries - 1);
+                }
+                throw err;
+            }
+        };
+
         try {
-            // More reliable endpoint: /defi/token_holder_distribution
-            const response = await axios.get(`${this.baseUrl}/defi/token_holder_distribution`, {
-                headers: { ...this.headers, 'x-chain': 'solana' },
-                params: { address }
+            // --- STRATEGY A: Primary Distribution Endpoint ---
+            // User Note: MUST use 'token_address' as parameter name
+            try {
+                const respA = await makeRequest(`${this.baseUrl}/defi/token_holder_distribution`, {
+                    token_address: address
+                });
+
+                if (respA.data?.success && respA.data?.data) {
+                    const data = respA.data.data;
+                    const items = data.items || [];
+                    // User Note: Use 'percent_of_supply' field
+                    const top10 = items.slice(0, 10).reduce((s: number, h: any) => s + (h.percent_of_supply || 0), 0);
+
+                    return {
+                        holderCount: data.total || 0,
+                        top10Percent: top10 * 100 // Convert to percentage (0.45 -> 45)
+                    };
+                }
+            } catch (errA: any) {
+                if (errA.response?.status !== 404) {
+                    // Only log non-404 errors as warnings
+                    logger.warn(`[Birdeye] Primary Holder API failed for ${address}: ${errA.message}`);
+                }
+            }
+
+            // --- STRATEGY B: Hybrid Fallback (v3/token/holder + token_overview) ---
+            // For new tokens where distribution endpoint fails (404)
+            logger.info(`[Birdeye] Using Fallback Holder Logic for ${address}...`);
+
+            // 1. Get Top Holders List
+            const respB1 = await makeRequest(`${this.baseUrl}/defi/v3/token/holder`, {
+                address: address,
+                offset: 0,
+                limit: 10
             });
 
-            const data = response.data?.data;
-            if (!data) return { holderCount: 0, top10Percent: 0 };
+            // 2. Get Supply via Overview
+            const respB2 = await makeRequest(`${this.baseUrl}/defi/token_overview`, {
+                address: address
+            });
 
-            // 1. Get total holder count
-            const holderCount = data.total || 0;
+            if (respB1.data?.data && respB2.data?.data) {
+                const holders = respB1.data.data.items || [];
+                const supply = respB2.data.data.supply || 0;
+                const totalHolders = respB1.data.data.total || 0;
 
-            // 2. Calculate top 10 holders percentage manually
-            // API returns holders sorted from largest to smallest
-            const items = data.items || [];
-            const top10Percent = items
-                .slice(0, 10)
-                .reduce((sum: number, holder: any) => sum + (holder.percent || 0), 0);
+                if (supply > 0) {
+                    const top10Raw = holders.slice(0, 10).reduce((s: number, h: any) => s + (Number(h.amount) || 0), 0);
+                    const top10Percent = top10Raw / supply;
 
-            return {
-                holderCount,
-                top10Percent: top10Percent * 100 // Convert to percentage (0.45 -> 45)
-            };
+                    return {
+                        holderCount: totalHolders,
+                        top10Percent: top10Percent * 100
+                    };
+                }
+            }
 
-        } catch (err) {
-            // If API fails, return null values (will be rejected in TokenScanJob)
-            logger.warn(`[Birdeye] Token Holder Distribution API failed: ${err}`);
-            throw new Error(`Birdeye Holder Distribution API failed: ${err}`);
+            throw new Error(`Holder data indexed but supply missing/zero for ${address}`);
+
+        } catch (err: any) {
+            // FAIL-SAFE: Rejections handled in TokenScanJob
+            logger.warn(`[Birdeye] Global Holder Failure for ${address}: ${err.message}`);
+            throw err;
         }
     }
 
