@@ -224,6 +224,7 @@ export class TokenScanJob {
                             logger.warn(`[Gate] ⛔ BLACKLIST: ${token.symbol} contains banned word`);
                             gateCount++;
                             recordRejection('BLACKLIST');
+                            logger.info(`[REJECT] ${token.symbol} -> BLACKLIST`);
                             return;
                         }
 
@@ -231,6 +232,7 @@ export class TokenScanJob {
                         if (liq < 5000) {
                             gateCount++;
                             recordRejection('Low Liquidity (<$5k)');
+                            logger.info(`[REJECT] ${token.symbol} -> Low Liquidity ($${Math.floor(liq)})`);
                             return;
                         }
 
@@ -241,12 +243,14 @@ export class TokenScanJob {
                             gateCount++;
                             logger.warn(`[Gate] 🚫 High Liquidity Ratio: ${token.symbol} (${(liqMcRatio * 100).toFixed(1)}%). Potential Scam.`);
                             recordRejection('High Liq Ratio (>90%)');
+                            logger.info(`[REJECT] ${token.symbol} -> High Liq Ratio (${(liqMcRatio * 100).toFixed(0)}%)`);
                             return;
                         }
                         if (liqMcRatio < 0.15) {
                             gateCount++;
                             // logger.warn(`[Gate] 📉 Low Liquidity Ratio: ${token.symbol} (${(liqMcRatio * 100).toFixed(1)}%). Too Volatile.`);
                             recordRejection('Low Liq Ratio (<15%)');
+                            logger.info(`[REJECT] ${token.symbol} -> Low Liq Ratio (${(liqMcRatio * 100).toFixed(0)}%)`);
                             return;
                         }
 
@@ -256,12 +260,14 @@ export class TokenScanJob {
                             // logger.debug(`[Gate] 👶 Too Young: ${token.symbol} (${ageMins}m)`);
                             gateCount++;
                             recordRejection('Too Young (<20m)');
+                            logger.info(`[REJECT] ${token.symbol} -> Too Young (${ageMins}m)`);
                             return;
                         }
                         if (ageMins > 1440) { // 24 Hours
                             // logger.debug(`[Gate] 👴 Too Old: ${token.symbol} (${ageMins}m)`);
                             gateCount++;
                             recordRejection('Too Old (>24h)');
+                            logger.info(`[REJECT] ${token.symbol} -> Too Old (${ageMins}m)`);
                             return;
                         }
 
@@ -277,11 +283,13 @@ export class TokenScanJob {
                         if (phase === 'REJECTED_RISK') {
                             gateCount++; // Fake pump or other hard risk from engine
                             recordRejection('Risk Engine (Fake Pump)');
+                            logger.info(`[REJECT] ${token.symbol} -> Risk Engine (Fake Pump/Dump)`);
                             return;
                         }
 
                         if (totalScore < 70) {
                             weakCount++;
+                            logger.info(`[REJECT] ${token.symbol} -> Weak Score (${totalScore}/70)`);
                             return;
                         }
 
@@ -298,6 +306,7 @@ export class TokenScanJob {
                                 logger.warn(`[Gate] 🔒 RugCheck Failed: ${token.symbol} (${rugCheck.reason})`);
                                 gateCount++;
                                 recordRejection(`RugCheck (${rugCheck.reason ?? 'Failed'})`);
+                                logger.info(`[REJECT] ${token.symbol} -> RugCheck (${rugCheck.reason})`);
                                 return;
                             }
                         }
@@ -314,12 +323,14 @@ export class TokenScanJob {
                                 logger.info(`[Gate] 🐋 Whale Risk: ${token.symbol} (Top 10: ${sec.top10Percent.toFixed(1)}%)`);
                                 gateCount++;
                                 recordRejection('Whale Risk (Top10 >50%)');
+                                logger.info(`[REJECT] ${token.symbol} -> Whale Risk (${sec.top10Percent.toFixed(0)}%)`);
                                 return;
                             }
                             if (sec.holderCount < 50) {
                                 logger.info(`[Gate] 🤖 Bot Risk: ${token.symbol} (Holders: ${sec.holderCount})`);
                                 gateCount++;
                                 recordRejection('Bot Risk (Holders <50)');
+                                logger.info(`[REJECT] ${token.symbol} -> Bot Risk (${sec.holderCount} Holders)`);
                                 return;
                             }
                         } catch (secErr) {
