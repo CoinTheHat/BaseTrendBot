@@ -283,8 +283,12 @@ export class BirdeyeService {
      * Primary: /defi/token_holder_distribution (token_address)
      * Fallback: /defi/v3/token/holder (address) + /defi/token_overview (address)
      * Includes 429 Rate Limit Handling and User-Specific Field Requirements
+     * NEW: DexScreener Fallback - Can calculate supply from price/MC if Birdeye fails
      */
-    async getTokenSecurity(address: string): Promise<{ holderCount: number, top10Percent: number }> {
+    async getTokenSecurity(
+        address: string,
+        tokenData?: { priceUsd: number, marketCapUsd: number }
+    ): Promise<{ holderCount: number, top10Percent: number }> {
         const makeRequest = async (url: string, params: any, retries = 2): Promise<any> => {
             try {
                 return await axios.get(url, {
@@ -346,8 +350,15 @@ export class BirdeyeService {
 
             if (respB1.data?.data && respB2.data?.data) {
                 const holders = respB1.data.data.items || [];
-                const supply = respB2.data.data.supply || 0;
+                let supply = respB2.data.data.supply || 0;
                 const totalHolders = respB1.data.data.total || 0;
+
+                // --- STRATEGY C: DexScreener Supply Fallback ---
+                // If Birdeye supply is 0/null but we have DexScreener data, calculate supply
+                if (supply === 0 && tokenData && tokenData.priceUsd > 0 && tokenData.marketCapUsd > 0) {
+                    supply = tokenData.marketCapUsd / tokenData.priceUsd;
+                    logger.info(`[Birdeye] Using DexScreener supply fallback for ${address} (Supply: ${supply.toFixed(0)})`);
+                }
 
                 // User Note: Calculate Top 10 percentage manually using supply
                 if (supply > 0) {

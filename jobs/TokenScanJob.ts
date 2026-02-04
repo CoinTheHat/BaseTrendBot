@@ -314,7 +314,11 @@ export class TokenScanJob {
                         // --- STEP 2.5: SECURITY & HOLDER CHECK (API Cost Saver - only high scores) ---
                         // Only fetch for potential gems to save API calls
                         try {
-                            const sec = await this.birdeye.getTokenSecurity(token.mint);
+                            // Pass price/MC for DexScreener supply fallback
+                            const sec = await this.birdeye.getTokenSecurity(token.mint, {
+                                priceUsd: token.priceUsd || 0,
+                                marketCapUsd: token.marketCapUsd || 0
+                            });
                             enrichedToken.holderCount = sec.holderCount;
                             enrichedToken.top10HoldersSupply = sec.top10Percent;
 
@@ -333,11 +337,24 @@ export class TokenScanJob {
                                 logger.info(`[REJECT] ${token.symbol} -> Bot Risk (${sec.holderCount} Holders)`);
                                 return;
                             }
-                        } catch (secErr) {
-                            logger.warn(`[Birdeye] Failed to fetch holders: ${secErr}. REJECTING for safety.`);
-                            gateCount++;
-                            recordRejection('Birdeye API Fail');
-                            return; // FAIL-SAFE: Reject if we can't verify holder data
+                        } catch (secErr: any) {
+                            // ENHANCED FAIL-SAFE: Distinguish between API errors and missing supply
+                            const errorMsg = secErr.message || '';
+
+                            if (errorMsg.includes('supply/metrics missing')) {
+                                // Very new token - Birdeye hasn't indexed supply yet
+                                // Skip holder check but allow token to proceed
+                                logger.info(`[Birdeye] Supply data missing for ${token.symbol} (Very new token). Skipping holder check.`);
+                                enrichedToken.holderCount = 0; // Unknown
+                                enrichedToken.top10HoldersSupply = 0; // Unknown
+                                // Continue to next checks (don't return/reject)
+                            } else {
+                                // Real API error (404, 429, auth issue, etc.)
+                                logger.warn(`[Birdeye] Failed to fetch holders: ${secErr}. REJECTING for safety.`);
+                                gateCount++;
+                                recordRejection('Birdeye API Fail');
+                                return; // FAIL-SAFE: Reject if we can't verify holder data
+                            }
                         }
 
                         // --- STEP 3: SNIPED! (Immediate Alert) ---
