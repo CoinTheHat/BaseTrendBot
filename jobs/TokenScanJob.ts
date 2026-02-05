@@ -376,10 +376,10 @@ export class TokenScanJob {
                             logger.info(`[REJECT] ${token.symbol} -> Too Young (${ageMins}m)`);
                             return;
                         }
-                        if (ageMins > 2880) { // 48 Hours
+                        if (ageMins > 10080) { // 1 Week (168 Hours)
                             // logger.debug(`[Gate] 👴 Too Old: ${token.symbol} (${ageMins}m)`);
                             gateCount++;
-                            handleRejection(token, 'Too Old (>48h)');
+                            handleRejection(token, 'Too Old (>168h)');
                             logger.info(`[REJECT] ${token.symbol} -> Too Old (${ageMins}m)`);
                             return;
                         }
@@ -400,10 +400,22 @@ export class TokenScanJob {
                             return;
                         }
 
-                        if (totalScore < 40) {
+                        // GRADUATED AGE PENALTY
+                        let agePenalty = 0;
+                        if (ageMins > 1440 && ageMins <= 2880) agePenalty = 10; // 24h - 48h
+                        else if (ageMins > 2880 && ageMins <= 5760) agePenalty = 20; // 48h - 96h
+                        else if (ageMins > 5760) agePenalty = 30; // > 96h
+
+                        let adjustedScore = totalScore - agePenalty;
+
+                        if (agePenalty > 0) {
+                            logger.info(`[Score] 📉 Age Penalty for ${token.symbol}: -${agePenalty} (Base: ${totalScore} -> Adj: ${adjustedScore})`);
+                        }
+
+                        if (adjustedScore < 40) {
                             weakCount++;
                             handleRejection(token, 'Weak Score');
-                            logger.info(`[REJECT] ${token.symbol} -> Weak Score (${totalScore}/40)`);
+                            logger.info(`[REJECT] ${token.symbol} -> Weak Score (${adjustedScore}/40)`);
                             return;
                         }
 
@@ -414,9 +426,9 @@ export class TokenScanJob {
                         let tweetContext: string[] = [];
 
                         try {
-                            // 1. Fetch Tweets
-                            logger.info(`[Scan] 🐦 Fetching Twitter context for $${token.symbol}...`);
-                            const alphaResult = await this.alphaSearch.checkAlpha(token.symbol);
+                            // 1. Fetch Tweets (Hybrid Search with CA)
+                            logger.info(`[Scan] 🐦 Fetching Twitter context for $${token.symbol} (CA: ${token.mint})...`);
+                            const alphaResult = await this.alphaSearch.checkAlpha(token.symbol, token.mint);
                             tweetContext = alphaResult.tweets;
 
                             // 2. Run AI Analysis
@@ -431,7 +443,7 @@ export class TokenScanJob {
                         }
 
                         // CALCULATE FINAL SCORE
-                        const finalScore = totalScore + aiScore;
+                        const finalScore = adjustedScore + aiScore;
 
                         // GATE D: RUGCHECK (API) - STRICT SECURITY
                         // Only check if passed AI filter (>= 70 Total Score)

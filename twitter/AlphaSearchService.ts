@@ -3,38 +3,30 @@ import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { logger } from '../utils/Logger';
 import { config } from '../config/env';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 
+const execAsync = promisify(exec);
 puppeteer.use(StealthPlugin());
 
 export interface AlphaSearchResult {
     velocity: number; // Tweets in last 10 mins
     uniqueAuthors: number; // Unique users
     tweets: string[];
-    isEarlyAlpha: boolean;
-    isSuperAlpha: boolean;
-}
-
-
-
-export interface AlphaSearchResult {
-    velocity: number; // Tweets in last 10 mins
-    uniqueAuthors: number; // Unique users
-    tweets: string[];
-    isEarlyAlpha: boolean;
-    isSuperAlpha: boolean;
+    isEarlyAlpha: boolean; // > 10 distinct/valid tweets
+    isSuperAlpha: boolean; // > 30 distinct/valid tweets
 }
 
 export class AlphaSearchService {
     private browser: any = null;
 
     constructor() {
-        // Pre-launch browser? Or lazy load. Lazy load is safer for stability.
+        // Lazy load
     }
 
     private async ensureBrowser() {
         if (this.browser) {
             if (this.browser.isConnected()) return;
-            // If disconnected, kill and restart
             try { await this.browser.close(); } catch (e) { }
             this.browser = null;
         }
@@ -56,64 +48,146 @@ export class AlphaSearchService {
     }
 
     /**
-     * Checks if a token has "Early Alpha" momentum on Twitter.
-     * Logic: Search Cashtag -> Filter Live -> Count tweets in last 10 mins.
-     * Uses: Browser Context Rotation (Single Browser, Multi Context)
+     * Hybrid Batch Scraper (Bird CLI -> Puppeteer Fallback)
      */
-    /**
-     * Parallel Batch Scraper (Worker Pool Pattern)
-     * Distributes tokens across available accounts.
-     */
-    async scanBatch(tokens: { symbol: string, name: string }[]): Promise<Map<string, AlphaSearchResult>> {
+    async scanBatch(tokens: { symbol: string, name: string, address?: string }[]): Promise<Map<string, AlphaSearchResult>> {
         const results = new Map<string, AlphaSearchResult>();
         if (!config.ENABLE_TWITTER_SCRAPING || tokens.length === 0) return results;
 
-        const queue = [...tokens];
+        const puppeteerQueue: typeof tokens = [];
+
+        // --- PHASE 1: BIRD CLI (Fast & Lightweight) ---
+        logger.info(`[AlphaHunter] 🦅 Starting Hybrid Scan for ${tokens.length} tokens...`);
+
+        await Promise.all(tokens.map(async (token) => {
+            try {
+                // Priority: Contract Address -> Symbol
+                // Search Query: CA OR ($SYMBOL "base")
+                let query = '';
+
+                if (token.address) {
+                    query = `${token.address} OR ($${token.symbol} "base")`;
+                } else {
+                    query = `($${token.symbol} "base") OR ($${token.symbol} "on base") -solana`;
+                }
+
+                const birdResult = await this.searchWithBirdCLI(query);
+
+                if (birdResult && birdResult.tweets.length > 0) {
+                    logger.info(`[AlphaHunter] 🦅 Bird CLI Hit for ${token.symbol}: ${birdResult.velocity} velocity`);
+                    results.set(token.symbol, birdResult);
+                } else {
+                    // Fallback to Puppeteer if Bird finds nothing (or fails)
+                    puppeteerQueue.push(token);
+                }
+            } catch (err) {
+                // If Bird fails, add to fallback queue
+                puppeteerQueue.push(token);
+            }
+        }));
+
+        logger.info(`[AlphaHunter] 🦅 Phase 1 Complete. Hits: ${results.size}. Fallback Queue: ${puppeteerQueue.length}`);
+
+        if (puppeteerQueue.length === 0) return results;
+
+        // --- PHASE 2: PUPPETEER (Legacy Fallback) ---
+        // Only launch browser if we have fallback items
+        const queue = [...puppeteerQueue];
         const activeWorkers: Promise<void>[] = [];
 
-        // Ensure browser is ready
         await this.ensureBrowser();
 
-        logger.info(`[AlphaHunter] Starting Batch Scan for ${tokens.length} tokens...`);
-
-        // Dynamic Worker Loop
         while (queue.length > 0 || activeWorkers.length > 0) {
-            // Check for available accounts
             const account = twitterAccountManager.getAvailableAccount();
 
             if (account) {
-                // Take a chunk for this worker
-                // User requested Batch Size = 2 (Reduced from 10 to avoid CPU load)
                 const batchSize = 2;
                 const chunk = queue.splice(0, batchSize);
 
                 if (chunk.length > 0) {
                     const workerPromise = this.processBatchWorker(account, chunk, results).then(() => {
-                        // Worker finished, remove from active list
                         const idx = activeWorkers.indexOf(workerPromise);
                         if (idx > -1) activeWorkers.splice(idx, 1);
                     });
                     activeWorkers.push(workerPromise);
                 } else {
-                    // Account claimed but queue empty, release immediately
                     twitterAccountManager.releaseAccount(account.index, false);
                 }
             }
 
-            // Main loop wait (if queue is empty but workers running, just wait for them)
             if (queue.length === 0 && activeWorkers.length > 0) {
                 await Promise.all(activeWorkers);
                 break;
             }
 
-            // If queue has items but no account, wait 5s (Accounts cool down fast now)
             if (queue.length > 0 && !account) {
-                logger.info(`[AlphaQueue] ⏳ All accounts busy/cooling. Queue: ${queue.length}. Waiting 5s...`);
                 await new Promise(r => setTimeout(r, 5000));
             }
         }
 
         return results;
+    }
+
+    /**
+     * Executes 'bird search' via CLI
+     */
+    private async searchWithBirdCLI(query: string): Promise<AlphaSearchResult | null> {
+        try {
+            // Command: bird search "query" --json
+            // Note: Ensuring query is strictly quoted to avoid shell injection/issues is tricky but basic quoting should work.
+            // Using a simple sanitize:
+            const safeQuery = query.replace(/"/g, '\\"');
+            const cmd = `bird search "${safeQuery}" --json`;
+
+            const { stdout } = await execAsync(cmd, { timeout: 15000 }); // 15s timeout
+
+            // Expected output: JSON array of tweets or object structure
+            // We need to parse this. Assuming it returns a list of tweets.
+            // If output is raw text mixed with JSON, we might need to extract JSON.
+            // Assuming strict JSON output with --json flag.
+
+            const data: any = JSON.parse(stdout);
+
+            // Normalize Data
+            // data structure depends on bird CLI. Assuming standard Tweet objects.
+            // If it returns { tweets: [...] } or just [...]
+            const tweets = Array.isArray(data) ? data : (data.tweets || []);
+
+            if (tweets.length === 0) return null;
+
+            const now = Date.now();
+            const tenMinsAgo = now - (10 * 60 * 1000);
+
+            const processedTweets = tweets.map((t: any) => {
+                const timeStr = t.created_at || t.date || t.time; // Heuristic
+                const text = t.text || t.full_text || t.content || "";
+                const handle = t.user?.screen_name || t.handle || "unknown";
+
+                const timeVal = timeStr ? new Date(timeStr).getTime() : 0;
+
+                return {
+                    text,
+                    handle,
+                    isRecent: timeVal > tenMinsAgo
+                };
+            });
+
+            const recent = processedTweets.filter((t: any) => t.isRecent);
+            const authors = new Set(processedTweets.map((t: any) => t.handle));
+            const allTexts = processedTweets.map((t: any) => t.text);
+
+            return {
+                velocity: recent.length,
+                uniqueAuthors: authors.size,
+                tweets: allTexts,
+                isEarlyAlpha: authors.size >= 10,
+                isSuperAlpha: authors.size >= 30
+            };
+
+        } catch (error) {
+            // logger.debug(`[Bird CLI] Failed: ${error}`);
+            return null;
+        }
     }
 
     private async processBatchWorker(account: any, tokens: { symbol: string, name: string }[], results: Map<string, AlphaSearchResult>) {
@@ -129,7 +203,6 @@ export class AlphaSearchService {
             context = await this.browser.createBrowserContext();
             page = await context.newPage();
 
-            // Resource Blocking (User Request)
             await page.setRequestInterception(true);
             page.on('request', (req: any) => {
                 if (['image', 'stylesheet', 'font', 'media'].includes(req.resourceType())) {
@@ -145,21 +218,17 @@ export class AlphaSearchService {
                 { name: 'ct0', value: account.ct0, domain: '.twitter.com' }
             );
 
-            // Sequential processing within this worker
             for (const token of tokens) {
                 try {
                     const result = await this.scrapeSingle(page, token);
                     results.set(token.symbol, result);
-
-                    // Small tactical delay between searches in same session
                     await new Promise(r => setTimeout(r, 2000 + Math.random() * 2000));
                 } catch (e: any) {
                     if (e.message.includes('Rate limit') || e.message.includes('Too Many Requests')) {
                         logger.warn(`[AlphaHunter] Worker #${account.index + 1} HIT RATE LIMIT.`);
                         rateLimited = true;
-                        break; // Stop this batch
+                        break;
                     }
-                    logger.error(`[AlphaHunter] Worker #${account.index + 1} failed on ${token.symbol}: ${e.message}`);
                 }
             }
 
@@ -169,7 +238,6 @@ export class AlphaSearchService {
             if (context) {
                 try { await context.close(); } catch (e) { }
             }
-            logger.info(`[AlphaHunter] Worker #${account.index + 1} finished. releasing (RateLimited: ${rateLimited})`);
             twitterAccountManager.releaseAccount(account.index, rateLimited);
         }
     }
@@ -177,20 +245,10 @@ export class AlphaSearchService {
     private async scrapeSingle(page: any, token: { symbol: string, name: string }): Promise<AlphaSearchResult> {
         let query: string;
 
-        // --- SINGLE SHOT LOGIC (STRICT SOLANA CONTEXT) ---
-        // Refined Query to avoid Cross-Chain Confusion (e.g. Clanker on Base vs Solana)
-
+        // Legacy/Puppeteer Query Logic
         const symbolPart = `$${token.symbol.toUpperCase()}`;
-
-        // Construct: ($SYMBOL "base") OR ($SYMBOL "base chain")
-        // "mint" removed to avoid generic noise, strict base association preferred.
-        // Actually "mint" is still useful if paired with symbol, but "base" is better.
-        // Let's go with: ($SYMBOL "base") OR ($SYMBOL "on base")
         const inclusions = `(${symbolPart} "base") OR (${symbolPart} "on base") OR (${symbolPart} "basechain")`;
-
-        // Exclusions: -solana -sol -eth -bsc -tron -"solana chain" -"ethereum"
         const exclusions = `-solana -sol -eth -bsc -tron -"solana chain" -"ethereum"`;
-
         query = `${inclusions} ${exclusions}`;
 
         const searchUrl = `https://twitter.com/search?q=${encodeURIComponent(query)}&f=live`;
@@ -199,20 +257,14 @@ export class AlphaSearchService {
             await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 10000 });
             await page.waitForSelector('article', { timeout: 5000 });
         } catch (e: any) {
-            // Basic timeout / no results
-            // logger.debug(`[AlphaHunter] No results for ${query}`);
             return { velocity: 0, uniqueAuthors: 0, tweets: [], isEarlyAlpha: false, isSuperAlpha: false };
         }
 
-        // Check for "Retry" button (Rate Limit Indicator)
         const hasRetry = await page.$('div[role="button"][aria-label="Retry"]');
         if (hasRetry) {
-            // Treat as rate limit
-            logger.warn(`[AlphaHunter] 'Retry' button detected for ${token.symbol}. Marking as Rate Limited.`);
             throw new Error('Rate limit detected (Retry Button)');
         }
 
-        // --- SCROLL LOGIC FOR CONTEXT (Getting ~20 tweets) ---
         try {
             for (let i = 0; i < 3; i++) {
                 const count = await page.evaluate(() => document.querySelectorAll('article').length);
@@ -220,11 +272,8 @@ export class AlphaSearchService {
                 await page.evaluate(() => window.scrollBy(0, 1500));
                 await new Promise(r => setTimeout(r, 1000));
             }
-        } catch (e) {
-            // Ignore scroll errors
-        }
+        } catch (e) { }
 
-        // Extraction
         const tweetData: any[] = await page.evaluate(() => {
             const now = Date.now();
             const minutes10 = 10 * 60 * 1000;
@@ -246,7 +295,6 @@ export class AlphaSearchService {
             }).filter(t => t !== null);
         });
 
-        // Use ALL fetched tweets for analysis context (Limited to 20), but only RECENT for Velocity
         const allTweets = tweetData.map((t: any) => t.text).slice(0, 20);
         const recentTweets = tweetData.filter((t: any) => t.isRecent);
         const authors = new Set(recentTweets.map((t: any) => t.handle));
@@ -254,16 +302,15 @@ export class AlphaSearchService {
         return {
             velocity: recentTweets.length,
             uniqueAuthors: authors.size,
-            tweets: allTweets, // Send full context for AI
+            tweets: allTweets,
             isEarlyAlpha: authors.size >= 10,
             isSuperAlpha: authors.size >= 30
         };
     }
 
-    // Legacy wrapper
-    async checkAlpha(symbol: string): Promise<AlphaSearchResult> {
-        // Mock name as symbol for legacy calls
-        const map = await this.scanBatch([{ symbol, name: symbol }]);
+    // Wrapper updated to accept address
+    async checkAlpha(symbol: string, address?: string): Promise<AlphaSearchResult> {
+        const map = await this.scanBatch([{ symbol, name: symbol, address }]);
         return map.get(symbol) || { velocity: 0, uniqueAuthors: 0, tweets: [], isEarlyAlpha: false, isSuperAlpha: false };
     }
 }
