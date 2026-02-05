@@ -10,9 +10,9 @@ export class DexScreenerService {
     private profilesUrl = 'https://api.dexscreener.com/token-profiles/latest/v1'; // Check docs for actual latest-token endpoints
 
     /**
-     * Fetch latest Solana profiles/pairs.
+     * Fetch latest Base profiles/pairs.
      * DexScreener API is versatile. We might use `search` or specific specialized endpoints.
-     * For this V1, we will assume we want to search for 'Solana' new pairs or similar.
+     * For this V1, we will assume we want to search for 'Base' new pairs or similar.
      */
     private userAgents = [
         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -55,7 +55,7 @@ export class DexScreenerService {
 
 
     /**
-     * Fetch latest Solana profiles/pairs.
+     * Fetch latest Base profiles/pairs.
      * Strategy: Scrape 100 pair addresses from M5 trending, then fetch full data via API.
      * This is fast (1 page load) and 100% accurate (API metrics).
      */
@@ -68,7 +68,7 @@ export class DexScreenerService {
 
             if (pairAddresses.length === 0) {
                 console.log(`[DexScreener] Found 0 pairs via scraping. Falling back to search...`);
-                return (await this.search("solana")).slice(0, 100);
+                return (await this.search("base")).slice(0, 100);
             }
 
             console.log(`[DexScreener] Found ${pairAddresses.length} pairs. Fetching full data via API...`);
@@ -79,7 +79,7 @@ export class DexScreenerService {
 
             for (const chunk of chunks) {
                 try {
-                    const url = `${this.apiUrl}/pairs/solana/${chunk.join(',')}`;
+                    const url = `${this.apiUrl}/pairs/base/${chunk.join(',')}`;
                     const data = await this.makeRequest(url);
                     const pairs = data?.pairs || [];
 
@@ -158,15 +158,14 @@ export class DexScreenerService {
     }
 
     private normalizePair(pair: any): TokenSnapshot | null {
-        // Strict Filtering: Chain ID must be 'solana'
-        if (pair?.chainId !== 'solana') {
+        // Strict Filtering: Chain ID must be 'base'
+        if (pair?.chainId !== 'base') {
             return null;
         }
 
-        // Strict Filtering: Block 0x... addresses (Base/ETH)
-        // Usually dexScreener returns token objects.
+        // Strict Filtering: Ensure 0x... addresses (Base/ETH)
         const tokenAddress = pair.baseToken?.address || '';
-        if (tokenAddress.startsWith('0x')) {
+        if (!tokenAddress.startsWith('0x')) {
             return null;
         }
 
@@ -193,7 +192,7 @@ export class DexScreenerService {
             links: {
                 dexScreener: pair.url,
                 pumpfun: pair.url?.includes('pump') ? pair.url : `https://pump.fun/${tokenAddress}`,
-                birdeye: `https://birdeye.so/token/${tokenAddress}?chain=solana`
+                birdeye: `https://birdeye.so/token/${tokenAddress}?chain=base`
             }
         };
 
@@ -262,7 +261,7 @@ export class DexScreenerService {
 
     /**
      * Scrape DexScreener's M5 Trending page to get pair addresses
-     * https://dexscreener.com/solana?rankBy=trendingScoreM5&order=desc
+     * https://dexscreener.com/base?rankBy=trendingScoreM5&order=desc
      * NOW OPTIMIZED: Reuses browser instance.
      */
     private async scrapePairAddresses(limit: number = 100): Promise<string[]> {
@@ -302,25 +301,25 @@ export class DexScreenerService {
             // DISABLE CACHE
             await page.setCacheEnabled(false);
 
-            const url = 'https://dexscreener.com/solana?rankBy=trendingScoreM5&order=desc';
+            const url = 'https://dexscreener.com/base?rankBy=trendingScoreM5&order=desc';
 
             await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 }); // Reduced timeout
 
             // Wait for token cards/rows to load
             try {
-                await page.waitForSelector('a[href^="/solana/"]', { timeout: 8000 });
+                await page.waitForSelector('a[href^="/base/"]', { timeout: 8000 });
             } catch (e) {
                 console.warn('[DexScreener] Timeout waiting for selector. Page might be empty.');
             }
 
             // Extract pair addresses from hrefs
             const pairAddresses = await page.evaluate((maxPairs: number) => {
-                const links = Array.from(document.querySelectorAll('a[href^="/solana/"]'));
+                const links = Array.from(document.querySelectorAll('a[href^="/base/"]'));
                 const addresses = new Set<string>();
 
                 for (const link of links) {
                     const href = (link as HTMLAnchorElement).getAttribute('href') || '';
-                    const match = href.match(/^\/solana\/([A-Za-z0-9]+)$/);
+                    const match = href.match(/^\/base\/([A-Za-z0-9]+)$/);
                     if (match && match[1]) {
                         addresses.add(match[1]);
                         if (addresses.size >= maxPairs) break;

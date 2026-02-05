@@ -50,7 +50,7 @@ async function main() {
     await watchlist.init(); // Load cache
 
     // 2. Services
-    const pumpFun = new PumpFunService();
+    // const pumpFun = new PumpFunService(); // DISABLED for Base
     // const birdeye = new BirdeyeService(); // DISABLED
     const dexScreener = new DexScreenerService();
     const twitterService = new TwitterTrendsService();
@@ -80,7 +80,7 @@ async function main() {
 
     // 6. Job
     const job = new TokenScanJob(
-        pumpFun,
+        undefined, // pumpFun disabled
         birdeye,
         dexScreener, // INJECTED: DexScreener for M5 trending
         matcher,
@@ -94,7 +94,8 @@ async function main() {
         trendCollector,
         trendMatcher,
         alphaSearchService, // Injected
-        llmService // Injected
+        llmService, // Injected
+        goPlusService // Injected
     );
 
     // 7. Performance & Dashboard

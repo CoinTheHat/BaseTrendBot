@@ -182,11 +182,14 @@ export class AlphaSearchService {
 
         const symbolPart = `$${token.symbol.toUpperCase()}`;
 
-        // Construct: ($SYMBOL "solana") OR ($SYMBOL "sol") OR ($SYMBOL "mint")
-        const inclusions = `(${symbolPart} "solana") OR (${symbolPart} "sol") OR (${symbolPart} "mint")`;
+        // Construct: ($SYMBOL "base") OR ($SYMBOL "base chain")
+        // "mint" removed to avoid generic noise, strict base association preferred.
+        // Actually "mint" is still useful if paired with symbol, but "base" is better.
+        // Let's go with: ($SYMBOL "base") OR ($SYMBOL "on base")
+        const inclusions = `(${symbolPart} "base") OR (${symbolPart} "on base") OR (${symbolPart} "basechain")`;
 
-        // Exclusions: -base -eth -bsc -tron -"base chain" -"ethereum"
-        const exclusions = `-base -eth -bsc -tron -"base chain" -"ethereum"`;
+        // Exclusions: -solana -sol -eth -bsc -tron -"solana chain" -"ethereum"
+        const exclusions = `-solana -sol -eth -bsc -tron -"solana chain" -"ethereum"`;
 
         query = `${inclusions} ${exclusions}`;
 

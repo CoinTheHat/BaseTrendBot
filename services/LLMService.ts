@@ -238,6 +238,7 @@ If no gems found, return: { "gems": [] }
         riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
         explanation: string[];
         socialSummary: string;
+        score: number; // Additive Score (0-30)
     } | null> {
 
         const tweetSection = tweets.length > 0
@@ -245,39 +246,35 @@ If no gems found, return: { "gems": [] }
             : `SOCIAL SENTIMENT: No Data Available due to rate limits or newness.`;
 
         const systemPrompt = `
-You are an analytical assistant reviewing a token that has ALREADY triggered a SNIPED alert.
+You are a highly skeptical Crypto Auditor (xAI Grok).
+Analyze this token for a "Sniper Bot" alert system.
 
-IMPORTANT RULES:
-- You MUST NOT make any buy/sell or entry decisions.
-- Entry logic is purely mechanical and already executed.
-- Your role is post-analysis, context building, and pattern recognition only.
-- Price changes are CONTEXTUAL, not signals.
-- You do NOT have volume data beyond what is provided.
+CONTEXT:
+- The token has already passed a basic technical filter (Market Cap, Liquidity, etc.).
+- Your job is the FINAL QUALITY GATE.
+- You must award an "Additive Score" (0-30 points) based on COMMUNITY VIBE and SAFETY.
+
+STRICT RULES:
+1. **BE SKEPTICAL**: Assume everything is a rug/scam until proven otherwise.
+2. **FILTER SPAM**: If tweets are just "LFG", "Moon", or bot spam -> Score 0.
+3. **VALUE REAL HYPE**: If tweets discuss mechanics, team, or specific alpha -> Score High.
+4. **NO HYPE**: If there are NO tweets or empty profile -> Score 0.
+5. **DANGEROUS NAMES**: If name contains "Peg", "Deriv", "Inu" (generic copycats) -> Penalty (Low Score).
+
+SCORING GUIDE (0 - 30):
+- **0-5**: Generic spam, no tweets, or obvious copycat. (FADE)
+- **6-15**: Some activity, but looks like paid bots or very early. (WATCH)
+- **16-25**: Real humans engaging, narrative forming. (GOOD)
+- **26-30**: Tier-1 Alpha, KOLs mentioned, specific utility or viral meme potential. (APE)
 
 TOKEN SNAPSHOT:
 - Symbol: ${token.symbol}
-- Chain: Solana
+- Chain: Base
 - Market Cap (USD): $${token.marketCapUsd?.toLocaleString() || '0'}
 - Liquidity (USD): $${token.liquidityUsd?.toLocaleString() || '0'}
 - Token Age (minutes): ${token.createdAt ? Math.floor((Date.now() - token.createdAt.getTime()) / 60000) : 'N/A'}
 
-TRANSACTION ACTIVITY (last 5 minutes):
-- Buy Transactions: ${token.txs5m?.buys || 0}
-- Sell Transactions: ${token.txs5m?.sells || 0}
-- Total Transactions (5m): ${(token.txs5m?.buys || 0) + (token.txs5m?.sells || 0)}
-- Buy Ratio (%): ${((token.txs5m?.buys || 0) / ((token.txs5m?.buys || 0) + (token.txs5m?.sells || 0) || 1) * 100).toFixed(1)}%
-
-PRICE CONTEXT (percentage change):
-- Price Change 5m: ${token.priceChange5m || 0}%
-- Price Change 1h: ${token.priceChange1h || 0}%
-- Price Change 6h: ${token.priceChange6h || 0}%
-
 ${tweetSection}
-
-TASK:
-Analyze the token ONLY from a contextual and diagnostic perspective.
-1. Determine Momentum Phase & Price Context.
-2. Summarize the Social Vibe based on the provided tweets (Are they shilling, skeptical, hyped, or generic spam?).
 
 OUTPUT FORMAT (STRICT JSON):
 {
@@ -285,7 +282,8 @@ OUTPUT FORMAT (STRICT JSON):
     "priceContext": "Fresh move" | "Extended" | "Overextended",
     "riskLevel": "Low" | "Medium" | "High",
     "socialSummary": "1-2 sentence summary of what people are saying (Turkish Language)",
-    "explanation": ["Bullet 1 (Technical)", "Bullet 2 (Social/Risk)", "Bullet 3 (Context)"]
+    "explanation": ["Bullet 1 (Technical)", "Bullet 2 (Social/Risk)", "Bullet 3 (Context)"],
+    "score": number // 0-30
 }
 `;
 
@@ -294,7 +292,7 @@ OUTPUT FORMAT (STRICT JSON):
             const completion = await this.xai.chat.completions.create({
                 model: config.XAI_MODEL || "grok-4-1-fast-non-reasoning",
                 messages: [{ role: "system", content: systemPrompt }],
-                temperature: 0.2,
+                temperature: 0.1, // Low temp for skepticism
                 response_format: { type: "json_object" }
             });
 

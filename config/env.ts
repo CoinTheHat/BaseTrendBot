@@ -45,7 +45,7 @@ export const config = {
     SCAN_INTERVAL_SECONDS: Number(process.env.SCAN_INTERVAL_SECONDS) || 60,
     ALERT_COOLDOWN_MINUTES: Number(process.env.ALERT_COOLDOWN_MINUTES) || 1, // Reduced to 1m for testing
     MAX_ALERTS_PER_HOUR: Number(process.env.MAX_ALERTS_PER_HOUR) || 12,
-    NETWORK: process.env.NETWORK || 'solana',
+    NETWORK: process.env.NETWORK || 'base',
 
     // Thresholds
     MIN_MC_USD: Number(process.env.MIN_MC_USD) || 50000,

@@ -19,6 +19,7 @@ import { TrendTokenMatcher } from '../core/TrendTokenMatcher';
 import { AlphaSearchService } from '../twitter/AlphaSearchService';
 import { DexScreenerService } from '../services/DexScreenerService';
 import { LLMService } from '../services/LLMService';
+import { GoPlusService } from '../services/GoPlusService';
 
 export class TokenScanJob {
     private isRunning = false;
@@ -62,7 +63,7 @@ export class TokenScanJob {
     }
 
     constructor(
-        private pumpFun: PumpFunService,
+        private pumpFun: PumpFunService | undefined,
         private birdeye: BirdeyeService,
         private dexScreener: DexScreenerService,
         private matcher: Matcher,
@@ -76,7 +77,8 @@ export class TokenScanJob {
         private trendCollector: TrendCollector,
         private trendMatcher: TrendTokenMatcher,
         private alphaSearch: AlphaSearchService,
-        private llmService: any // Need to inject LLMService or use global if not injected (Assuming injected or Import)
+        private llmService: any, // Need to inject LLMService or use global if not injected (Assuming injected or Import)
+        private goPlus: GoPlusService
     ) { }
 
     // --- AI QUEUE LOGIC ---
@@ -390,21 +392,42 @@ export class TokenScanJob {
                             return;
                         }
 
-                        if (totalScore < 60) {
+                        if (totalScore < 50) {
                             weakCount++;
                             handleRejection(token, 'Weak Score');
-                            logger.info(`[REJECT] ${token.symbol} -> Weak Score (${totalScore}/60)`);
+                            logger.info(`[REJECT] ${token.symbol} -> Weak Score (${totalScore}/50)`);
                             return;
                         }
 
+                        // --- STEP 2.4: TWITTER/AI ANALYSIS (Add Additive Score) ---
+                        // Only for tokens passing the Technical Gate (50+)
+                        let aiScore = 0;
+                        let aiAnalysis: any = null;
+                        let tweetContext: string[] = [];
 
+                        try {
+                            // 1. Fetch Tweets
+                            logger.info(`[Scan] 🐦 Fetching Twitter context for $${token.symbol}...`);
+                            const alphaResult = await this.alphaSearch.checkAlpha(token.symbol);
+                            tweetContext = alphaResult.tweets;
 
+                            // 2. Run AI Analysis
+                            aiAnalysis = await this.llmService.analyzePostSnipe(enrichedToken, tweetContext);
 
+                            if (aiAnalysis && typeof aiAnalysis.score === 'number') {
+                                aiScore = aiAnalysis.score;
+                                logger.info(`[AI] Score for ${token.symbol}: +${aiScore} (Total: ${totalScore + aiScore})`);
+                            }
+                        } catch (e) {
+                            logger.warn(`[Scan] ⚠️ AI/Twitter Analysis failed: ${e}`);
+                        }
 
+                        // CALCULATE FINAL SCORE
+                        const finalScore = totalScore + aiScore;
 
                         // GATE D: RUGCHECK (API) - STRICT SECURITY
-                        // Only check if passed previous gates to save requests
-                        if (totalScore >= 70) {
+                        // Only check if passed AI filter (>= 70 Total Score)
+                        if (finalScore >= 70) {
                             const rugCheck = await this.checkRugSecurity(token.mint);
                             if (!rugCheck.safe) {
                                 logger.warn(`[Gate] 🔒 RugCheck Failed: ${token.symbol} (${rugCheck.reason})`);
@@ -413,6 +436,12 @@ export class TokenScanJob {
                                 logger.info(`[REJECT] ${token.symbol} -> RugCheck (${rugCheck.reason})`);
                                 return;
                             }
+                        } else {
+                            // Failed Final Score Gate
+                            weakCount++;
+                            handleRejection(token, 'Weak Score (Final < 70)');
+                            logger.info(`[REJECT] ${token.symbol} -> Weak Final Score (${finalScore}/70)`);
+                            return;
                         }
 
                         // --- STEP 2.5: SECURITY & HOLDER CHECK (API Cost Saver - only high scores) ---
@@ -475,26 +504,15 @@ export class TokenScanJob {
                             logger.info(`🔫 [SNIPED] [${segmentLog}] ${token.symbol} Score: ${totalScore}/100 | Liq: $${Math.floor(liq)} | MC: $${Math.floor(mc)}`);
 
                             // --- 🧠 AI SYNTHESIS (User Request: Contextual Analysis) ---
-                            // 1. Fetch Tweets
-                            let tweetContext: string[] = [];
-                            try {
-                                logger.info(`[Scan] 🐦 Fetching Twitter context for $${token.symbol}...`);
-                                const alphaResult = await this.alphaSearch.checkAlpha(token.symbol);
-                                tweetContext = alphaResult.tweets;
-                            } catch (e) {
-                                logger.warn(`[Scan] ⚠️ Failed to fetch tweets: ${e}`);
-                            }
+                            // Already done above in Step 2.4
+                            // Re-using aiAnalysis and tweetContext from scope above 
 
-                            // 2. Run AI Analysis
-                            let aiAnalysis: any = null;
-                            try {
-                                aiAnalysis = await this.llmService.analyzePostSnipe(enrichedToken, tweetContext);
-                            } catch (e) {
-                                logger.warn(`[Scan] ⚠️ AI Analysis failed: ${e}`);
-                            }
+                            // (Removed redundant fetch)
+
+                            // 2. Run AI Analysis (Already done)
 
                             // Create Narrative (Enriched with AI)
-                            const displayScore = (totalScore / 10).toFixed(1);
+                            const displayScore = (finalScore / 10).toFixed(1);
                             const aiSummary = aiAnalysis?.socialSummary ? `\n\n🧠 **AI VIBE:**\n${aiAnalysis.socialSummary}` : '';
                             const riskBadge = aiAnalysis?.riskLevel ? ` • Risk: ${aiAnalysis.riskLevel}` : '';
 
@@ -516,7 +534,7 @@ export class TokenScanJob {
 • Age: ${token.createdAt ? Math.floor((Date.now() - token.createdAt.getTime()) / 60000) + 'm' : 'N/A'}`,
                                 tradeLens: `SNIPE`,
                                 vibeCheck: aiAnalysis?.riskLevel ? `Risk: ${aiAnalysis.riskLevel}` : `MECHANICAL`,
-                                aiScore: totalScore,
+                                aiScore: finalScore,
                                 aiApproved: true
                             };
 
@@ -525,7 +543,7 @@ export class TokenScanJob {
                                 symbol: token.symbol,
                                 firstSeenAt: Date.now(),
                                 lastAlertAt: Date.now(),
-                                lastScore: totalScore,
+                                lastScore: finalScore,
                                 lastPhase: 'ALERTED',
                                 storedAnalysis: JSON.stringify(mechanicalNarrative),
                                 rawSnapshot: enrichedToken
@@ -534,7 +552,7 @@ export class TokenScanJob {
                             // ⚡ FIRE ALERT & GET MSG ID
                             const alertMsgId = await this.bot.sendAlert(mechanicalNarrative, enrichedToken, scoreRes);
 
-                            await this.cooldown.recordAlert(token.mint, totalScore, 'TRACKING', token.priceUsd);
+                            await this.cooldown.recordAlert(token.mint, finalScore, 'TRACKING', token.priceUsd);
 
                             // AUTOPSY PRESERVATION
                             await this.storage.savePerformance({
@@ -597,6 +615,16 @@ ${rejectionBreakdown}
      * Timeout: 3s
      */
     private async checkRugSecurity(mint: string): Promise<{ safe: boolean; reason?: string }> {
+        // RugCheck is Solana-Only
+        if (config.NETWORK !== 'solana') {
+            // Use GoPlus for Base/EVM
+            const goPlusResult = await this.goPlus.checkTokenSecurity(mint);
+            if (!goPlusResult.safe) {
+                return { safe: false, reason: `GoPlus: ${goPlusResult.reason}` };
+            }
+            return { safe: true };
+        }
+
         try {
             const controller = new AbortController();
             const timeout = setTimeout(() => controller.abort(), 3000); // 3s Hard Timeout

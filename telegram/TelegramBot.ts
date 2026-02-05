@@ -297,7 +297,7 @@ Güven Skoru: **${narrative.twitterStory.trustScore ?? 50}/100** (${(narrative.t
             message += `\n🔴 **CENTRALIZED SUPPLY (Top 10 > %${token.top10HoldersSupply.toFixed(1)})**`;
         }
 
-        message += `\n\n[DexScreener](${token.links.dexScreener}) | [Pump.fun](${token.links.pumpfun}) | [Birdeye](${token.links.birdeye || '#'})
+        message += `\n\n[DexScreener](${token.links.dexScreener}) | [BaseScan](https://basescan.org/token/${token.mint}) | [Birdeye](${token.links.birdeye || '#'})
 
 ⚠ _Yatırım Tavsiyesi Değildir._`;
 
@@ -332,7 +332,7 @@ Correction target hit! Price pulled back from 5m pump.
 **Current MC:** $${Math.floor(token.currentMc).toLocaleString()}
 **CA:** \`${token.mint}\`
 
-[DexScreener](https://dexscreener.com/solana/${token.mint})
+[DexScreener](https://dexscreener.com/base/${token.mint}) | [BaseScan](https://basescan.org/token/${token.mint})
 
 ⚠️ _This entry is based on a momentum pullback strategy._`;
 
