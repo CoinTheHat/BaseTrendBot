@@ -195,12 +195,27 @@ export class TokenScanJob {
         try {
             logger.info('[Job] 🔍 Starting DexScreener Scan...');
 
-            // 1. Fetch Candidates (DexScreener Latest Pairs)
-            const dexTokens = await this.dexScreener.getLatestPairs();
-            logger.info(`[Fetch] 📡 Received ${dexTokens.length} tokens from DexScreener`);
+            // 1. Fetch Candidates (DexScreener + Birdeye)
+            const dexTokensPromise = this.dexScreener.getLatestPairs();
+            const birdTokensPromise = this.birdeye.fetchTrendingTokens('base');
+
+            const [rawDexTokens, rawBirdTokens] = await Promise.all([dexTokensPromise, birdTokensPromise]);
+
+            // Merge and Deduplicate
+            const allTokens = [...rawDexTokens, ...rawBirdTokens];
+            const uniqueMap = new Map();
+            for (const t of allTokens) {
+                uniqueMap.set(t.mint, t);
+            }
+            const uniqueTokens = Array.from(uniqueMap.values());
+
+            logger.info(`[Fetch] 📡 Total: ${uniqueTokens.length} (DexScreener: ${rawDexTokens.length}, Birdeye: ${rawBirdTokens.length})`);
+
+            // Use uniqueTokens for filtering
+            const dexTokens = uniqueTokens; // Alias for compatibility with loop below
 
             if (dexTokens.length === 0) {
-                logger.info(`[Scan] ⚠️ No trending tokens from DexScreener. Cooldown may be active.`);
+                logger.info(`[Scan] ⚠️ No trending tokens found. Cooldown may be active.`);
                 return;
             }
 
@@ -211,31 +226,24 @@ export class TokenScanJob {
 
             for (const token of dexTokens) {
                 const cacheData = this.processedCache.get(token.mint);
-                let shouldProcess = true;
 
                 if (cacheData) {
-                    // 1. Permanent Block?
-                    if (cacheData.blockedUntil === null) {
-                        cachedCount++;
-                        shouldProcess = false;
-                    }
-                    // 2. TTL Not Expired?
-                    else if (now < cacheData.blockedUntil) {
-                        cachedCount++;
-                        shouldProcess = false;
-                    }
-                    // 3. TTL Expired -> Allow Retry!
-                    else {
+                    const isExpired = cacheData.blockedUntil && cacheData.blockedUntil < now;
+
+                    if (isExpired) {
+                        logger.info(`[Cache Debug] ${token.symbol} EXPIRED! Reason: ${cacheData.reason}, Blocked: ${cacheData.blockedUntil}, Now: ${now}`);
                         retryCount++;
-                        this.processedCache.delete(token.mint); // Remove from cache to re-process
-                        logger.info(`[Cache] ♻️ Retry allowed for ${token.symbol} (${cacheData.reason} expired)`);
-                        shouldProcess = true;
+                        this.processedCache.delete(token.mint);
+                        // Falls through to processing
+                    } else {
+                        // Still Validly Blocked
+                        cachedCount++;
+                        continue; // SKIP Processing
                     }
                 }
 
-                if (shouldProcess) {
-                    freshCandidates.push(token);
-                }
+                // If we reach here, it's either fresh OR expired (and deleted from cache)
+                freshCandidates.push(token);
             }
 
             logger.info(`[Cache] 🔄 Filtered ${cachedCount} seen tokens. Retrying ${retryCount} expired tokens.`);
@@ -360,18 +368,18 @@ export class TokenScanJob {
                         // >10%: Pass
 
                         // GATE C: Age Filter (The "Golden Window")
-                        // 20 mins to 24 Hours (Softened)
-                        if (ageMins < 20) {
+                        // 10 mins to 48 Hours (Widened)
+                        if (ageMins < 10) {
                             // logger.debug(`[Gate] 👶 Too Young: ${token.symbol} (${ageMins}m)`);
                             gateCount++;
-                            handleRejection(token, 'Too Young (<20m)');
+                            handleRejection(token, 'Too Young (<10m)');
                             logger.info(`[REJECT] ${token.symbol} -> Too Young (${ageMins}m)`);
                             return;
                         }
-                        if (ageMins > 1440) { // 24 Hours
+                        if (ageMins > 2880) { // 48 Hours
                             // logger.debug(`[Gate] 👴 Too Old: ${token.symbol} (${ageMins}m)`);
                             gateCount++;
-                            handleRejection(token, 'Too Old (>24h)');
+                            handleRejection(token, 'Too Old (>48h)');
                             logger.info(`[REJECT] ${token.symbol} -> Too Old (${ageMins}m)`);
                             return;
                         }
@@ -392,10 +400,10 @@ export class TokenScanJob {
                             return;
                         }
 
-                        if (totalScore < 50) {
+                        if (totalScore < 40) {
                             weakCount++;
                             handleRejection(token, 'Weak Score');
-                            logger.info(`[REJECT] ${token.symbol} -> Weak Score (${totalScore}/50)`);
+                            logger.info(`[REJECT] ${token.symbol} -> Weak Score (${totalScore}/40)`);
                             return;
                         }
 
