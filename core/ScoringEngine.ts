@@ -131,8 +131,8 @@ export class ScoringEngine {
                 totalScore += 5; // Optimal
                 breakdown.push({ factor: 'Freshness', points: 5, details: '⚡ Early (<30m)' });
             } else if (ageMins > 240) { // > 4 hours
-                totalScore -= 20; // Old
-                breakdown.push({ factor: 'Freshness', points: -20, details: '👴 Old (>4h)' });
+                totalScore -= 10; // Old
+                breakdown.push({ factor: 'Freshness', points: -10, details: '👴 Old (>4h)' });
             }
         }
 

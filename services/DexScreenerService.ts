@@ -1,81 +1,124 @@
 import axios from 'axios';
-import puppeteer from 'puppeteer-extra';
-import StealthPlugin from 'puppeteer-extra-plugin-stealth';
+import { chromium } from 'playwright-extra';
+import { Browser, BrowserContext } from 'playwright';
+import stealth from 'puppeteer-extra-plugin-stealth';
+import { logger } from '../utils/Logger';
 import { TokenSnapshot } from '../models/types';
+import * as dotenv from 'dotenv';
+import path from 'path';
 
-puppeteer.use(StealthPlugin());
+// Apply Stealth Plugin to Chromium
+// @ts-ignore
+chromium.use(stealth());
+
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+
+// Force Playwright to look for browsers in the project directory (Critical for Railway persistence)
+process.env.PLAYWRIGHT_BROWSERS_PATH = path.join(process.cwd(), '.playwright-browsers');
 
 export class DexScreenerService {
     private apiUrl = 'https://api.dexscreener.com/latest/dex';
-    private profilesUrl = 'https://api.dexscreener.com/token-profiles/latest/v1'; // Check docs for actual latest-token endpoints
+
+    // Persistent Browser State
+    private browser: Browser | null = null;
+    private context: BrowserContext | null = null;
+    private isInitializing = false;
+
+    // Rate Limit State
+    private lastRequestTime = 0;
+    private minDelayMs = 200;
+
+    constructor() { }
 
     /**
-     * Fetch latest Base profiles/pairs.
-     * DexScreener API is versatile. We might use `search` or specific specialized endpoints.
-     * For this V1, we will assume we want to search for 'Base' new pairs or similar.
+     * Initialize or Reuse Persistent Browser
+     * Critical for performance when making 100+ checks
      */
-    private userAgents = [
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
-    ];
+    private async getBrowserContext(): Promise<BrowserContext> {
+        if (this.context) return this.context;
 
-    private getRandomUserAgent() {
-        return this.userAgents[Math.floor(Math.random() * this.userAgents.length)];
-    }
+        // Prevent race conditions during init
+        while (this.isInitializing) {
+            await new Promise(r => setTimeout(r, 100));
+            if (this.context) return this.context;
+        }
 
-    private async makeRequest(url: string): Promise<any> {
+        this.isInitializing = true;
         try {
-            // CACHE BUSTING: Add timestamp and headers to force fresh data (User Request: Prevent stale dump data)
-            const separator = url.includes('?') ? '&' : '?';
-            const freshUrl = `${url}${separator}t=${Date.now()}`;
-
-            const response = await axios.get(freshUrl, {
-                headers: {
-                    'User-Agent': this.getRandomUserAgent(),
-                    'Cache-Control': 'no-cache, no-store, must-revalidate',
-                    'Pragma': 'no-cache',
-                    'Expires': '0'
-                }
-            });
-            return response.data;
-        } catch (error: any) {
-            if (error.response?.status === 429) {
-                console.warn('[DexScreener] 🚨 Rate Limit! 60 saniye soğumaya alınıyor...');
-                await new Promise(resolve => setTimeout(resolve, 60000));
-                return null; // Return null to indicate skip
+            if (!this.browser) {
+                logger.info('[DexScreener] 🚀 Launching Persistent Browser (Playwright)...');
+                // @ts-ignore
+                this.browser = await chromium.launch({
+                    headless: true,
+                    args: [
+                        '--disable-blink-features=AutomationControlled',
+                        '--disable-dev-shm-usage',
+                        '--no-sandbox',
+                        '--disable-setuid-sandbox',
+                        '--disable-accelerated-2d-canvas',
+                        '--no-first-run',
+                        '--no-zygote',
+                        '--disable-gpu'
+                    ]
+                });
             }
-            throw error;
+
+            this.context = await this.browser.newContext({
+                userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                viewport: { width: 1920, height: 1080 },
+                locale: 'en-US',
+                timezoneId: 'America/New_York',
+            });
+
+            // GLOBAL OPTIMIZATION: Block heavy resources on ALL pages in this context
+            await this.context.route('**/*.{png,jpg,jpeg,gif,webp,svg,css,woff,woff2}', route => route.abort());
+
+            // Global Stealth Scripts
+            await this.context.addInitScript(() => {
+                Object.defineProperty(navigator, 'webdriver', { get: () => false });
+                // @ts-ignore
+                window.chrome = { runtime: {} };
+                const originalQuery = window.navigator.permissions.query;
+                // @ts-ignore
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications'
+                        ? Promise.resolve({ state: Notification.permission })
+                        : originalQuery(parameters)
+                );
+            });
+
+            return this.context;
+
+        } catch (err) {
+            logger.error('[DexScreener] Browser Init Failed:', err);
+            this.isInitializing = false;
+            throw err;
+        } finally {
+            this.isInitializing = false;
         }
     }
 
-    // ... (rest of methods)
-
-
-
     /**
      * Fetch latest Base profiles/pairs.
-     * Strategy: Scrape 100 pair addresses from M5 trending, then fetch full data via API.
-     * This is fast (1 page load) and 100% accurate (API metrics).
+     * Strategy: Scrape ~150 pair addresses -> Filter -> Return Top 100
      */
     async getLatestPairs(): Promise<TokenSnapshot[]> {
         try {
-            console.log(`[DexScreener] Scraping 150 pair addresses from M5 trending to ensure 100 candidate buffer...`);
+            logger.info(`[DexScreener] Scraping M5 trending pairs via Persistent Browser...`);
 
-            // 1. Get 150 pair addresses from the trending page (Buffer for API filtering)
+            // 1. Get pair addresses using Playwright (Target: 150 to ensure 100 valid)
             const pairAddresses = await this.scrapePairAddresses(150);
 
             if (pairAddresses.length === 0) {
-                console.log(`[DexScreener] Found 0 pairs via scraping. Falling back to search...`);
+                logger.warn(`[DexScreener] Found 0 pairs via scraping. Falling back to search...`);
                 return (await this.search("base")).slice(0, 100);
             }
 
-            console.log(`[DexScreener] Found ${pairAddresses.length} pairs. Fetching full data via API...`);
+            logger.info(`[DexScreener] Found ${pairAddresses.length} pairs. Fetching full data via API...`);
 
-            // 2. Fetch full data for these pairs (API supports bulk pair lookup)
+            // 2. Fetch full data via API (Bulk)
             const results: TokenSnapshot[] = [];
-            const chunks = this.chunkArray(pairAddresses, 30);
+            const chunks = this.chunkArray(pairAddresses, 30); // Max 30 per API call
 
             for (const chunk of chunks) {
                 try {
@@ -85,97 +128,237 @@ export class DexScreenerService {
 
                     const validTokens = pairs
                         .map((p: any) => this.normalizePair(p))
-                        .filter((p: TokenSnapshot | null): p is TokenSnapshot => p !== null);
+                        .filter((p: TokenSnapshot | null): p is TokenSnapshot => p !== null)
+                        .filter((p: TokenSnapshot) => {
+                            // PRE-FILTER: Too Old (>168 Hours / 7 Days)
+                            if (!p.createdAt) return true;
+                            const ageHours = (Date.now() - p.createdAt.getTime()) / 3600000;
+                            return ageHours <= 168;
+                        });
 
                     results.push(...validTokens);
                 } catch (err) {
-                    console.error(`[DexScreener] Error fetching pair chunk:`, err);
+                    logger.error(`[DexScreener] Error fetching pair chunk:`, err);
                 }
             }
 
-            console.log(`[DexScreener] Successfully retrieved ${results.length} tokens with accurate metrics`);
-            return results.slice(0, 100);
+            // Return Top 100
+            const final = results.slice(0, 100);
+            logger.info(`[DexScreener] Successfully retrieved ${final.length} tokens for analysis.`);
+            return final;
 
         } catch (error) {
-            console.error('[DexScreener] Hybrid fetching failed:', error);
+            logger.error('[DexScreener] Hybrid fetching failed:', error);
             return [];
         }
     }
 
+    /**
+     * Access DexScreener Internal API v4 using Reused Page
+     * Optimized for speed: uses verify-fast approach
+     */
+    async getPairDetails(pairAddress: string): Promise<{
+        holderCount: number;
+        top10Percent: number;
+        security: { isMintable: boolean; isFreezable: boolean };
+        liquidity: { burnedPercent: number; locks: any[] };
+    } | null> {
+        let page: any = null;
+        try {
+            const context = await this.getBrowserContext();
+            page = await context.newPage();
+
+            // Aggressive Timeout for Speed
+            await page.goto(`https://io.dexscreener.com/dex/pair-details/v4/base/${pairAddress}`, {
+                waitUntil: 'domcontentloaded',
+                timeout: 15000
+            });
+
+            const content = await page.evaluate(() => document.body.innerText);
+
+            try {
+                const json = JSON.parse(content);
+                const baseToken = json.baseToken || {};
+
+                // Calculate Top 10 Percent manually
+                const holdersList = json.holders?.holders || [];
+                const top10PercentResult = holdersList
+                    .sort((a: any, b: any) => (parseFloat(b.percentage) || 0) - (parseFloat(a.percentage) || 0))
+                    .slice(0, 10)
+                    .reduce((acc: number, curr: any) => acc + (parseFloat(curr.percentage) || 0), 0);
+
+                return {
+                    holderCount: json.holders?.count !== undefined ? json.holders.count : 0,
+                    top10Percent: top10PercentResult,
+                    security: {
+                        isMintable: !!baseToken?.mintAuthority,
+                        isFreezable: !!baseToken?.freezeAuthority
+                    },
+                    liquidity: {
+                        burnedPercent: json.liquidity?.burned || 0,
+                        locks: json.liquidity?.locks || []
+                    }
+                };
+
+            } catch (parseErr) {
+                return null;
+            }
+
+        } catch (err) {
+            // logger.debug(`[DexInternal] Fetch failed for ${pairAddress}: ${err.message}`);
+            return null;
+        } finally {
+            if (page) await page.close(); // Only close the page, keep browser/context alive
+        }
+    }
 
     /**
-     * Get specific token data by Mint Address(es)
+     * Robust Scraper with Infinite Scroll
      */
+    private async scrapePairAddresses(limit: number): Promise<string[]> {
+        let page: any = null;
+        try {
+            const context = await this.getBrowserContext();
+            page = await context.newPage();
+
+            const url = 'https://dexscreener.com/base?rankBy=trendingScoreM5&order=desc';
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+
+            let tokens = new Set<string>();
+            let scrollAttempts = 0;
+            const maxScrolls = 20; // Increased to ensure we hit 100+
+            let sameCount = 0;
+
+            // Initial wait for content
+            try {
+                await page.waitForSelector('a[href^="/base/"]', { timeout: 10000 });
+            } catch (e) {
+                logger.warn('[DexScreener] Timeout waiting for initial list.');
+            }
+
+            while (tokens.size < limit && scrollAttempts < maxScrolls) {
+                // Collect visible tokens first
+                const newTokens = await page.$$eval('a[href*="/base/"]', (links: any[]) =>
+                    links.map(link => {
+                        const href = link.getAttribute('href');
+                        const match = href?.match(/\/base\/([A-Za-z0-9]+)/);
+                        return match ? match[1] : null;
+                    }).filter(Boolean)
+                );
+
+                const prevSize = tokens.size;
+                newTokens.forEach((t: string) => tokens.add(t));
+
+                if (tokens.size === prevSize) {
+                    sameCount++;
+                } else {
+                    sameCount = 0; // Reset if we found new ones
+                }
+
+                // Break if stuck
+                if (sameCount >= 3 && tokens.size > 20) {
+                    // logger.debug('[DexScreener] Stuck at same count, breaking early.');
+                    break;
+                }
+
+                if (tokens.size >= limit) break;
+
+                // Perform Scroll
+                await page.evaluate(() => {
+                    const scrollAmount = document.body.scrollHeight * 0.8; // Not full bottom to trigger lazy load better
+                    window.scrollTo(0, scrollAmount);
+                    // Tiny separate scroll to trigger events
+                    setTimeout(() => window.scrollTo(0, document.body.scrollHeight), 200);
+                });
+
+                // Wait for network/dom update
+                await page.waitForTimeout(2000); // 2s wait
+                scrollAttempts++;
+            }
+
+            logger.debug(`[DexScreener] Scrape result: ${tokens.size} pairs (Target: ${limit})`);
+            return Array.from(tokens);
+
+        } catch (error) {
+            logger.error('[DexScreener] Scraping logic error:', error);
+            try { if (this.browser) await this.browser.close(); this.browser = null; this.context = null; } catch { }
+            return [];
+        } finally {
+            if (page) await page.close();
+        }
+    }
+
+
+    // --- Helper Methods ---
+
     async getTokens(mints: string[]): Promise<TokenSnapshot[]> {
         if (mints.length === 0) return [];
-
-        // DexScreener allows up to 30 addresses per call
         const chunks = this.chunkArray(mints, 30);
         const results: TokenSnapshot[] = [];
 
         for (const chunk of chunks) {
             try {
                 const url = `${this.apiUrl}/tokens/${chunk.join(',')}`;
-                console.log(`[DexScreener API] Requesting ${chunk.length} tokens...`);
-
                 const data = await this.makeRequest(url);
                 const pairs = data?.pairs || [];
-
-                console.log(`[DexScreener API] Received ${pairs.length} pairs from API`);
-
-                // Strict filtering is done inside normalizePair
                 const validPairs = pairs
                     .map((p: any) => this.normalizePair(p))
                     .filter((p: TokenSnapshot | null): p is TokenSnapshot => p !== null);
-
-                console.log(`[DexScreener API] After filtering: ${validPairs.length} valid tokens`);
-
                 results.push(...validPairs);
-
             } catch (error) {
-                console.error(`[DexScreener] Error fetching tokens chunk:`, error);
+                logger.error(`[DexScreener] Error fetching tokens chunk:`, error);
             }
         }
-
         return results;
     }
 
     async search(query: string): Promise<TokenSnapshot[]> {
         try {
-            // Encode query to avoid issues
-            const safeQuery = encodeURIComponent(query);
-            const data = await this.makeRequest(`${this.apiUrl}/search?q=${safeQuery}`);
-            const pairs = data?.pairs || []; // If rate limited (null), pairs is []
-
-            // Strict filtering via normalizePair
-            return pairs
+            const data = await this.makeRequest(`${this.apiUrl}/search?q=${encodeURIComponent(query)}`);
+            return (data?.pairs || [])
                 .map((p: any) => this.normalizePair(p))
                 .filter((p: TokenSnapshot | null): p is TokenSnapshot => p !== null);
         } catch (error) {
-            console.error(`[DexScreener] Search failed for '${query}':`, error);
+            logger.error(`[DexScreener] Search failed for '${query}':`, error);
             return [];
         }
     }
 
+    private async makeRequest(url: string, retries = 3): Promise<any> {
+        const now = Date.now();
+        const timeSinceLast = now - this.lastRequestTime;
+        if (timeSinceLast < this.minDelayMs) {
+            await new Promise(resolve => setTimeout(resolve, this.minDelayMs - timeSinceLast));
+        }
+        this.lastRequestTime = Date.now();
+
+        for (let i = 0; i < retries; i++) {
+            try {
+                const response = await axios.get(url, {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' },
+                    timeout: 5000
+                });
+                return response.data;
+            } catch (error: any) {
+                if (i === retries - 1) throw error;
+                await new Promise(res => setTimeout(res, 500 * (i + 1)));
+            }
+        }
+    }
+
     private normalizePair(pair: any): TokenSnapshot | null {
-        // Strict Filtering: Chain ID must be 'base'
-        if (pair?.chainId !== 'base') {
-            return null;
-        }
-
-        // Strict Filtering: Ensure 0x... addresses (Base/ETH)
+        if (pair?.chainId !== 'base') return null;
         const tokenAddress = pair.baseToken?.address || '';
-        if (!tokenAddress.startsWith('0x')) {
-            return null;
-        }
+        if (!tokenAddress.startsWith('0x')) return null;
 
-        const result: TokenSnapshot = {
+        return {
             source: 'dexscreener',
             mint: tokenAddress,
+            pairAddress: pair.pairAddress,
             name: pair.baseToken?.name || 'Unknown',
             symbol: pair.baseToken?.symbol || 'Unknown',
             priceUsd: Number(pair.priceUsd) || 0,
-            marketCapUsd: pair.marketCap || pair.fdv || 0, // Priority: marketCap -> fdv -> 0
+            marketCapUsd: pair.marketCap || pair.fdv || 0,
             liquidityUsd: pair.liquidity?.usd || 0,
             volume24hUsd: pair.volume?.h24 || pair.volume?.h6 || (pair.volume?.h1 ? pair.volume.h1 * 24 : 0) || 0,
             volume5mUsd: pair.volume?.m5 || 0,
@@ -183,10 +366,7 @@ export class DexScreenerService {
             priceChange5m: pair.priceChange?.m5 || 0,
             priceChange1h: pair.priceChange?.h1 || 0,
             priceChange6h: pair.priceChange?.h6 || 0,
-            txs5m: {
-                buys: pair.txns?.m5?.buys || 0,
-                sells: pair.txns?.m5?.sells || 0
-            },
+            txs5m: { buys: pair.txns?.m5?.buys || 0, sells: pair.txns?.m5?.sells || 0 },
             createdAt: pair.pairCreatedAt ? new Date(pair.pairCreatedAt) : undefined,
             updatedAt: new Date(),
             links: {
@@ -195,8 +375,6 @@ export class DexScreenerService {
                 birdeye: `https://birdeye.so/token/${tokenAddress}?chain=base`
             }
         };
-
-        return result;
     }
 
     private chunkArray(arr: string[], size: number): string[][] {
@@ -205,147 +383,5 @@ export class DexScreenerService {
             res.push(arr.slice(i, i + size));
         }
         return res;
-    }
-
-    // --- PERSISTENT BROWSER LOGIC ---
-    private browser: any | null = null;
-    private scanCount = 0;
-    private MAX_SCANS_BEFORE_RECYCLE = 50;
-
-    /**
-     * Initializes or reuses the browser instance.
-     * Implements "Recycling" strategy to prevent memory leaks.
-     */
-    private async getBrowser(): Promise<any> {
-        // 1. Check Recycle Condition
-        if (this.browser && this.scanCount >= this.MAX_SCANS_BEFORE_RECYCLE) {
-            console.log(`[DexScreener] ♻️ Recycling browser after ${this.scanCount} scans...`);
-            await this.closeBrowser();
-        }
-
-        // 2. Launch if needed
-        if (!this.browser) {
-            /*console.log(`[DexScreener] 🚀 Launching persistent browser...`);*/
-            this.browser = await puppeteer.launch({
-                headless: true,
-                args: [
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-dev-shm-usage',
-                    '--disable-accelerated-2d-canvas',
-                    '--no-first-run',
-                    '--no-zygote',
-                    '--disable-gpu',
-                    '--disable-software-rasterizer',
-                    '--mute-audio'
-                ],
-                executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
-            });
-            this.scanCount = 0;
-        }
-
-        return this.browser;
-    }
-
-    private async closeBrowser() {
-        if (this.browser) {
-            try {
-                await this.browser.close();
-            } catch (e) {
-                console.error('[DexScreener] Error closing browser during recycle:', e);
-            }
-            this.browser = null;
-            this.scanCount = 0;
-        }
-    }
-
-    /**
-     * Scrape DexScreener's M5 Trending page to get pair addresses
-     * https://dexscreener.com/base?rankBy=trendingScoreM5&order=desc
-     * NOW OPTIMIZED: Reuses browser instance.
-     */
-    private async scrapePairAddresses(limit: number = 100): Promise<string[]> {
-        let page;
-        try {
-            // console.log(`[DexScreener Scraper] Reuse browser (Scan #${this.scanCount + 1})...`);
-
-            const browser = await this.getBrowser();
-            this.scanCount++;
-
-            // Use verify-clean context (Incognito) - lightweight for each page
-            try {
-                // Try reuse existing pages if we want extreme speed, but newContext is safer for "Clean State"
-                // Just create new PAGE, not context (Context creation is also cheaper than browser but let's stick to standard Page for now)
-                page = await browser.newPage();
-            } catch (err) {
-                // If browser crashed or disconnected, restart it
-                console.warn('[DexScreener] Browser disconnected? Restarting...');
-                await this.closeBrowser();
-                const newBrowser = await this.getBrowser();
-                page = await newBrowser.newPage();
-            }
-
-            // Resource Blocking (User Request)
-            await page.setRequestInterception(true);
-            page.on('request', (req: any) => {
-                const type = req.resourceType();
-                if (['image', 'stylesheet', 'font', 'media', 'other'].includes(type)) { // Block 'other' too? be careful.
-                    req.abort();
-                } else {
-                    req.continue();
-                }
-            });
-
-            await page.setUserAgent(this.getRandomUserAgent());
-
-            // DISABLE CACHE
-            await page.setCacheEnabled(false);
-
-            const url = 'https://dexscreener.com/base?rankBy=trendingScoreM5&order=desc';
-
-            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 }); // Reduced timeout
-
-            // Wait for token cards/rows to load
-            try {
-                await page.waitForSelector('a[href^="/base/"]', { timeout: 8000 });
-            } catch (e) {
-                console.warn('[DexScreener] Timeout waiting for selector. Page might be empty.');
-            }
-
-            // Extract pair addresses from hrefs
-            const pairAddresses = await page.evaluate((maxPairs: number) => {
-                const links = Array.from(document.querySelectorAll('a[href^="/base/"]'));
-                const addresses = new Set<string>();
-
-                for (const link of links) {
-                    const href = (link as HTMLAnchorElement).getAttribute('href') || '';
-                    const match = href.match(/^\/base\/([A-Za-z0-9]+)$/);
-                    if (match && match[1]) {
-                        addresses.add(match[1]);
-                        if (addresses.size >= maxPairs) break;
-                    }
-                }
-
-                return Array.from(addresses);
-            }, limit);
-
-            // console.log(`[DexScreener Scraper] Extracted ${pairAddresses.length} addresses.`);
-
-            return pairAddresses;
-
-        } catch (error) {
-            console.error('[DexScreener Scraper] Error scraping addresses:', error);
-            // If critical error, maybe close browser to be safe
-            // await this.closeBrowser();
-            return [];
-        } finally {
-            if (page) {
-                try {
-                    await page.close(); // Close only the page/tab!
-                } catch (closeError) {
-                    console.error('[DexScreener Scraper] Error closing page:', closeError);
-                }
-            }
-        }
     }
 }

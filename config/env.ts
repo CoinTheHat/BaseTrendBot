@@ -58,6 +58,9 @@ export const config = {
     DEXSCREENER_API_KEY: process.env.DEXSCREENER_API_KEY || '',
     BIRDEYE_API_KEY: process.env.BIRDEYE_API_KEY || '',
 
+    // Base RPC
+    BASE_RPC_URL: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
+
     // Base Chain Monitoring
     BASE_KEYWORDS: ["ERC-8004", "ERC8004", "Hybrid Token", "404"]
 };

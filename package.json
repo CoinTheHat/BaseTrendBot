@@ -4,18 +4,25 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node dist/index.js",
+    "start": "PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers node dist/index.js",
     "get-id": "ts-node utils/get-id.ts",
     "dev": "nodemon index.ts",
     "build": "tsc && cp -r web/views dist/web/ && cp -r web/public dist/web/",
     "build:win": "tsc && powershell -Command \"Copy-Item -Path web/views -Destination dist/web/views -Recurse -Force; Copy-Item -Path web/public -Destination dist/web/public -Recurse -Force\"",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "postinstall": "PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers npx playwright install chromium --with-deps"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "ethers": "^6.10.0",
+    "@steipete/bird": "^0.4.1",
     "@types/node": "^25.0.10",
     "@types/pg": "^8.16.0",
     "axios": "^1.13.3",
@@ -28,6 +35,8 @@
     "node-telegram-bot-api": "^0.67.0",
     "openai": "^6.17.0",
     "pg": "^8.17.2",
+    "playwright": "^1.58.1",
+    "playwright-extra": "^4.3.6",
     "puppeteer": "^24.36.1",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",

@@ -129,14 +129,7 @@ export class PostgresStorage {
                     mint, symbol, alert_mc, ath_mc, current_mc, status, alert_timestamp, last_updated, entry_price,
                     found_mc, max_mc, found_at, sold_mc, dip_target_mc
                 )
-                VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $3, $4, $7, 0, $10)
-                ON CONFLICT(mint) DO UPDATE SET
-                    ath_mc = GREATEST(token_performance.ath_mc, EXCLUDED.ath_mc),
-                    current_mc = EXCLUDED.current_mc,
-                    last_updated = NOW(),
-                    dip_target_mc = COALESCE(NULLIF(EXCLUDED.dip_target_mc, 0), token_performance.dip_target_mc),
-                    entry_price = COALESCE(NULLIF(EXCLUDED.entry_price, 0), token_performance.entry_price),
-                    status = EXCLUDED.status`,
+                VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $3, $4, $7, 0, $10)`,
                 [
                     perf.mint,
                     perf.symbol,
@@ -160,7 +153,7 @@ export class PostgresStorage {
             await this.pool.query(
                 `UPDATE token_performance
                  SET ath_mc = $2, current_mc = $3, status = $4, last_updated = NOW()
-                 WHERE mint = $1`,
+                 WHERE mint = $1 AND status IN ('TRACKING', 'WAITING_DIP')`,
                 [perf.mint, perf.athMc, perf.currentMc, perf.status]
             );
         } catch (err) {
@@ -173,7 +166,7 @@ export class PostgresStorage {
             const res = await this.pool.query(
                 `UPDATE token_performance
                  SET sold_mc = $1, last_updated = NOW()
-                 WHERE mint = $2`,
+                 WHERE mint = $2 AND status = 'TRACKING'`,
                 [soldMc, mint]
             );
 
@@ -216,7 +209,7 @@ export class PostgresStorage {
             await this.pool.query(
                 `UPDATE token_performance
                  SET mc_30m = $1, last_updated = NOW()
-                 WHERE mint = $2`,
+                 WHERE mint = $2 AND status = 'TRACKING'`,
                 [mc30m, mint]
             );
             // logger.info(`[Postgres] Updated MC_30m for ${mint}: $${mc30m}`);
@@ -238,7 +231,7 @@ export class PostgresStorage {
                     status = $6,
                     last_updated = NOW(),
                     entry_price = CASE WHEN entry_price = 0 THEN $7 ELSE entry_price END
-                 WHERE mint = $1`,
+                 WHERE mint = $1 AND status IN ('TRACKING', 'WAITING_DIP')`,
                 [perf.mint, perf.symbol, perf.alertMc, perf.athMc, perf.currentMc, perf.status, perf.entryPrice || 0]
             );
         } catch (err) {
@@ -394,7 +387,7 @@ export class PostgresStorage {
             await this.pool.query(
                 `UPDATE token_performance
                  SET max_mc_30m = $1, last_updated = NOW()
-                 WHERE mint = $2`,
+                 WHERE mint = $2 AND status = 'TRACKING'`,
                 [maxMc30m, mint]
             );
         } catch (err) {
@@ -704,7 +697,7 @@ export class PostgresStorage {
                 SET current_mc = $1,
                     max_mc = GREATEST(COALESCE(max_mc, 0), $2),
                     last_updated = NOW()
-                WHERE mint = $3`,
+                WHERE mint = $3 AND status IN ('TRACKING', 'WAITING_DIP')`,
                 [currentMc, potentialMaxMc, mint]
             );
         } catch (err) {
@@ -717,7 +710,7 @@ export class PostgresStorage {
             await this.pool.query(
                 `UPDATE token_performance 
                  SET max_mc = $1, last_updated = NOW() 
-                 WHERE mint = $2`,
+                 WHERE mint = $2 AND status IN ('TRACKING', 'WAITING_DIP')`,
                 [maxMc, mint]
             );
             logger.info(`[Postgres] Updated Max MC for ${mint}: $${maxMc}`);
@@ -732,7 +725,7 @@ export class PostgresStorage {
             const res = await this.pool.query(
                 `UPDATE token_performance 
                  SET status = $1, last_updated = NOW() 
-                 WHERE mint = $2`,
+                 WHERE mint = $2 AND status = 'TRACKING'`,
                 [status, mint]
             );
 

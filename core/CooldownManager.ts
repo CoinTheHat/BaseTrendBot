@@ -9,7 +9,7 @@ export class CooldownManager {
     /**
      * Check if we can alert for this token
      */
-    async canAlert(tokenMint: string, customCooldownMinutes?: number): Promise<{ allowed: boolean; reason?: string }> {
+    async canAlert(tokenMint: string, currentScore: number, customCooldownMinutes?: number): Promise<{ allowed: boolean; reason?: string }> {
         const now = Date.now();
 
         // 1. Global Rate Limit
@@ -26,11 +26,16 @@ export class CooldownManager {
             const minutesSince = (now - tokenData.lastAlertAt) / 60000;
 
             // STRICT RULE: 2 Hours Cooldown (120m)
-            // Same token won't be alerted again within 2 hours.
             const STRICT_COOLDOWN = 120;
 
             if (minutesSince < STRICT_COOLDOWN) {
                 return { allowed: false, reason: `Strict Cooldown (${minutesSince.toFixed(1)}m < 2h)` };
+            }
+
+            // RE-ALERT SCORE THRESHOLD RULE:
+            // If checking for a 2nd time (re-entry), score MUST be > 80 (Superior).
+            if (currentScore < 80) {
+                return { allowed: false, reason: `Re-Alert Score too low (${currentScore} < 80)` };
             }
         }
 

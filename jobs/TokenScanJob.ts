@@ -18,8 +18,8 @@ import { TrendCollector } from '../trends/TrendCollector';
 import { TrendTokenMatcher } from '../core/TrendTokenMatcher';
 import { AlphaSearchService } from '../twitter/AlphaSearchService';
 import { DexScreenerService } from '../services/DexScreenerService';
-import { LLMService } from '../services/LLMService';
 import { GoPlusService } from '../services/GoPlusService';
+import { LLMService } from '../services/LLMService';
 
 export class TokenScanJob {
     private isRunning = false;
@@ -31,21 +31,54 @@ export class TokenScanJob {
 
     // RETRY SETTINGS (Time in ms)
     private static CACHE_TTL: Record<string, number | null> = {
-        'Too Young': 15 * 60 * 1000,           // 15 mins
+        'Too Young': 15 * 60 * 1000,           // 15 mins (threshold is 20min)
         'Weak Score': 20 * 60 * 1000,          // 20 mins
         'Low Liq Ratio': 30 * 60 * 1000,       // 30 mins
+        'Twitter Fail': 15 * 60 * 1000,        // 15 mins (AI might improve with more data)
+        'No Twitter Data': 20 * 60 * 1000,     // 20 mins (new token needs time)
         'Birdeye API Fail': 5 * 60 * 1000,     // 5 mins
-        'RugCheck Failed': 10 * 60 * 1000,     // 10 mins
+        'GoPlus Failed': 10 * 60 * 1000,     // 10 mins (was RugCheck)
         // Others are Permanent (null)
     };
 
-    private getTTL(reason: string): number | null {
-        if (reason.includes('Too Young')) return TokenScanJob.CACHE_TTL['Too Young']!;
-        if (reason.includes('Weak Score')) return TokenScanJob.CACHE_TTL['Weak Score']!;
-        if (reason.includes('Low Liq Ratio')) return TokenScanJob.CACHE_TTL['Low Liq Ratio']!;
-        if (reason.includes('Birdeye API Fail')) return TokenScanJob.CACHE_TTL['Birdeye API Fail']!;
-        if (reason.includes('RugCheck')) return TokenScanJob.CACHE_TTL['RugCheck Failed']!;
-        return null; // Permanent
+    private getTTL(reason: string, token: TokenSnapshot): number | null {
+        // TEMPORARY BLOCKS (Will Retry)
+        if (reason.includes('Too Young')) return 10 * 60 * 1000;  // 10 mins
+        if (reason.includes('Weak Score')) return 30 * 60 * 1000; // 30 mins
+        if (reason.includes('Low Liq Ratio') && !reason.includes('Extreme') && !reason.includes('<5%')) {
+            return 60 * 60 * 1000; // 1 hour (liquidity might improve)
+        }
+        if (reason.includes('Twitter Fail')) return 15 * 60 * 1000;
+        if (reason.includes('No Twitter Data')) return 20 * 60 * 1000;
+        if (reason.includes('Birdeye API Fail')) return 5 * 60 * 1000;
+        if (reason.includes('GoPlus') || reason.includes('RugCheck')) return 10 * 60 * 1000;
+        if (reason.includes('Low Liquidity')) return 120 * 60 * 1000; // 2 hours (liquidity can be added)
+        if (reason.includes('Risk Engine') || reason.includes('Fake Pump')) return 30 * 60 * 1000; // 30 mins (spike might normalize)
+
+        // SMART RETRY: Bot Risk (Holders < 50)
+        // If the token is NEW (< 2 hours), give it 30 mins to grow community
+        if (reason.includes('Bot Risk')) {
+            // If createdAt is missing, we assume it's new (better to retry once than block forever)
+            const createdAt = token.createdAt ? new Date(token.createdAt).getTime() : Date.now();
+            const ageMs = Date.now() - createdAt;
+            const twoHours = 2 * 60 * 60 * 1000;
+
+            if (ageMs < twoHours) {
+                return 30 * 60 * 1000; // Retry in 30 mins
+            }
+            return null; // Permanent if > 2h and still < 50 holders
+        }
+
+        // PERMANENT BLOCKS (structural issues that won't fix themselves)
+        if (reason.includes('Too Old')) return null;           // >168h won't get younger
+        if (reason.includes('Whale Risk')) return null;        // Top10 concentration stable
+        if (reason.includes('High Liq Ratio')) return null;    // >90% locked liquidity
+        if (reason.includes('Extreme') || reason.includes('Liq Ratio <5%')) return null;
+        if (reason.includes('BLACKLIST')) return null;
+
+        // Unknown reasons: default to PERMANENT (safety)
+        logger.warn(`[Cache] ⚠️ Unknown rejection: "${reason}". Defaulting to PERMANENT.`);
+        return null;
     }
 
     private cleanupExpiredCache() {
@@ -63,7 +96,7 @@ export class TokenScanJob {
     }
 
     constructor(
-        private pumpFun: PumpFunService | undefined,
+        private pumpFun: PumpFunService,
         private birdeye: BirdeyeService,
         private dexScreener: DexScreenerService,
         private matcher: Matcher,
@@ -77,8 +110,8 @@ export class TokenScanJob {
         private trendCollector: TrendCollector,
         private trendMatcher: TrendTokenMatcher,
         private alphaSearch: AlphaSearchService,
-        private llmService: any, // Need to inject LLMService or use global if not injected (Assuming injected or Import)
-        private goPlus: GoPlusService
+        private llmService: LLMService,
+        private goPlus: GoPlusService // NEW: Injected
     ) { }
 
     // --- AI QUEUE LOGIC ---
@@ -163,7 +196,7 @@ export class TokenScanJob {
         this.runLoop();
 
         // Start Dip Monitor Loop (Independent)
-        this.runDipMonitor();
+        // this.runDipMonitor(); // DISABLED per user request
     }
 
     private async runDipMonitor() {
@@ -195,27 +228,18 @@ export class TokenScanJob {
         try {
             logger.info('[Job] 🔍 Starting DexScreener Scan...');
 
-            // 1. Fetch Candidates (DexScreener + Birdeye)
-            const dexTokensPromise = this.dexScreener.getLatestPairs();
-            const birdTokensPromise = this.birdeye.fetchTrendingTokens('base');
+            // 1. Fetch Candidates (DexScreener only for speed/cost)
+            const dexTokens = await this.dexScreener.getLatestPairs();
 
-            const [rawDexTokens, rawBirdTokens] = await Promise.all([dexTokensPromise, birdTokensPromise]);
+            // 3. Merge & Deduplicate (Ensure uniqueness by Mint Address)
+            const uniqueTokens = Array.from(
+                new Map(dexTokens.map(t => [t.mint, t])).values()
+            );
 
-            // Merge and Deduplicate
-            const allTokens = [...rawDexTokens, ...rawBirdTokens];
-            const uniqueMap = new Map();
-            for (const t of allTokens) {
-                uniqueMap.set(t.mint, t);
-            }
-            const uniqueTokens = Array.from(uniqueMap.values());
+            logger.info(`[Fetch] 📡 Total: ${uniqueTokens.length} (DexScreener)`);
 
-            logger.info(`[Fetch] 📡 Total: ${uniqueTokens.length} (DexScreener: ${rawDexTokens.length}, Birdeye: ${rawBirdTokens.length})`);
-
-            // Use uniqueTokens for filtering
-            const dexTokens = uniqueTokens; // Alias for compatibility with loop below
-
-            if (dexTokens.length === 0) {
-                logger.info(`[Scan] ⚠️ No trending tokens found. Cooldown may be active.`);
+            if (uniqueTokens.length === 0) {
+                logger.info(`[Scan] ⚠️ No trending tokens found.`);
                 return;
             }
 
@@ -224,25 +248,28 @@ export class TokenScanJob {
             let cachedCount = 0;
             let retryCount = 0;
 
-            for (const token of dexTokens) {
+            for (const token of uniqueTokens) {
                 const cacheData = this.processedCache.get(token.mint);
 
                 if (cacheData) {
                     const isExpired = cacheData.blockedUntil && cacheData.blockedUntil < now;
 
+                    // ⬇️ HER TOKEN İÇİN LOG - User Requested Debug
+                    logger.debug(`[Cache] ${token.symbol}: blocked=${cacheData.blockedUntil}, now=${now}, expired=${isExpired}`);
+
                     if (isExpired) {
-                        logger.info(`[Cache Debug] ${token.symbol} EXPIRED! Reason: ${cacheData.reason}, Blocked: ${cacheData.blockedUntil}, Now: ${now}`);
+                        logger.info(`[Cache] ✅ ${token.symbol} EXPIRED! (Reason: ${cacheData.reason})`);
                         retryCount++;
                         this.processedCache.delete(token.mint);
-                        // Falls through to processing
+                        // Fall through to processed below
                     } else {
-                        // Still Validly Blocked
+                        // Still blocked (Permanent or TTL future)
                         cachedCount++;
-                        continue; // SKIP Processing
+                        continue;
                     }
                 }
 
-                // If we reach here, it's either fresh OR expired (and deleted from cache)
+                // If we are here, token is either fresh OR retired/expired from cache
                 freshCandidates.push(token);
             }
 
@@ -265,7 +292,7 @@ export class TokenScanJob {
             const handleRejection = (token: TokenSnapshot, reason: string) => {
                 rejectionReasons[reason] = (rejectionReasons[reason] || 0) + 1;
 
-                const ttl = this.getTTL(reason);
+                const ttl = this.getTTL(reason, token);
                 const blockedUntil = ttl === null ? null : Date.now() + ttl;
 
                 this.processedCache.set(token.mint, {
@@ -286,7 +313,7 @@ export class TokenScanJob {
             const chunks = this.chunkArray(freshCandidates, 2);
 
             for (const chunk of chunks) {
-                await Promise.all(chunk.map(async (token) => {
+                await Promise.all(chunk.map(async (token, i) => {
                     try {
                         // LRU Safety Check
                         if (this.processedCache.size > 1000) {
@@ -304,11 +331,9 @@ export class TokenScanJob {
                         // So if we pass, we should also cache it to avoid reprocessing.
                         // Passed tokens: Permanent Block (until restart?) or maybe 1 hour?
                         // Let's stick to simple: If passed, cached as "Processed" (Permanent for this session).
-
                         // NOTE: We only cache rejections via handleRejection.
                         // If we don't cache here, it might be processed again immediately?
                         // Yes, so we need initial cache.
-
                         // Initial Cache: Block for 5 mins (Processing)
                         // Processing Cache Logic REMOVED per user request
                         // No initial cache set - only rejections are cached.
@@ -368,11 +393,11 @@ export class TokenScanJob {
                         // >10%: Pass
 
                         // GATE C: Age Filter (The "Golden Window")
-                        // 10 mins to 48 Hours (Widened)
-                        if (ageMins < 10) {
+                        // USER REQUEST: Min Age 20 mins
+                        if (ageMins < 20) {
                             // logger.debug(`[Gate] 👶 Too Young: ${token.symbol} (${ageMins}m)`);
                             gateCount++;
-                            handleRejection(token, 'Too Young (<10m)');
+                            handleRejection(token, 'Too Young (<20m)');
                             logger.info(`[REJECT] ${token.symbol} -> Too Young (${ageMins}m)`);
                             return;
                         }
@@ -380,7 +405,7 @@ export class TokenScanJob {
                             // logger.debug(`[Gate] 👴 Too Old: ${token.symbol} (${ageMins}m)`);
                             gateCount++;
                             handleRejection(token, 'Too Old (>168h)');
-                            logger.info(`[REJECT] ${token.symbol} -> Too Old (${ageMins}m)`);
+                            logger.info(`[REJECT] ${token.symbol} -> Too Old (${(ageMins / 60).toFixed(1)}h)`);
                             return;
                         }
 
@@ -389,10 +414,29 @@ export class TokenScanJob {
                         let enrichedToken = token; // Mutable for enrichment
 
                         const scoreRes = this.scorer.score(enrichedToken, matchResult);
-                        const { totalScore, phase } = scoreRes;
+                        let { totalScore, phase } = scoreRes;
+
+                        // --- AGE PENALTY SYSTEM (Graduated) ---
+                        // 24h-48h: -10 pts
+                        // 48h-96h: -20 pts
+                        // 96h-168h: -30 pts
+                        let agePenalty = 0;
+                        if (ageMins >= 1440 && ageMins < 2880) {
+                            agePenalty = 10;
+                        } else if (ageMins >= 2880 && ageMins < 5760) {
+                            agePenalty = 20;
+                        } else if (ageMins >= 5760) {
+                            agePenalty = 30; // 4-7 days
+                        }
+
+                        if (agePenalty > 0) {
+                            const originalScore = totalScore;
+                            totalScore = Math.max(0, totalScore - agePenalty);
+                            logger.info(`[Age Penalty] ${token.symbol}: ${originalScore} -> ${totalScore} (-${agePenalty} pts due to Age ${(ageMins / 60).toFixed(1)}h)`);
+                        }
 
                         // REJECTION CHECK
-                        // Threshold: 70/100
+                        // Threshold: 40/100 (TEST MODE - LOW THRESHOLD)
                         if (phase === 'REJECTED_RISK') {
                             gateCount++; // Fake pump or other hard risk from engine
                             handleRejection(token, 'Risk Engine (Fake Pump)');
@@ -400,118 +444,188 @@ export class TokenScanJob {
                             return;
                         }
 
-                        // GRADUATED AGE PENALTY
-                        let agePenalty = 0;
-                        if (ageMins > 1440 && ageMins <= 2880) agePenalty = 10; // 24h - 48h
-                        else if (ageMins > 2880 && ageMins <= 5760) agePenalty = 20; // 48h - 96h
-                        else if (ageMins > 5760) agePenalty = 30; // > 96h
-
-                        let adjustedScore = totalScore - agePenalty;
-
-                        if (agePenalty > 0) {
-                            logger.info(`[Score] 📉 Age Penalty for ${token.symbol}: -${agePenalty} (Base: ${totalScore} -> Adj: ${adjustedScore})`);
-                        }
-
-                        if (adjustedScore < 40) {
+                        if (totalScore < 40) {
                             weakCount++;
                             handleRejection(token, 'Weak Score');
-                            logger.info(`[REJECT] ${token.symbol} -> Weak Score (${adjustedScore}/40)`);
+                            logger.info(`[REJECT] ${token.symbol} -> Weak Score (${totalScore}/100)`);
                             return;
                         }
 
-                        // --- STEP 2.4: TWITTER/AI ANALYSIS (Add Additive Score) ---
-                        // Only for tokens passing the Technical Gate (50+)
-                        let aiScore = 0;
-                        let aiAnalysis: any = null;
-                        let tweetContext: string[] = [];
+
+                        // --- STEP 3: SECURITY & HOLDER CHECK (DexScreener Internal API - Unified) ---
+                        // Replaces Birdeye and RPC for Security, Liquidity, and Holders
+                        let holderCount = -1;
+                        let top10Percent = 0;
+                        let isMintable = false;
+                        let isFreezable = false;
+                        let burnedLiquidity = 0;
+                        let holderSource = 'UNKNOWN';
+
+                        // BURST PREVENTION: If many tokens, add a significant delay to respect limits
+                        if (i > 0) await new Promise(res => setTimeout(res, 800));
 
                         try {
-                            // 1. Fetch Tweets (Hybrid Search with CA)
-                            logger.info(`[Scan] 🐦 Fetching Twitter context for $${token.symbol} (CA: ${token.mint})...`);
-                            const alphaResult = await this.alphaSearch.checkAlpha(token.symbol, token.mint);
-                            tweetContext = alphaResult.tweets;
+                            if (token.pairAddress) {
+                                const dexData = await this.dexScreener.getPairDetails(token.pairAddress);
+                                if (dexData) {
+                                    // 1. Holder Data
+                                    if (dexData.holderCount !== undefined && dexData.holderCount !== null) {
+                                        holderCount = dexData.holderCount;
+                                        top10Percent = dexData.top10Percent;
+                                        holderSource = 'DexInternal';
+                                    }
 
-                            // 2. Run AI Analysis
-                            aiAnalysis = await this.llmService.analyzePostSnipe(enrichedToken, tweetContext);
+                                    // 2. Security Flags
+                                    isMintable = dexData.security.isMintable;
+                                    isFreezable = dexData.security.isFreezable;
 
-                            if (aiAnalysis && typeof aiAnalysis.score === 'number') {
-                                aiScore = aiAnalysis.score;
-                                logger.info(`[AI] Score for ${token.symbol}: +${aiScore} (Total: ${totalScore + aiScore})`);
+                                    // 3. Liquidity Data
+                                    burnedLiquidity = dexData.liquidity.burnedPercent;
+
+                                    logger.info(`[DexInternal] 🟢 ${token.symbol}: ${holderCount} Holders, Top10: ${top10Percent.toFixed(1)}%, Mint:${isMintable}, Burned:${burnedLiquidity}%`);
+                                }
                             }
-                        } catch (e) {
-                            logger.warn(`[Scan] ⚠️ AI/Twitter Analysis failed: ${e}`);
+
+                            // FALLBACK: If internal API failed to return holders, try activity estimation? 
+                            // User said "DexScreener is enough", so we trust it. 
+                            // If it's missing, it's missing.
+
+                        } catch (err: any) {
+                            logger.error(`[HolderVerify] Critical Error: ${err.message}`);
                         }
 
-                        // CALCULATE FINAL SCORE
-                        const finalScore = adjustedScore + aiScore;
+                        // --- GATE D: SECURITY CHECKS (Unified) ---
+                        // 1. Mintable / Freezable Check
+                        // DexScreener gives us some flags. GoPlus gives us more.
+                        // We run comprehensive GoPlus check here or earlier?
+                        // Let's run GoPlus now for filtering.
+                        const security = await this.checkRugSecurity(token.mint);
+                        if (!security.safe) {
+                            gateCount++;
+                            handleRejection(token, security.reason || 'Security Risk');
+                            logger.info(`[REJECT] ${token.symbol} -> ${security.reason}`);
+                            return;
+                        }
 
-                        // GATE D: RUGCHECK (API) - STRICT SECURITY
-                        // Only check if passed AI filter (>= 70 Total Score)
-                        if (finalScore >= 70) {
-                            const rugCheck = await this.checkRugSecurity(token.mint);
-                            if (!rugCheck.safe) {
-                                logger.warn(`[Gate] 🔒 RugCheck Failed: ${token.symbol} (${rugCheck.reason})`);
-                                gateCount++;
-                                handleRejection(token, 'RugCheck Failed');
-                                logger.info(`[REJECT] ${token.symbol} -> RugCheck (${rugCheck.reason})`);
-                                return;
-                            }
+                        // 2. Rug Check (Burned Liquidity) - Replaces Ownership Check
+                        // DexScreener liquidity data fallback
+                        if (burnedLiquidity < 80 && burnedLiquidity > 0) { // If 0, might be unknown. If > 0 but < 80, risky.
+                            logger.warn(`[Gate] 🔓 Low Burned Liquidity: ${token.symbol} (${burnedLiquidity}%)`);
+                            // gateCount++; // Soft warn for now
+                        }
+
+                        enrichedToken.holderCount = holderCount;
+                        enrichedToken.top10HoldersSupply = top10Percent;
+
+                        // Tag source for debugging
+                        logger.info(`[HolderVerify] Source: ${holderSource} | Count: ${holderCount}`);
+
+
+                        // --- DYNAMIC THRESHOLDS (Time-Based) ---
+                        const createdAt = token.createdAt ? token.createdAt.getTime() : Date.now();
+                        const ageMinutes = (Date.now() - createdAt) / 60000;
+                        let minHolders = 50; // Default
+
+                        if (ageMinutes < 15) {
+                            minHolders = 5; // Very new, just need existence
+                        } else if (ageMinutes < 60) {
+                            minHolders = 20; // Ramp up
+                        }
+
+                        // Special Case: < 30 mins and STILL no data (0 holders)
+                        if (holderCount === 0 && ageMinutes < 30) {
+                            logger.warn(`[Gate] ⚠️ No holder data for ${token.symbol} (${ageMinutes.toFixed(0)}m). Skipping gate with penalty.`);
+                            // We allow it to proceed with a penalty implicitly (just don't reject)
+                            totalScore -= 5;
                         } else {
-                            // Failed Final Score Gate
-                            weakCount++;
-                            handleRejection(token, 'Weak Score (Final < 70)');
-                            logger.info(`[REJECT] ${token.symbol} -> Weak Final Score (${finalScore}/70)`);
+                            // Standard Gate Logic
+                            if (holderCount < minHolders) {
+                                logger.info(`[Gate] 🤖 Bot Risk: ${token.symbol} (Holders: ${holderCount} < ${minHolders}) [Age: ${ageMinutes.toFixed(0)}m]`);
+                                gateCount++;
+                                handleRejection(token, `Bot Risk (Holders < ${minHolders})`);
+                                logger.info(`[REJECT] ${token.symbol} -> Bot Risk (Holders ${holderCount})`);
+                                return;
+                            }
+                        }
+
+                        if (top10Percent > 50) {
+                            logger.info(`[Gate] 🐋 Whale Risk: ${token.symbol} (Top 10: ${top10Percent.toFixed(1)}%)`);
+                            gateCount++;
+                            handleRejection(token, 'Whale Risk (Top10 >50%)');
+                            logger.info(`[REJECT] ${token.symbol} -> Whale Risk (${top10Percent.toFixed(0)}%)`);
                             return;
                         }
 
-                        // --- STEP 2.5: SECURITY & HOLDER CHECK (API Cost Saver - only high scores) ---
-                        // Only fetch for potential gems to save API calls
+                        // --- STEP 2.5: TWITTER AI SCORING (Social Phase) ---
+                        // Only for tokens that passed Technical + Holder Analysis
+                        logger.info(`[Stage 2] ${token.symbol} passed technical & risk (Score: ${totalScore}/100, Holders: ${enrichedToken.holderCount}). Fetching Twitter context...`);
+
+                        let twitterScore = 0;
+                        let aiReasoning = 'No Twitter analysis';
+                        let tweets: any[] = []; // Define in outer scope for reuse
+
                         try {
-                            // Pass price/MC for DexScreener supply fallback
-                            const sec = await this.birdeye.getTokenSecurity(token.mint, {
-                                priceUsd: token.priceUsd || 0,
-                                marketCapUsd: token.marketCapUsd || 0
-                            });
-                            enrichedToken.holderCount = sec.holderCount;
-                            enrichedToken.top10HoldersSupply = sec.top10Percent;
+                            // Fetch 50 tweets for better sample
+                            const alphaResult = await this.alphaSearch.checkAlpha(token.symbol, token.mint);
+                            tweets = alphaResult.tweets || [];
 
-                            // GATE E: Whale Trap / Bot Activity
-                            if (sec.top10Percent > 50) {
-                                logger.info(`[Gate] 🐋 Whale Risk: ${token.symbol} (Top 10: ${sec.top10Percent.toFixed(1)}%)`);
-                                gateCount++;
-                                handleRejection(token, 'Whale Risk (Top10 >50%)');
-                                logger.info(`[REJECT] ${token.symbol} -> Whale Risk (${sec.top10Percent.toFixed(0)}%)`);
-                                return;
-                            }
-                            if (sec.holderCount < 50) {
-                                logger.info(`[Gate] 🤖 Bot Risk: ${token.symbol} (Holders: ${sec.holderCount})`);
-                                gateCount++;
-                                handleRejection(token, 'Bot Risk (Holders <50)');
-                                logger.info(`[REJECT] ${token.symbol} -> Bot Risk (${sec.holderCount} Holders)`);
-                                return;
-                            }
-                        } catch (secErr: any) {
-                            // ENHANCED FAIL-SAFE: Distinguish between API errors and missing supply
-                            const errorMsg = secErr.message || '';
-
-                            if (errorMsg.includes('supply/metrics missing')) {
-                                // Very new token - Birdeye hasn't indexed supply yet
-                                // Skip holder check but allow token to proceed
-                                logger.info(`[Birdeye] Supply data missing for ${token.symbol} (Very new token). Skipping holder check.`);
-                                enrichedToken.holderCount = 0; // Unknown
-                                enrichedToken.top10HoldersSupply = 0; // Unknown
-                                // Continue to next checks (don't return/reject)
+                            if (tweets.length === 0) {
+                                logger.warn(`[Twitter AI] ${token.symbol}: No tweets found. Proceeding without social data.`);
+                                aiReasoning = 'No social presence detected';
                             } else {
-                                // Real API error (404, 429, auth issue, etc.)
-                                logger.warn(`[Birdeye] Failed to fetch holders: ${secErr}. REJECTING for safety.`);
-                                gateCount++;
-                                handleRejection(token, 'Birdeye API Fail');
-                                return; // FAIL-SAFE: Reject if we can't verify holder data
+                                // AI Vibe Scoring (-100 to +100)
+                                const aiScore = await this.llmService.scoreTwitterSentiment(enrichedToken, tweets);
+
+                                if (aiScore) {
+                                    // POSITIVE VIBE: 0 to +30 points (Standard)
+                                    // NEGATIVE VIBE: -100 to 0 points (Penalty)
+
+                                    if (aiScore.vibeScore < 0) {
+                                        // PENALTY: Direct subtraction (e.g. -50 vibe = -25 score impact)
+                                        // We map -100 to -50 impact to be decisive but not overkill
+                                        const penalty = Math.abs(aiScore.vibeScore) * 0.5;
+                                        twitterScore = -penalty;
+                                        logger.warn(`[AI Audit] 🛑 NEGATIVE VIBE: ${token.symbol} (Score: ${aiScore.vibeScore}) -> Penalty: -${penalty.toFixed(1)} pts`);
+                                    } else {
+                                        // BONUS: 0 to 30 pts (Already calculated in aiScore.score)
+                                        twitterScore = aiScore.score;
+                                    }
+
+                                    aiReasoning = aiScore.reasoning;
+
+                                    if (aiScore.redFlags && aiScore.redFlags.length > 0) {
+                                        logger.warn(`[Twitter AI] ${token.symbol} Red Flags: ${aiScore.redFlags.join(', ')}`);
+                                    }
+                                } else {
+                                    logger.warn(`[Twitter AI] ${token.symbol}: Analysis failed.`);
+                                    aiReasoning = 'AI unavailable';
+                                }
                             }
+
+                        } catch (twitterErr: any) {
+                            logger.error(`[Twitter AI] Error for ${token.symbol}: ${twitterErr.message}. Proceeding without social data.`);
+                            aiReasoning = 'Twitter fetch failed';
                         }
 
-                        // --- STEP 3: SNIPED! (Immediate Alert) ---
-                        const { allowed } = await this.cooldown.canAlert(token.mint);
+                        // Log final score combination
+                        const combinedScore = totalScore + twitterScore;
+                        logger.info(`[Combined Score] ${token.symbol}: Technical ${totalScore} + Vibe ${twitterScore.toFixed(1)} = ${combinedScore.toFixed(1)}/130`);
+
+
+                        // --- STEP 3: SCORE GATE & ALERT ---(
+                        // User Request: "Don't share anything below 7"
+                        if (combinedScore < 70) {
+                            logger.info(`[Gate] 📉 Low Score: ${token.symbol} (${combinedScore}/130) < 70. Rejecting.`);
+                            handleRejection(token, `Weak Score (${combinedScore})`);
+                            return;
+                        }
+
+                        const { allowed, reason } = await this.cooldown.canAlert(token.mint, combinedScore);
+                        if (!allowed) {
+                            logger.info(`[Cooldown] ⏳ ${token.symbol} is blocked: ${reason}. Skipping SNIPE.`);
+                            return;
+                        }
+
                         if (allowed) {
                             alertCount++;
 
@@ -521,20 +635,31 @@ export class TokenScanJob {
                             else if (mc < 250000) segmentLog = 'GOLDEN';
                             else segmentLog = 'RUNNER';
 
-                            logger.info(`🔫 [SNIPED] [${segmentLog}] ${token.symbol} Score: ${totalScore}/100 | Liq: $${Math.floor(liq)} | MC: $${Math.floor(mc)}`);
+                            logger.info(`🔫 [SNIPED] [${segmentLog}] ${token.symbol} Score: ${combinedScore}/130 | Liq: $${Math.floor(liq)} | MC: $${Math.floor(mc)}`);
 
                             // --- 🧠 AI SYNTHESIS (User Request: Contextual Analysis) ---
-                            // Already done above in Step 2.4
-                            // Re-using aiAnalysis and tweetContext from scope above 
+                            // 1. REUSE Tweets (Optimization: Don't fetch again!)
+                            let tweetContext = tweets;
+                            if (!tweetContext || tweetContext.length === 0) {
+                                logger.warn(`[Scan] ⚠️ No tweets available for AI context.`);
+                            } else {
+                                logger.info(`[Scan] 🧠 Generating AI Analysis with ${tweetContext.length} tweets...`);
+                            }
 
-                            // (Removed redundant fetch)
-
-                            // 2. Run AI Analysis (Already done)
+                            // 2. Run AI Analysis
+                            let aiAnalysis: any = null;
+                            try {
+                                aiAnalysis = await this.llmService.analyzePostSnipe(enrichedToken, tweetContext);
+                            } catch (e) {
+                                logger.warn(`[Scan] ⚠️ AI Analysis failed: ${e}`);
+                            }
 
                             // Create Narrative (Enriched with AI)
-                            const displayScore = (finalScore / 10).toFixed(1);
+                            // Use Combined Score for Display (normalized to 10 for readability)
+                            const displayScore = (combinedScore / 10).toFixed(1);
                             const aiSummary = aiAnalysis?.socialSummary ? `\n\n🧠 **AI VIBE:**\n${aiAnalysis.socialSummary}` : '';
                             const riskBadge = aiAnalysis?.riskLevel ? ` • Risk: ${aiAnalysis.riskLevel}` : '';
+
 
                             const mechanicalNarrative = {
                                 headline: `🔫 SNIPER ALERT: ${token.symbol} ${riskBadge}`,
@@ -554,7 +679,7 @@ export class TokenScanJob {
 • Age: ${token.createdAt ? Math.floor((Date.now() - token.createdAt.getTime()) / 60000) + 'm' : 'N/A'}`,
                                 tradeLens: `SNIPE`,
                                 vibeCheck: aiAnalysis?.riskLevel ? `Risk: ${aiAnalysis.riskLevel}` : `MECHANICAL`,
-                                aiScore: finalScore,
+                                aiScore: totalScore,
                                 aiApproved: true
                             };
 
@@ -563,7 +688,7 @@ export class TokenScanJob {
                                 symbol: token.symbol,
                                 firstSeenAt: Date.now(),
                                 lastAlertAt: Date.now(),
-                                lastScore: finalScore,
+                                lastScore: combinedScore,
                                 lastPhase: 'ALERTED',
                                 storedAnalysis: JSON.stringify(mechanicalNarrative),
                                 rawSnapshot: enrichedToken
@@ -572,7 +697,7 @@ export class TokenScanJob {
                             // ⚡ FIRE ALERT & GET MSG ID
                             const alertMsgId = await this.bot.sendAlert(mechanicalNarrative, enrichedToken, scoreRes);
 
-                            await this.cooldown.recordAlert(token.mint, finalScore, 'TRACKING', token.priceUsd);
+                            await this.cooldown.recordAlert(token.mint, totalScore, 'TRACKING', token.priceUsd);
 
                             // AUTOPSY PRESERVATION
                             await this.storage.savePerformance({
@@ -631,71 +756,24 @@ ${rejectionBreakdown}
 
 
     /**
-     * RUGCHECK API INTEGRATION (FAIL-SAFE)
-     * Timeout: 3s
+     * SECURITY CHECK (GoPlus API for Base)
      */
     private async checkRugSecurity(mint: string): Promise<{ safe: boolean; reason?: string }> {
-        // RugCheck is Solana-Only
-        if (config.NETWORK !== 'solana') {
-            // Use GoPlus for Base/EVM
-            const goPlusResult = await this.goPlus.checkTokenSecurity(mint);
-            if (!goPlusResult.safe) {
-                return { safe: false, reason: `GoPlus: ${goPlusResult.reason}` };
-            }
-            return { safe: true };
-        }
-
         try {
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 3000); // 3s Hard Timeout
+            // Use GoPlus Service for Base/EVM checks
+            const isSafe = await this.goPlus.checkToken(mint, 'base');
 
-            // Use axios with signal if supported, or raw fetch (Node 18+)
-            const response = await fetch(`https://api.rugcheck.xyz/v1/tokens/${mint}/report`, {
-                signal: controller.signal
-            });
-            clearTimeout(timeout);
-
-            if (!response.ok) {
-                return { safe: false, reason: 'RugCheck API Error' };
-            }
-
-            const data: any = await response.json();
-
-            // 0. Ensure RugCheck has indexed this token
-            if (!data.tokenMeta) {
-                return { safe: false, reason: 'Token not indexed by RugCheck yet' };
-            }
-
-            // 1. Mint Authority (Must be null/renounced)
-            if (data.tokenMeta.mintAuthority) {
-                return { safe: false, reason: 'Mint Authority Not Renounced' };
-            }
-
-            // 2. Freeze Authority (Must be null)
-            if (data.tokenMeta?.freezeAuthority) {
-                return { safe: false, reason: 'Freeze Authority Enabled' };
-            }
-
-            // 3. LP Lock Check (STRICT: >= 90%)
-            const markets = data.markets || [];
-            if (markets.length === 0) {
-                return { safe: false, reason: 'No LP Market Found' };
-            }
-
-            const isLpSafe = markets.some((m: any) => {
-                const lp = m.lp || {};
-                // lpLocked or lpBurned should be >= 90%
-                return (lp.lpLocked >= 90 || lp.lpBurned >= 90);
-            });
-
-            if (!isLpSafe) {
-                return { safe: false, reason: 'LP Not Locked/Burned (< 90%)' };
+            if (!isSafe) {
+                return { safe: false, reason: 'GoPlus Security Risk (Honeypot/Mintable/Blacklist)' };
             }
 
             return { safe: true };
 
         } catch (err) {
-            return { safe: false, reason: 'RugCheck Timeout/Failed' };
+            logger.error(`[Security] Check failed: ${err}`);
+            // Fail-safe: Block if security check fails? Or allow with warning?
+            // "Your job is to protect -> Block"
+            return { safe: false, reason: 'Security Check Failed (API)' };
         }
     }
 

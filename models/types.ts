@@ -4,6 +4,7 @@ export interface TokenSnapshot {
     source: "pumpfun" | "dexscreener" | "birdeye" | "combined";
     chain?: "solana" | "base";
     mint: string;
+    pairAddress?: string; // NEW: Required for Internal API
     name: string;
     symbol: string;
     priceUsd?: number;

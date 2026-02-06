@@ -50,7 +50,7 @@ async function main() {
     await watchlist.init(); // Load cache
 
     // 2. Services
-    // const pumpFun = new PumpFunService(); // DISABLED for Base
+    const pumpFun = new PumpFunService();
     // const birdeye = new BirdeyeService(); // DISABLED
     const dexScreener = new DexScreenerService();
     const twitterService = new TwitterTrendsService();
@@ -80,7 +80,7 @@ async function main() {
 
     // 6. Job
     const job = new TokenScanJob(
-        undefined, // pumpFun disabled
+        pumpFun,
         birdeye,
         dexScreener, // INJECTED: DexScreener for M5 trending
         matcher,
@@ -95,7 +95,7 @@ async function main() {
         trendMatcher,
         alphaSearchService, // Injected
         llmService, // Injected
-        goPlusService // Injected
+        goPlusService // Injected (Base/GoPlus)
     );
 
     // 7. Performance & Dashboard
@@ -104,8 +104,8 @@ async function main() {
     // REMOVED: KeywordMonitorJob (Jeweler Mode) killed by user request.
     const dashboard = new DashboardServer(storage); // Railway auto-sets PORT env var
 
-    performanceJob.start();
-    portfolioTracker.start();
+    // performanceJob.start(); // Disabled by User Request (Autopsy Off)
+    // portfolioTracker.start(); // Disabled (Birdeye Deprecated)
     dashboard.start();
 
     // Start

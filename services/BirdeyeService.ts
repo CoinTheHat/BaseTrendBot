@@ -231,7 +231,7 @@ export class BirdeyeService {
      */
     async getTokenOverview(address: string): Promise<{ price: number, mc: number, supply: number, liquidity: number } | null> {
         try {
-            const chain = config.NETWORK || 'base'; // Default
+            const chain = 'solana'; // Default
             const response = await axios.get(`${this.baseUrl}/defi/token_overview`, {
                 headers: { ...this.headers, 'x-chain': chain },
                 params: { address }
@@ -260,7 +260,7 @@ export class BirdeyeService {
         try {
             // URL: https://public-api.birdeye.so/defi/historical_price_unix?address=...&unixtime=...
             const response = await axios.get(`${this.baseUrl}/defi/historical_price_unix`, {
-                headers: { ...this.headers, 'x-chain': config.NETWORK || 'base' },
+                headers: { ...this.headers, 'x-chain': 'base' },
                 params: {
                     address: address,
                     unixtime: unixtime
@@ -292,7 +292,7 @@ export class BirdeyeService {
         const makeRequest = async (url: string, params: any, retries = 2): Promise<any> => {
             try {
                 return await axios.get(url, {
-                    headers: { ...this.headers, 'x-chain': config.NETWORK || 'base' },
+                    headers: { ...this.headers, 'x-chain': 'solana' },
                     params
                 });
             } catch (err: any) {
