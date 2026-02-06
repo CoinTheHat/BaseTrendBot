@@ -22,7 +22,6 @@
   "type": "commonjs",
   "dependencies": {
     "ethers": "^6.10.0",
-    "@steipete/bird": "^0.4.1",
     "@types/node": "^25.0.10",
     "@types/pg": "^8.16.0",
     "axios": "^1.13.3",

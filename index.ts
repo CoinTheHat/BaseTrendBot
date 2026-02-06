@@ -1,10 +1,10 @@
 import { config } from './config/env';
 import { TokenScanJob } from './jobs/TokenScanJob';
 import { PumpFunService } from './services/PumpFunService';
-import { BirdeyeService } from './services/BirdeyeService';
+
 import { GoPlusService } from './services/GoPlusService';
 import { PerformanceMonitorJob } from './jobs/PerformanceMonitorJob';
-import { AutopsyService } from './services/AutopsyService';
+
 import { DexScreenerService } from './services/DexScreenerService';
 // import { KeywordMonitorJob } from './jobs/KeywordMonitorJob'; // Removed
 import { DashboardServer } from './web/DashboardServer';
@@ -51,7 +51,7 @@ async function main() {
 
     // 2. Services
     const pumpFun = new PumpFunService();
-    // const birdeye = new BirdeyeService(); // DISABLED
+
     const dexScreener = new DexScreenerService();
     const twitterService = new TwitterTrendsService();
     const alphaSearchService = new AlphaSearchService(); // Instantiated
@@ -73,15 +73,11 @@ async function main() {
     const bot = new ScandexBot(watchlist, trendCollector, trendMatcher);
     const twitter = new TwitterPublisher();
 
-    const birdeye = new BirdeyeService(); // Keep instance for Type compatibility in TokenScanJob for now, but ensure logic doesn't use it.
 
-    // 5. Autopsy Service (New)
-    const autopsyService = new AutopsyService(birdeye);
 
     // 6. Job
     const job = new TokenScanJob(
         pumpFun,
-        birdeye,
         dexScreener, // INJECTED: DexScreener for M5 trending
         matcher,
         scorer,
@@ -99,8 +95,8 @@ async function main() {
     );
 
     // 7. Performance & Dashboard
-    const performanceJob = new PerformanceMonitorJob(storage, dexScreener, bot, autopsyService);
-    const portfolioTracker = new PortfolioTrackerJob(storage, birdeye, autopsyService); // Autopsy Injected
+    const performanceJob = new PerformanceMonitorJob(storage, dexScreener, bot);
+    const portfolioTracker = new PortfolioTrackerJob(storage, dexScreener);
     // REMOVED: KeywordMonitorJob (Jeweler Mode) killed by user request.
     const dashboard = new DashboardServer(storage); // Railway auto-sets PORT env var
 

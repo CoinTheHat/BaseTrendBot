@@ -1,7 +1,6 @@
 import { config } from '../config/env';
 import { logger } from '../utils/Logger';
 import { PumpFunService } from '../services/PumpFunService';
-import { BirdeyeService } from '../services/BirdeyeService';
 import { Matcher } from '../core/Matcher';
 import { ScoringEngine } from '../core/ScoringEngine';
 import { PhaseDetector } from '../core/PhaseDetector';
@@ -36,7 +35,6 @@ export class TokenScanJob {
         'Low Liq Ratio': 30 * 60 * 1000,       // 30 mins
         'Twitter Fail': 15 * 60 * 1000,        // 15 mins (AI might improve with more data)
         'No Twitter Data': 20 * 60 * 1000,     // 20 mins (new token needs time)
-        'Birdeye API Fail': 5 * 60 * 1000,     // 5 mins
         'GoPlus Failed': 10 * 60 * 1000,     // 10 mins (was RugCheck)
         // Others are Permanent (null)
     };
@@ -50,7 +48,6 @@ export class TokenScanJob {
         }
         if (reason.includes('Twitter Fail')) return 15 * 60 * 1000;
         if (reason.includes('No Twitter Data')) return 20 * 60 * 1000;
-        if (reason.includes('Birdeye API Fail')) return 5 * 60 * 1000;
         if (reason.includes('GoPlus') || reason.includes('RugCheck')) return 10 * 60 * 1000;
         if (reason.includes('Low Liquidity')) return 120 * 60 * 1000; // 2 hours (liquidity can be added)
         if (reason.includes('Risk Engine') || reason.includes('Fake Pump')) return 30 * 60 * 1000; // 30 mins (spike might normalize)
@@ -97,7 +94,6 @@ export class TokenScanJob {
 
     constructor(
         private pumpFun: PumpFunService,
-        private birdeye: BirdeyeService,
         private dexScreener: DexScreenerService,
         private matcher: Matcher,
         private scorer: ScoringEngine,

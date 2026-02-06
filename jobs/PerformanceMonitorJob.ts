@@ -4,20 +4,18 @@ import { PostgresStorage } from '../storage/PostgresStorage';
 import { DexScreenerService } from '../services/DexScreenerService';
 import { ScandexBot } from '../telegram/TelegramBot';
 import { TokenPerformance } from '../models/types';
-import { AutopsyService } from '../services/AutopsyService';
+
 
 export class PerformanceMonitorJob {
     private job: CronJob;
     private isRunning: boolean = false;
-    private autopsyService: AutopsyService;
+
 
     constructor(
         private storage: PostgresStorage,
         private dexScreener: DexScreenerService,
-        private bot: ScandexBot,
-        autopsyService: AutopsyService // Injected
+        private bot: ScandexBot
     ) {
-        this.autopsyService = autopsyService;
         // Run every minute for fast reaction to dips and monitoring
         this.job = new CronJob('*/1 * * * *', () => {
             this.run();
@@ -52,34 +50,7 @@ export class PerformanceMonitorJob {
         }
     }
 
-    private async runAutopsy() {
-        // Fetch tokens finalized > 24h ago needing autopsy
-        const candidates = await this.storage.getAutopsyCandidates();
 
-        if (candidates.length === 0) return;
-
-        logger.info(`[AutopsyJob] 🔬 Performing autopsy on ${candidates.length} tokens...`);
-
-        for (const token of candidates) {
-            const entryTime = new Date(token.alertTimestamp).getTime();
-            // GAP FILLING ALGORITHM
-            const trueAth = await this.autopsyService.calculateTrueAth(token.mint, entryTime);
-
-            // Infer Market Cap from Price if supply known, otherwise just update Price
-            // Note: PostgresStorage expects MC, but calculateTrueAth returns Price.
-            // We need to convert Price back to MC using supply snapshot.
-            // Estimate Supply = AlertMC / EntryPrice
-            const supply = (token.alertMc && token.entryPrice) ? (token.alertMc / token.entryPrice) : 0;
-            const trueAthMc = supply > 0 ? trueAth * supply : 0;
-
-            if (trueAthMc > 0) {
-                await this.storage.updateTrueAth(token.mint, trueAthMc);
-            } else {
-                // If we can't calc MC, valid update to mark processed
-                await this.storage.updateTrueAth(token.mint, token.athMc);
-            }
-        }
-    }
 
     private async checkDipCandidates() {
         const candidates = await this.storage.getWaitingForDipTokens();

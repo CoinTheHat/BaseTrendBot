@@ -1,6 +1,5 @@
 import { PostgresStorage } from '../storage/PostgresStorage';
-import { BirdeyeService } from '../services/BirdeyeService';
-import { AutopsyService } from '../services/AutopsyService';
+import { DexScreenerService } from '../services/DexScreenerService';
 import { logger } from '../utils/Logger';
 import { TokenPerformance } from '../models/types';
 
@@ -11,8 +10,7 @@ export class PortfolioTrackerJob {
 
     constructor(
         private storage: PostgresStorage,
-        private birdeye: BirdeyeService,
-        private autopsyService: AutopsyService
+        private dexScreener: DexScreenerService
     ) { }
 
     start() {
@@ -56,56 +54,48 @@ export class PortfolioTrackerJob {
                     const age = now - foundAt;
 
                     // 1. SILENCE CHECK
-                    // If token is younger than 24 hours, do NOTHING.
-                    // The user wants ZERO unnecessary API calls.
-                    // The "Gap Filling" autopsy at 24h will look back and find high prices anyway.
                     if (age < this.MATURITY_AGE_MS) {
                         skipped++;
                         continue;
                     }
 
-                    // 2. MATURITY REACHED (>24h) -> EXECUTE AUTOPSY
-                    // logger.info(`[Portfolio] 🏁 Finalizing ${token.symbol} (Age: ${(age/3600000).toFixed(1)}h)...`);
+                    // 2. MATURITY REACHED (>24h) -> FINALIZE
 
-                    // A. Gap Filling (Capture Hidden Wicks)
-                    const trueAthPrice = await this.autopsyService.calculateTrueAth(token.mint, foundAt);
+                    // A. Gap Filling REMOVED (Relies on Live Tracking now)
+                    // The "True ATH" is whatever biggest number we saw while tracking.
+                    const trueAthMc = token.athMc;
 
                     // B. Current Stats (Snapshot for closing)
-                    const overview = await this.birdeye.getTokenOverview(token.mint);
-                    const currentMc = overview?.mc || 0;
+                    // Use DexScreener
+                    const pairs = await this.dexScreener.getTokens([token.mint]);
+                    const pair = pairs && pairs.length > 0 ? pairs[0] : null;
+                    const currentMc = pair && pair.marketCapUsd ? pair.marketCapUsd : 0;
 
                     // C. Calculate Final Metrics
                     const entryMc = token.alertMc || 1;
-                    const supply = (token.alertMc && token.entryPrice) ? (token.alertMc / token.entryPrice) : 0;
-                    const trueAthMc = supply > 0 ? trueAthPrice * supply : 0;
-
-                    // Logic: Uses the maximum of tracked ATH or True ATH
-                    // (Postgres 'athMc' might be 0 if we never tracked it)
-                    const finalAthMc = Math.max(token.athMc, trueAthMc);
 
                     // D. Determine Verdict
                     const multiple = trueAthMc / entryMc; // Judge by ATH
                     let status: TokenPerformance['status'] = 'FINALIZED';
 
                     if (multiple >= 2.0) status = 'MOONED';
-                    else if (multiple <= 0.5) status = 'FAILED'; // Strict failure 
-                    // Note: User might want 'RUGGED' but 'FAILED' is safe default if rug isn't confirmed.
-                    // If currentMc is near zero, maybe RUGGED.
+                    else if (multiple <= 0.5) status = 'FAILED';
+
                     if (currentMc < (entryMc * 0.1)) status = 'RUGGED';
 
                     // E. Save & Archive
                     await this.storage.updatePerformance({
                         ...token,
                         currentMc,
-                        athMc: finalAthMc,
-                        status: status // This updates status to MOONED/FAILED/RUGGED
+                        athMc: trueAthMc,
+                        status: status
                     });
 
                     // Move to Archive to stop tracking
                     await this.storage.archiveToken(token.mint);
 
                     finalized++;
-                    logger.info(`[Portfolio] ✅ Finalized ${token.symbol}: ${status} (ATH: $${(finalAthMc / 1000).toFixed(1)}k, ${multiple.toFixed(1)}x)`);
+                    logger.info(`[Portfolio] ✅ Finalized ${token.symbol}: ${status} (ATH: $${(trueAthMc / 1000).toFixed(1)}k, ${multiple.toFixed(1)}x)`);
 
                     // Rate Limit Kindness
                     await new Promise(r => setTimeout(r, 200));
