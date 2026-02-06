@@ -391,17 +391,9 @@ export class TokenScanJob {
                         // GATE C: Age Filter (The "Golden Window")
                         // USER REQUEST: Min Age 20 mins
                         if (ageMins < 20) {
-                            // logger.debug(`[Gate] 👶 Too Young: ${token.symbol} (${ageMins}m)`);
                             gateCount++;
                             handleRejection(token, 'Too Young (<20m)');
                             logger.info(`[REJECT] ${token.symbol} -> Too Young (${ageMins}m)`);
-                            return;
-                        }
-                        if (ageMins > 10080) { // 1 Week (168 Hours)
-                            // logger.debug(`[Gate] 👴 Too Old: ${token.symbol} (${ageMins}m)`);
-                            gateCount++;
-                            handleRejection(token, 'Too Old (>168h)');
-                            logger.info(`[REJECT] ${token.symbol} -> Too Old (${(ageMins / 60).toFixed(1)}h)`);
                             return;
                         }
 
@@ -412,23 +404,36 @@ export class TokenScanJob {
                         const scoreRes = this.scorer.score(enrichedToken, matchResult);
                         let { totalScore, phase } = scoreRes;
 
-                        // --- AGE PENALTY SYSTEM (Graduated) ---
-                        // 24h-48h: -10 pts
-                        // 48h-96h: -20 pts
-                        // 96h-168h: -30 pts
-                        let agePenalty = 0;
-                        if (ageMins >= 1440 && ageMins < 2880) {
-                            agePenalty = 10;
-                        } else if (ageMins >= 2880 && ageMins < 5760) {
-                            agePenalty = 20;
-                        } else if (ageMins >= 5760) {
-                            agePenalty = 30; // 4-7 days
+                        // --- AGE SCORE ADJUSTMENTS (User Requested) ---
+                        // 0 - 4 Hours: +10 Points (Reward)
+                        // 24 - 48 Hours: -5 Points
+                        // 48 - 96 Hours: -10 Points
+                        // 96 - 168 Hours: -15 Points
+                        // > 168 Hours (7 Days): -30 Points (No Rejection anymore)
+
+                        let ageAdjustment = 0;
+                        const hours = ageMins / 60;
+
+                        if (hours <= 4) {
+                            ageAdjustment = 10; // Reward
+                        } else if (hours >= 24 && hours < 48) {
+                            ageAdjustment = -5;
+                        } else if (hours >= 48 && hours < 96) {
+                            ageAdjustment = -10;
+                        } else if (hours >= 96 && hours < 168) {
+                            ageAdjustment = -15;
+                        } else if (hours >= 168) {
+                            ageAdjustment = -30;
                         }
 
-                        if (agePenalty > 0) {
-                            const originalScore = totalScore;
-                            totalScore = Math.max(0, totalScore - agePenalty);
-                            logger.info(`[Age Penalty] ${token.symbol}: ${originalScore} -> ${totalScore} (-${agePenalty} pts due to Age ${(ageMins / 60).toFixed(1)}h)`);
+                        const originalScore = totalScore;
+                        totalScore += ageAdjustment;
+                        // Clamp score to reasonable bounds (0 to 130 theoretically)
+                        if (totalScore < 0) totalScore = 0;
+
+                        if (ageAdjustment !== 0) {
+                            const sign = ageAdjustment > 0 ? '+' : '';
+                            logger.info(`[Age Adjust] ${token.symbol}: ${originalScore} -> ${totalScore} (${sign}${ageAdjustment} pts, Age: ${hours.toFixed(1)}h)`);
                         }
 
                         // REJECTION CHECK
