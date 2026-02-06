@@ -40,16 +40,26 @@ export class TokenScanJob {
 
     private getTTL(reason: string, token: TokenSnapshot): number | null {
         // TEMPORARY BLOCKS (Will Retry)
-        if (reason.includes('Too Young')) return 10 * 60 * 1000;  // 10 mins
-        if (reason.includes('Weak Score')) return 30 * 60 * 1000; // 30 mins
-        if (reason.includes('Low Liq Ratio') && !reason.includes('Extreme') && !reason.includes('<5%')) {
-            return 60 * 60 * 1000; // 1 hour (liquidity might improve)
+
+        // 1. DYNAMIC TTL: Too Young (<20m)
+        // Goal: Wake up exactly 1 min after it turns 20m.
+        if (reason.includes('Too Young')) {
+            const ageMins = token.createdAt ? Math.floor((Date.now() - token.createdAt.getTime()) / 60000) : 0;
+            const gap = 20 - ageMins;
+            const waitMins = Math.max(1, gap + 1); // Min 1 min wait
+            return waitMins * 60 * 1000;
         }
-        if (reason.includes('Twitter Fail')) return 15 * 60 * 1000;
-        if (reason.includes('No Twitter Data')) return 20 * 60 * 1000;
-        if (reason.includes('GoPlus') || reason.includes('RugCheck')) return 10 * 60 * 1000;
-        if (reason.includes('Low Liquidity')) return 120 * 60 * 1000; // 2 hours (liquidity can be added)
-        if (reason.includes('Risk Engine') || reason.includes('Fake Pump')) return 30 * 60 * 1000; // 30 mins (spike might normalize)
+
+        if (reason.includes('Weak Score')) return 3 * 60 * 1000; // 3 mins (Market fast)
+        if (reason.includes('Low Liquidity')) return 5 * 60 * 1000; // 5 mins
+        if (reason.includes('Risk Engine') || reason.includes('Fake Pump')) return 15 * 60 * 1000; // 15 mins
+
+        if (reason.includes('Low Liq Ratio') && !reason.includes('Extreme') && !reason.includes('<5%')) {
+            return 30 * 60 * 1000; // 30 mins
+        }
+        if (reason.includes('Twitter Fail')) return 5 * 60 * 1000;
+        if (reason.includes('No Twitter Data')) return 5 * 60 * 1000;
+        if (reason.includes('GoPlus') || reason.includes('RugCheck')) return 5 * 60 * 1000;
 
         // SMART RETRY: Bot Risk (Holders < 50)
         // If the token is NEW (< 2 hours), give it 30 mins to grow community
@@ -586,8 +596,9 @@ export class TokenScanJob {
                             tweets = alphaResult.tweets || [];
 
                             if (tweets.length === 0) {
-                                logger.warn(`[Twitter AI] ${token.symbol}: No tweets found. Proceeding without social data.`);
-                                aiReasoning = 'No social presence detected';
+                                logger.info(`[Twitter AI] ${token.symbol}: No tweets found. Applying Neutral Base Score (+35).`);
+                                aiReasoning = 'No social presence detected - Neutral Score applied';
+                                twitterScore = 35; // Neutral Base Score
                             } else {
                                 // AI Vibe Scoring (-100 to +100)
                                 const aiScore = await this.llmService.scoreTwitterSentiment(enrichedToken, tweets);
@@ -608,8 +619,9 @@ export class TokenScanJob {
                                         logger.warn(`[Twitter AI] ${token.symbol} Red Flags: ${aiScore.redFlags.join(', ')}`);
                                     }
                                 } else {
-                                    logger.warn(`[Twitter AI] ${token.symbol}: Analysis failed.`);
-                                    aiReasoning = 'AI unavailable';
+                                    logger.warn(`[Twitter AI] ${token.symbol}: Analysis failed. Applying Neutral Base Score (+35).`);
+                                    aiReasoning = 'AI unavailable - Neutral Score applied';
+                                    twitterScore = 35; // Neutral Base Score
                                 }
                             }
 
