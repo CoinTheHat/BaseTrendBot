@@ -161,7 +161,8 @@ export class DexScreenerService {
         holderCount: number;
         top10Percent: number;
         security: { isMintable: boolean; isFreezable: boolean };
-        liquidity: { burnedPercent: number; locks: any[] };
+        liquidity: { burnedPercent: number; totalLockedPercent: number; locks: any[] };
+        isCTO: boolean;
     } | null> {
         let page: any = null;
         try {
@@ -179,6 +180,9 @@ export class DexScreenerService {
             try {
                 const json = JSON.parse(content);
                 const baseToken = json.baseToken || {};
+                // Note: ta (token authority) for Base/EVM is often under 'ethereum' or 'evm' key in their internal API
+                // but baseToken usually has the direct flags.
+                const tokenAuth = json.ta?.ethereum || json.ta?.solana || {};
 
                 // Calculate Top 10 Percent manually
                 const holdersList = json.holders?.holders || [];
@@ -187,17 +191,23 @@ export class DexScreenerService {
                     .slice(0, 10)
                     .reduce((acc: number, curr: any) => acc + (parseFloat(curr.percentage) || 0), 0);
 
+                const locks = json.ll?.locks || [];
+                const burnedPercent = json.ll?.burned || 0;
+                const totalLockedPercent = (json.ll?.totalPercentage || 0);
+
                 return {
                     holderCount: json.holders?.count !== undefined ? json.holders.count : 0,
                     top10Percent: top10PercentResult,
                     security: {
-                        isMintable: !!baseToken?.mintAuthority,
-                        isFreezable: !!baseToken?.freezeAuthority
+                        isMintable: !!tokenAuth.isMintable || !!baseToken.mintAuthority,
+                        isFreezable: !!tokenAuth.isFreezable || !!baseToken.freezeAuthority
                     },
                     liquidity: {
-                        burnedPercent: json.liquidity?.burned || 0,
-                        locks: json.liquidity?.locks || []
-                    }
+                        burnedPercent: burnedPercent,
+                        totalLockedPercent: totalLockedPercent,
+                        locks: locks
+                    },
+                    isCTO: (json.cms?.claims?.length || 0) > 1
                 };
 
             } catch (parseErr) {

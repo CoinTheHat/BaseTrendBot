@@ -476,30 +476,57 @@ export class TokenScanJob {
                                         holderSource = 'DexInternal';
                                     }
 
-                                    // 2. Security Flags
+                                    // 2. Security Flags (HARD REJECT if Mintable)
                                     isMintable = dexData.security.isMintable;
                                     isFreezable = dexData.security.isFreezable;
 
-                                    // 3. Liquidity Data
-                                    burnedLiquidity = dexData.liquidity.burnedPercent;
+                                    if (isMintable) {
+                                        logger.warn(`[Gate] ⛔ HARD REJECT: ${token.symbol} is MINTABLE!`);
+                                        gateCount++;
+                                        handleRejection(token, 'MINTABLE (Hard Reject)');
+                                        return;
+                                    }
 
-                                    logger.info(`[DexInternal] 🟢 ${token.symbol}: ${holderCount} Holders, Top10: ${top10Percent.toFixed(1)}%, Mint:${isMintable}, Burned:${burnedLiquidity}%`);
+                                    // 3. Liquidity Data & Scoring
+                                    burnedLiquidity = dexData.liquidity.burnedPercent;
+                                    const totalLocked = dexData.liquidity.totalLockedPercent;
+
+                                    // Scoring LP Status
+                                    if (burnedLiquidity === 100) {
+                                        totalScore += 15;
+                                        logger.info(`[Scoring] 🔥 ${token.symbol}: LP Burned (100%) -> +15 pts`);
+                                    } else if (totalLocked >= 90) {
+                                        totalScore += 10;
+                                        logger.info(`[Scoring] 🔒 ${token.symbol}: LP Locked (${totalLocked.toFixed(1)}%) -> +10 pts`);
+                                    } else {
+                                        totalScore -= 10;
+                                        logger.info(`[Scoring] ⚠️ ${token.symbol}: LP Open/Low Lock -> -10 pts`);
+                                    }
+
+                                    // 4. Whale Check (Top 10)
+                                    if (top10Percent > 50) {
+                                        totalScore -= 15;
+                                        logger.info(`[Scoring] 🐋 ${token.symbol}: Top 10 Concentrated (${top10Percent.toFixed(1)}%) -> -15 pts`);
+                                    } else if (top10Percent < 30) {
+                                        totalScore += 10;
+                                        logger.info(`[Scoring] 🌊 ${token.symbol}: Top 10 Distributed (${top10Percent.toFixed(1)}%) -> +10 pts`);
+                                    }
+
+                                    // 5. CTO Detection
+                                    if (dexData.isCTO) {
+                                        totalScore += 5;
+                                        logger.info(`[Scoring] 🤝 ${token.symbol}: CTO Detected -> +5 pts`);
+                                    }
+
+                                    logger.info(`[DexInternal] 🟢 ${token.symbol}: ${holderCount} Holders, Top10: ${top10Percent.toFixed(1)}%, Burned:${burnedLiquidity}%`);
                                 }
                             }
-
-                            // FALLBACK: If internal API failed to return holders, try activity estimation? 
-                            // User said "DexScreener is enough", so we trust it. 
-                            // If it's missing, it's missing.
-
                         } catch (err: any) {
                             logger.error(`[HolderVerify] Critical Error: ${err.message}`);
                         }
 
-                        // --- GATE D: SECURITY CHECKS (Unified) ---
-                        // 1. Mintable / Freezable Check
-                        // DexScreener gives us some flags. GoPlus gives us more.
-                        // We run comprehensive GoPlus check here or earlier?
-                        // Let's run GoPlus now for filtering.
+                        // --- GATE D: SECURITY CHECKS (Unified GoPlus) ---
+                        // Re-running GoPlus for Honeypot & Open Source checks specifically
                         const security = await this.checkRugSecurity(token.mint);
                         if (!security.safe) {
                             gateCount++;
@@ -508,15 +535,9 @@ export class TokenScanJob {
                             return;
                         }
 
-                        // 2. Rug Check (Burned Liquidity) - Replaces Ownership Check
-                        // DexScreener liquidity data fallback
-                        if (burnedLiquidity < 80 && burnedLiquidity > 0) { // If 0, might be unknown. If > 0 but < 80, risky.
-                            logger.warn(`[Gate] 🔓 Low Burned Liquidity: ${token.symbol} (${burnedLiquidity}%)`);
-                            // gateCount++; // Soft warn for now
-                        }
-
                         enrichedToken.holderCount = holderCount;
                         enrichedToken.top10HoldersSupply = top10Percent;
+                        enrichedToken.isMintable = isMintable;
 
                         // Tag source for debugging
                         logger.info(`[HolderVerify] Source: ${holderSource} | Count: ${holderCount}`);

@@ -26,8 +26,13 @@ export interface TokenSnapshot {
     devWalletConcentration?: number; // %
     holderCount?: number; // NEW: Total holders
     top10HoldersSupply?: number; // %
-    mintAuthority?: boolean; // true if mint is open
+    mintAuthority?: boolean; // Deprecated but mapping to isMintable
+    isMintable?: boolean;
+    isFreezable?: boolean;
     lpLocked?: boolean;
+    lpBurned?: boolean;
+    lpLockedPercent?: number;
+    isCTO?: boolean;
     links: {
         dexScreener?: string;
         pumpfun?: string;
