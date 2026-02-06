@@ -107,8 +107,8 @@ export class DexScreenerService {
         try {
             logger.info(`[DexScreener] Scraping M5 trending pairs via Persistent Browser...`);
 
-            // 1. Get pair addresses using Playwright (Target: 150 to ensure 100 valid)
-            const pairAddresses = await this.scrapePairAddresses(150);
+            // 1. Get pair addresses using Playwright (Target: 250 to ensure 100+ valid)
+            const pairAddresses = await this.scrapePairAddresses(250);
 
             if (pairAddresses.length === 0) {
                 logger.warn(`[DexScreener] Found 0 pairs via scraping. Falling back to search...`);
@@ -392,6 +392,25 @@ export class DexScreenerService {
         };
     }
 
+    /**
+     * Fetch a specific pair by its address using the public API.
+     * Suggested by user for Base lookups.
+     */
+    async getPairByAddress(pairAddress: string): Promise<TokenSnapshot | null> {
+        try {
+            const url = `${this.apiUrl}/pairs/base/${pairAddress}`;
+            const data = await this.makeRequest(url);
+            if (!data?.pairs?.[0]) return null;
+            return this.normalizePair(data.pairs[0]);
+        } catch (err) {
+            logger.error(`[DexScreener] Failed to fetch pair ${pairAddress}: ${err}`);
+            return null;
+        }
+    }
+
+    /**
+     * Chunk array for bulk API calls.
+     */
     private chunkArray(arr: string[], size: number): string[][] {
         const res: string[][] = [];
         for (let i = 0; i < arr.length; i += size) {

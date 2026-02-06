@@ -20,6 +20,7 @@ export const config = {
     ENABLE_TWITTER_SCRAPING: process.env.ENABLE_TWITTER_SCRAPING === 'true',
     TWITTER_SCRAPE_MAX_TWEETS: Number(process.env.TWITTER_SCRAPE_MAX_TWEETS) || 10,
     TWITTER_AUTH_TOKEN: process.env.TWITTER_AUTH_TOKEN || '',
+    TWITTER_CT0: process.env.TWITTER_CT0 || '',
 
     // Cookie-Based Auth Pool (New System)
     TWITTER_AUTH_TOKENS: (process.env.TWITTER_AUTH_TOKENS || '').split(',').map(t => t.trim()).filter(t => t),

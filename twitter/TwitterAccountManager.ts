@@ -93,7 +93,43 @@ export class TwitterAccountManager {
             }
         });
 
-        // 3. Last Resort: Removed.
+        // 3. Last Resort: Single Legacy Token (or Misconfigured List in Singular Var)
+        if (foundAccounts.length === 0 && config.TWITTER_AUTH_TOKEN) {
+            if (config.TWITTER_AUTH_TOKEN.includes(',')) {
+                const legacyTokens = config.TWITTER_AUTH_TOKEN.split(',').map(t => t.trim()).filter(t => t);
+                const legacyCt0s = (config.TWITTER_CT0 || '').split(',').map(t => t.trim()).filter(t => t);
+
+                const count = Math.min(legacyTokens.length, legacyCt0s.length);
+                for (let i = 0; i < count; i++) {
+                    foundAccounts.push({
+                        authToken: legacyTokens[i],
+                        ct0: legacyCt0s[i],
+                        index: i,
+                        userAgent: USER_AGENTS[i % USER_AGENTS.length],
+                        proxy: proxies[i] || undefined,
+                        isBusy: false,
+                        lastBusyStart: 0,
+                        cooldownUntil: 0,
+                        searchCount: 0,
+                        lastWarmup: 0
+                    });
+                }
+                logger.info(`[TwitterManager] Detected ${count} accounts in generic TWITTER_AUTH_TOKEN variable.`);
+            } else {
+                foundAccounts.push({
+                    authToken: config.TWITTER_AUTH_TOKEN,
+                    ct0: config.TWITTER_CT0 || '',
+                    index: 0,
+                    userAgent: USER_AGENTS[0],
+                    proxy: undefined,
+                    isBusy: false,
+                    lastBusyStart: 0,
+                    cooldownUntil: 0,
+                    searchCount: 0,
+                    lastWarmup: 0
+                });
+            }
+        }
 
         this.accounts = foundAccounts;
         logger.info(`[TwitterManager] Loaded ${this.accounts.length} accounts (Legacy: ${legacyCount}, Dynamic: ${dynamicCount}).`);

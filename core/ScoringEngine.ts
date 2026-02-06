@@ -89,8 +89,8 @@ export class ScoringEngine {
             totalScore += 10;
             breakdown.push({ factor: 'Liquidity Safety', points: 10, details: `🔒 LP Locked (${token.lpLockedPercent.toFixed(1)}%)` });
         } else {
-            totalScore -= 10;
-            breakdown.push({ factor: 'Liquidity Safety', points: -10, details: '⚠️ LP Open / Low Lock' });
+            totalScore += 0;
+            breakdown.push({ factor: 'Liquidity Safety', points: 0, details: '⚠️ LP Open / Unknown' });
         }
 
         // B. Healthy Floor Check (Ratio)

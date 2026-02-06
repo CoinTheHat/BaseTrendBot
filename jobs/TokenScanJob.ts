@@ -248,33 +248,29 @@ export class TokenScanJob {
                 if (cacheData) {
                     const isExpired = cacheData.blockedUntil && cacheData.blockedUntil < now;
 
-                    // ⬇️ HER TOKEN İÇİN LOG - User Requested Debug
-                    logger.debug(`[Cache] ${token.symbol}: blocked=${cacheData.blockedUntil}, now=${now}, expired=${isExpired}`);
-
                     if (isExpired) {
                         logger.info(`[Cache] ✅ ${token.symbol} EXPIRED! (Reason: ${cacheData.reason})`);
                         retryCount++;
                         this.processedCache.delete(token.mint);
-                        // Fall through to processed below
                     } else {
-                        // Still blocked (Permanent or TTL future)
                         cachedCount++;
                         continue;
                     }
                 }
 
-                // If we are here, token is either fresh OR retired/expired from cache
                 freshCandidates.push(token);
             }
 
             logger.info(`[Cache] 🔄 Filtered ${cachedCount} seen tokens. Retrying ${retryCount} expired tokens.`);
 
-            if (freshCandidates.length === 0) {
-                logger.info(`[Scan] ⚠️ No fresh candidates to process. Next cycle in 120s.`);
+            const candidatesToProcess = freshCandidates.slice(0, 100);
+
+            if (candidatesToProcess.length === 0) {
+                logger.info(`[Scan] ⚠️ No fresh candidates to process.`);
                 return;
             }
 
-            logger.info(`[Job] 🔍 Processing ${freshCandidates.length} candidates...`);
+            logger.info(`[Job] 🔍 Processing ${candidatesToProcess.length} candidates...`);
 
             // Scan Statistics
             let gateCount = 0; // Hard Rejects (Liq, Fake Pump)
@@ -304,7 +300,7 @@ export class TokenScanJob {
             };
 
             // Process in chunks
-            const chunks = this.chunkArray(freshCandidates, 2);
+            const chunks = this.chunkArray(candidatesToProcess, 2);
 
             for (const chunk of chunks) {
                 await Promise.all(chunk.map(async (token, i) => {
