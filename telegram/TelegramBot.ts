@@ -45,7 +45,7 @@ export class ScandexBot {
         if (!this.bot) return;
 
         this.bot.onText(/\/start/, (msg) => {
-            this.bot?.sendMessage(msg.chat.id, `🛸 **SCANDEX ONLINE** 🛸\n\nWatching Solana for memetic anomalies.\nChat ID: \`${msg.chat.id}\``, { parse_mode: 'Markdown' });
+            this.bot?.sendMessage(msg.chat.id, `🛸 **SCANDEX ONLINE** 🛸\n\nWatching Base Network for memetic anomalies.\nChat ID: \`${msg.chat.id}\``, { parse_mode: 'Markdown' });
         });
 
         // Current Trends
@@ -92,7 +92,7 @@ export class ScandexBot {
 
             // 4. Send Result (Filtered)
             if (matches.length === 0) {
-                this.bot?.sendMessage(msg.chat.id, "📉 **Şu an Twitter trendlerine uyan bir Solana tokenı bulunamadı.**\nSistem taramaya devam ediyor...");
+                this.bot?.sendMessage(msg.chat.id, "📉 **Şu an Twitter trendlerine uyan bir Base tokenı bulunamadı.**\nSistem taramaya devam ediyor...");
                 return;
             }
 
@@ -297,7 +297,7 @@ Güven Skoru: **${narrative.twitterStory.trustScore ?? 50}/100** (${(narrative.t
             message += `\n🔴 **CENTRALIZED SUPPLY (Top 10 > %${token.top10HoldersSupply.toFixed(1)})**`;
         }
 
-        message += `\n\n[DexScreener](${token.links.dexScreener}) | [Pump.fun](${token.links.pumpfun}) | [Birdeye](${token.links.birdeye || '#'})
+        message += `\n\n[DexScreener](${token.links.dexScreener}) | [Birdeye](${token.links.birdeye || '#'})
 
 ⚠ _Yatırım Tavsiyesi Değildir._`;
 
@@ -332,7 +332,7 @@ Correction target hit! Price pulled back from 5m pump.
 **Current MC:** $${Math.floor(token.currentMc).toLocaleString()}
 **CA:** \`${token.mint}\`
 
-[DexScreener](https://dexscreener.com/solana/${token.mint})
+[DexScreener](https://dexscreener.com/base/${token.mint})
 
 ⚠️ _This entry is based on a momentum pullback strategy._`;
 

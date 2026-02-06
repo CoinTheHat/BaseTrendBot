@@ -4,55 +4,38 @@ import { logger } from '../utils/Logger';
 export class GoPlusService {
     private baseUrl = 'https://api.gopluslabs.io/api/v1';
 
-    async checkToken(address: string, chain: 'solana' | 'base'): Promise<boolean> {
+    async checkToken(address: string): Promise<boolean> {
         try {
-            let url = '';
-
-            if (chain === 'solana') {
-                url = `${this.baseUrl}/solana/token_security?contract_addresses=${address}`;
-            } else {
-                // Base chainId is 8453
-                url = `${this.baseUrl}/token_security/8453?contract_addresses=${address}`;
-            }
-
+            // Base chainId is 8453
+            const url = `${this.baseUrl}/token_security/8453?contract_addresses=${address}`;
             const response = await axios.get(url, { timeout: 10000 });
             const data = response.data?.result?.[address];
 
             if (!data) {
-                // If checking failed (API error or empty), default to SAFE (TRUE) to avoid blocking fresh tokens.
-                // User requirement: "No GoPlus data - Proceeding with caution"
-                logger.warn(`[GoPlus] No data for ${address} on ${chain}. Proceeding with caution (Assume SAFE).`);
+                logger.warn(`[GoPlus] No data for ${address}. Proceeding with caution (Assume SAFE).`);
                 return true;
             }
 
             // CHECK FLAGS
-            // 1. Open Source (0 = Not, 1 = Yes)
             if (data.is_open_source === '0') {
                 logger.warn(`[GoPlus] 🚨 ${address} is NOT Open Source. REJECTED.`);
                 return false;
             }
 
-            // 2. Honeypot (1 = Yes)
             if (data.is_honeypot === '1') {
                 logger.warn(`[GoPlus] 🚨 ${address} is HONEYPOT. REJECTED.`);
                 return false;
             }
 
-            // 3. Mintable (1 = Yes, but check for renounced)
-            // For EVM, mintable isn't always instant reject (e.g. USDC), but for memes it is.
-            // GoPlus Base: `is_mintable` (0/1)
             if (data.is_mintable === '1') {
                 logger.warn(`[GoPlus] 🚨 ${address} is MINTABLE. REJECTED.`);
                 return false;
             }
 
-            // If passed all checks
             return true;
 
         } catch (error: any) {
             logger.error(`[GoPlus] API Error checking ${address}: ${error.message}`);
-            // Fail safe: If API errors, do we block?
-            // "Your job is to protect ... REJECT IT." -> Block on error.
             return false;
         }
     }

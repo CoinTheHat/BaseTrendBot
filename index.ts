@@ -1,6 +1,5 @@
 import { config } from './config/env';
 import { TokenScanJob } from './jobs/TokenScanJob';
-import { PumpFunService } from './services/PumpFunService';
 
 import { GoPlusService } from './services/GoPlusService';
 import { PerformanceMonitorJob } from './jobs/PerformanceMonitorJob';
@@ -50,8 +49,6 @@ async function main() {
     await watchlist.init(); // Load cache
 
     // 2. Services
-    const pumpFun = new PumpFunService();
-
     const dexScreener = new DexScreenerService();
     const twitterService = new TwitterTrendsService();
     const alphaSearchService = new AlphaSearchService(); // Instantiated
@@ -77,7 +74,6 @@ async function main() {
 
     // 6. Job
     const job = new TokenScanJob(
-        pumpFun,
         dexScreener, // INJECTED: DexScreener for M5 trending
         matcher,
         scorer,
@@ -106,7 +102,7 @@ async function main() {
 
     // Start
     job.start();
-    await bot.notifyAdmin("🚀 **TRENDBOT V3 (Premium Sniper)**\nSistem Başlatıldı:\n- Trending V3 Scanner: 🟢\n- Autopsy (Gap Filling): 🟢\n- Portfolio Tracker (30m): 🟢");
+    await bot.notifyAdmin("🚀 **TRENDBOT V3 (BASE ONLY)**\nSistem Başlatıldı:\n- Trending V3 Scanner: 🟢\n- Autopsy (Gap Filling): 🟢\n- Portfolio Tracker (30m): 🟢");
     logger.info('✅ TrendBot Systems Operational. Scanning V3 Trending...');
 
     // Graceful Shutdown

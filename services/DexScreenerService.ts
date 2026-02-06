@@ -3,6 +3,7 @@ import { chromium } from 'playwright-extra';
 import { Browser, BrowserContext } from 'playwright';
 import stealth from 'puppeteer-extra-plugin-stealth';
 import { logger } from '../utils/Logger';
+import { config } from '../config/env';
 import { TokenSnapshot } from '../models/types';
 import * as dotenv from 'dotenv';
 import path from 'path';
@@ -111,7 +112,7 @@ export class DexScreenerService {
 
             if (pairAddresses.length === 0) {
                 logger.warn(`[DexScreener] Found 0 pairs via scraping. Falling back to search...`);
-                return (await this.search("base")).slice(0, 100);
+                return (await this.search(config.NETWORK)).slice(0, 100);
             }
 
             logger.info(`[DexScreener] Found ${pairAddresses.length} pairs. Fetching full data via API...`);
@@ -122,7 +123,7 @@ export class DexScreenerService {
 
             for (const chunk of chunks) {
                 try {
-                    const url = `${this.apiUrl}/pairs/base/${chunk.join(',')}`;
+                    const url = `${this.apiUrl}/pairs/${config.NETWORK}/${chunk.join(',')}`;
                     const data = await this.makeRequest(url);
                     const pairs = data?.pairs || [];
 
@@ -170,7 +171,7 @@ export class DexScreenerService {
             page = await context.newPage();
 
             // Aggressive Timeout for Speed
-            await page.goto(`https://io.dexscreener.com/dex/pair-details/v4/base/${pairAddress}`, {
+            await page.goto(`https://io.dexscreener.com/dex/pair-details/v4/${config.NETWORK}/${pairAddress}`, {
                 waitUntil: 'domcontentloaded',
                 timeout: 15000
             });
@@ -231,7 +232,7 @@ export class DexScreenerService {
             const context = await this.getBrowserContext();
             page = await context.newPage();
 
-            const url = 'https://dexscreener.com/base?rankBy=trendingScoreM5&order=desc';
+            const url = `https://dexscreener.com/${config.NETWORK}?rankBy=trendingScoreM5&order=desc`;
             await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
             let tokens = new Set<string>();
@@ -241,19 +242,20 @@ export class DexScreenerService {
 
             // Initial wait for content
             try {
-                await page.waitForSelector('a[href^="/base/"]', { timeout: 10000 });
+                await page.waitForSelector(`a[href^="/${config.NETWORK}/"]`, { timeout: 10000 });
             } catch (e) {
                 logger.warn('[DexScreener] Timeout waiting for initial list.');
             }
 
             while (tokens.size < limit && scrollAttempts < maxScrolls) {
                 // Collect visible tokens first
-                const newTokens = await page.$$eval('a[href*="/base/"]', (links: any[]) =>
+                const newTokens = await page.$$eval(`a[href*="/${config.NETWORK}/"]`, (links: any[], net: string) =>
                     links.map(link => {
                         const href = link.getAttribute('href');
-                        const match = href?.match(/\/base\/([A-Za-z0-9]+)/);
+                        const regex = new RegExp(`\\/${net}\\/([A-Za-z0-9]+)`);
+                        const match = href?.match(regex);
                         return match ? match[1] : null;
-                    }).filter(Boolean)
+                    }).filter(Boolean), config.NETWORK
                 );
 
                 const prevSize = tokens.size;
@@ -359,6 +361,8 @@ export class DexScreenerService {
     private normalizePair(pair: any): TokenSnapshot | null {
         if (pair?.chainId !== 'base') return null;
         const tokenAddress = pair.baseToken?.address || '';
+
+        // Solana addresses don't start with 0x (usually 32-44 bytes base58)
         if (!tokenAddress.startsWith('0x')) return null;
 
         return {
@@ -379,9 +383,10 @@ export class DexScreenerService {
             txs5m: { buys: pair.txns?.m5?.buys || 0, sells: pair.txns?.m5?.sells || 0 },
             createdAt: pair.pairCreatedAt ? new Date(pair.pairCreatedAt) : undefined,
             updatedAt: new Date(),
+            lpBurned: pair.liquidity?.burned === 100, // Some API versions have this
+            lpLockedPercent: pair.liquidity?.totalPercentage || 0,
             links: {
                 dexScreener: pair.url,
-                pumpfun: pair.url?.includes('pump') ? pair.url : `https://pump.fun/${tokenAddress}`,
                 birdeye: `https://birdeye.so/token/${tokenAddress}?chain=base`
             }
         };

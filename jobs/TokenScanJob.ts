@@ -1,6 +1,5 @@
 import { config } from '../config/env';
 import { logger } from '../utils/Logger';
-import { PumpFunService } from '../services/PumpFunService';
 import { Matcher } from '../core/Matcher';
 import { ScoringEngine } from '../core/ScoringEngine';
 import { PhaseDetector } from '../core/PhaseDetector';
@@ -93,7 +92,6 @@ export class TokenScanJob {
     }
 
     constructor(
-        private pumpFun: PumpFunService,
         private dexScreener: DexScreenerService,
         private matcher: Matcher,
         private scorer: ScoringEngine,
@@ -224,15 +222,15 @@ export class TokenScanJob {
         try {
             logger.info('[Job] 🔍 Starting DexScreener Scan...');
 
-            // 1. Fetch Candidates (DexScreener only for speed/cost)
-            const dexTokens = await this.dexScreener.getLatestPairs();
+            // 1. Fetch Candidates (DexScreener Trending M5)
+            const candidates = await this.dexScreener.getLatestPairs();
 
             // 3. Merge & Deduplicate (Ensure uniqueness by Mint Address)
             const uniqueTokens = Array.from(
-                new Map(dexTokens.map(t => [t.mint, t])).values()
+                new Map(candidates.map(t => [t.mint, t])).values()
             );
 
-            logger.info(`[Fetch] 📡 Total: ${uniqueTokens.length} (DexScreener)`);
+            logger.info(`[Fetch] 📡 Total: ${candidates.length} (DexScreener)`);
 
             if (uniqueTokens.length === 0) {
                 logger.info(`[Scan] ⚠️ No trending tokens found.`);
@@ -752,7 +750,7 @@ export class TokenScanJob {
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 📊 [SCAN SUMMARY]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔍 Total Fetched: ${dexTokens.length}
+🔍 Total Fetched: ${candidates.length}
 🔄 Cached (4h): ${cachedCount}
 🎯 Fresh Processed: ${freshCandidates.length}
 
@@ -778,7 +776,7 @@ ${rejectionBreakdown}
     private async checkRugSecurity(mint: string): Promise<{ safe: boolean; reason?: string }> {
         try {
             // Use GoPlus Service for Base/EVM checks
-            const isSafe = await this.goPlus.checkToken(mint, 'base');
+            const isSafe = await this.goPlus.checkToken(mint);
 
             if (!isSafe) {
                 return { safe: false, reason: 'GoPlus Security Risk (Honeypot/Mintable/Blacklist)' };

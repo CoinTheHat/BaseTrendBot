@@ -93,45 +93,7 @@ export class TwitterAccountManager {
             }
         });
 
-        // 3. Last Resort: Single Legacy Token
-        // 3. Last Resort: Single Legacy Token (or Misconfigured List in Singular Var)
-        if (foundAccounts.length === 0 && config.TWITTER_AUTH_TOKEN) {
-            // Check if user accidentally put comma-separated list in the SINGULAR variable
-            if (config.TWITTER_AUTH_TOKEN.includes(',')) {
-                const tokens = config.TWITTER_AUTH_TOKEN.split(',').map(t => t.trim()).filter(t => t);
-                const ct0s = (config.TWITTER_CT0 || '').split(',').map(t => t.trim()).filter(t => t);
-
-                const count = Math.min(tokens.length, ct0s.length);
-                for (let i = 0; i < count; i++) {
-                    foundAccounts.push({
-                        authToken: tokens[i],
-                        ct0: ct0s[i],
-                        index: i,
-                        userAgent: USER_AGENTS[i % USER_AGENTS.length],
-                        proxy: proxies[i] || undefined,
-                        isBusy: false,
-                        lastBusyStart: 0,
-                        cooldownUntil: 0,
-                        searchCount: 0,
-                        lastWarmup: 0
-                    });
-                }
-                logger.info(`[TwitterManager] Detected ${count} accounts in generic TWITTER_AUTH_TOKEN variable.`);
-            } else {
-                foundAccounts.push({
-                    authToken: config.TWITTER_AUTH_TOKEN,
-                    ct0: config.TWITTER_CT0,
-                    index: 0,
-                    userAgent: USER_AGENTS[0],
-                    proxy: undefined,
-                    isBusy: false,
-                    lastBusyStart: 0,
-                    cooldownUntil: 0,
-                    searchCount: 0,
-                    lastWarmup: 0
-                });
-            }
-        }
+        // 3. Last Resort: Removed.
 
         this.accounts = foundAccounts;
         logger.info(`[TwitterManager] Loaded ${this.accounts.length} accounts (Legacy: ${legacyCount}, Dynamic: ${dynamicCount}).`);
@@ -278,7 +240,7 @@ export class TwitterAccountManager {
             const activities = [
                 () => this.fetchUserProfile(account, 'elonmusk'),
                 () => this.fetchUserProfile(account, 'CoinGecko'),
-                () => this.fetchUserProfile(account, 'solana'),
+                () => this.fetchUserProfile(account, 'base'),
                 () => this.fetchUserProfile(account, 'ethereum'),
                 () => this.fetchUserProfile(account, 'VitalikButerin')
             ];

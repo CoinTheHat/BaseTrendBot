@@ -1,8 +1,7 @@
-
 // Core Token Snapshot (Unified Model)
 export interface TokenSnapshot {
-    source: "pumpfun" | "dexscreener" | "birdeye" | "combined";
-    chain?: "solana" | "base";
+    source: "dexscreener" | "birdeye" | "combined";
+    chain?: "base";
     mint: string;
     pairAddress?: string; // NEW: Required for Internal API
     name: string;
@@ -35,7 +34,6 @@ export interface TokenSnapshot {
     isCTO?: boolean;
     links: {
         dexScreener?: string;
-        pumpfun?: string;
         birdeye?: string;
     };
 }

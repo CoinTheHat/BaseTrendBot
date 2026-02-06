@@ -80,10 +80,23 @@ export class ScoringEngine {
 
         // --- 3. LIQUIDITY QUALITY ---
         // Hard gates passed, now check quality
-        // Healthy Floor Check
+
+        // A. Burned/Locked Status (Premium Safety)
+        if (token.lpBurned) {
+            totalScore += 15;
+            breakdown.push({ factor: 'Liquidity Safety', points: 15, details: '🔥 LP Burned (100%)' });
+        } else if (token.lpLockedPercent && token.lpLockedPercent >= 90) {
+            totalScore += 10;
+            breakdown.push({ factor: 'Liquidity Safety', points: 10, details: `🔒 LP Locked (${token.lpLockedPercent.toFixed(1)}%)` });
+        } else {
+            totalScore -= 10;
+            breakdown.push({ factor: 'Liquidity Safety', points: -10, details: '⚠️ LP Open / Low Lock' });
+        }
+
+        // B. Healthy Floor Check (Ratio)
         if (liqMcRatio < 0.10) {
             totalScore -= 10;
-            breakdown.push({ factor: 'Liquidity', points: -10, details: '⚠️ Thin Liquidity (<10% MC)' });
+            breakdown.push({ factor: 'Liquidity Ratio', points: -10, details: '⚠️ Thin Liquidity (<10% MC)' });
         }
 
         // --- 4. FAKE PUMP / SCAM DETECTION (Segment-Aware) ---

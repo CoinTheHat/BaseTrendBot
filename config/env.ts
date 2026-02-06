@@ -19,13 +19,12 @@ export const config = {
     // Scraping (Headless)
     ENABLE_TWITTER_SCRAPING: process.env.ENABLE_TWITTER_SCRAPING === 'true',
     TWITTER_SCRAPE_MAX_TWEETS: Number(process.env.TWITTER_SCRAPE_MAX_TWEETS) || 10,
-    TWITTER_AUTH_TOKEN: process.env.TWITTER_AUTH_TOKEN || '', // Legacy single
-    TWITTER_CT0: process.env.TWITTER_CT0 || '', // Legacy single
+    TWITTER_AUTH_TOKEN: process.env.TWITTER_AUTH_TOKEN || '',
 
     // Cookie-Based Auth Pool (New System)
     TWITTER_AUTH_TOKENS: (process.env.TWITTER_AUTH_TOKENS || '').split(',').map(t => t.trim()).filter(t => t),
     TWITTER_CT0S: (process.env.TWITTER_CT0S || '').split(',').map(t => t.trim()).filter(t => t),
-    TWITTER_PROXIES: (process.env.TWITTER_PROXIES || '').split(',').map(t => t.trim()).filter(t => t), // NEW: Proxy Support
+    TWITTER_PROXIES: (process.env.TWITTER_PROXIES || '').split(',').map(t => t.trim()).filter(t => t),
 
     // Primary Engine: xAI (Grok)
     XAI_API_KEY: process.env.XAI_API_KEY || process.env.GROK_API_KEY || '',
@@ -54,15 +53,11 @@ export const config = {
     ALERT_SCORE_THRESHOLD: Number(process.env.ALERT_SCORE_THRESHOLD) || 5,
 
     // APIs
-    PUMPFUN_API_KEY: process.env.PUMPFUN_API_KEY || '', // If needed later
     DEXSCREENER_API_KEY: process.env.DEXSCREENER_API_KEY || '',
     BIRDEYE_API_KEY: process.env.BIRDEYE_API_KEY || '',
 
     // Base RPC
-    BASE_RPC_URL: process.env.BASE_RPC_URL || 'https://mainnet.base.org',
-
-    // Base Chain Monitoring
-    BASE_KEYWORDS: ["ERC-8004", "ERC8004", "Hybrid Token", "404"]
+    BASE_RPC_URL: process.env.BASE_RPC_URL || 'https://mainnet.base.org'
 };
 
 // Simple validation
