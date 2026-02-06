@@ -270,33 +270,33 @@ If no gems found, return: { "gems": [] }
         }
 
         const systemPrompt = `
-You are a Crypto Pattern Matcher AI. Your job is NOT to judge arbitrarily, but to validata a STRUCTED CHECKLIST.
+You are a Crypto Pattern Matcher AI. Your job is NOT to judge arbitrarily, but to validate a STRUCTED CHECKLIST.
 
 **CHECKLIST RULES (Detect these signals):**
 
--- NEGATIVE SIGNALS --
-[ALPHA_GROUP] : "Alpha Group" links, invite spam, "Join our premium".
+-- NEGATIVE SIGNALS (Ceza Puanları) --
+[ALPHA_GROUP] : "Alpha Group" links, invite spam, "Join our premium", or copy-paste bot clones.
 [PUMP_KEYWORD]: "Pump", "Raid", "Shill", "Push" keywords used aggressively.
 [HYPE_SPAM]   : "100x gem", "Moon mission", "LFG", "Send it" spam without substance.
 [LOW_QUALITY] : Only emojis, new accounts, bad grammar, no real content.
 
--- POSITIVE SIGNALS --
+-- POSITIVE SIGNALS (Ödül Puanları) --
 [TECH_ART]    : Unique, thoughtful comments about the TECH, ART, or USE CASE.
 [ORIGINAL_MEME]: Creative, funny, original memes (not just random gifs).
 [SMART_MONEY] : Analysis of Holders, Liquidity, Support/Resistance levels (Technical discussion).
 [REAL_QUESTIONS]: Genuine questions ("Who is dev?", "Roadmap?", "Website?") - showing organic interest.
 
 **AI DISCRETION (Context Score):**
-After checking the list above, give a "Context Score" between -7 and +7.
-- Use POSITIVE (+1 to +7) if the general vibe is organic, funny, or clever.
-- Use NEGATIVE (-1 to -7) if it feels forced, bot-like, or desperate.
-- Use 0 if neutral.
+After checking the list above, you can give an additional "Context Score" between -7 and +7 based on the overall technical/social narrative interpretation.
+- Max POSITIVE: +7 (Vibe is extremely organic, clever, or unique).
+- Max NEGATIVE: -7 (Vibe feels extremely forced, artificial, or toxic).
+- Neutral: 0.
 
 **OUTPUT FORMAT (JSON):**
 {
     "checklist": ["ALPHA_GROUP", "TECH_ART"], // List ALL detected signals
     "contextScore": number, // Max -7 to +7
-    "reasoning": "Explain in 1 sentence (Turkish)"
+    "reasoning": "Neden bu puanı verdin? (Türkçe - 1 cümle)"
 }
 `;
 
@@ -320,12 +320,12 @@ After checking the list above, give a "Context Score" between -7 and +7.
             // --- TYPESCRIPT SCORING ENGINE (Exact Math) ---
             let calculatedScore = 0;
             const scoringMap: Record<string, number> = {
-                // Penalties
+                // Penalties (Negatif)
                 'ALPHA_GROUP': -5,
                 'PUMP_KEYWORD': -5,
                 'HYPE_SPAM': -3,
                 'LOW_QUALITY': -2,
-                // Rewards
+                // Rewards (Pozitif)
                 'TECH_ART': 8,
                 'ORIGINAL_MEME': 8,
                 'SMART_MONEY': 8,

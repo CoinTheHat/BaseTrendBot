@@ -578,18 +578,13 @@ export class TokenScanJob {
                                 const aiScore = await this.llmService.scoreTwitterSentiment(enrichedToken, tweets);
 
                                 if (aiScore) {
-                                    // POSITIVE VIBE: 0 to +30 points (Standard)
-                                    // NEGATIVE VIBE: -100 to 0 points (Penalty)
+                                    // Use raw Vibe Score (Checklist Points + AI Discretion)
+                                    twitterScore = aiScore.vibeScore;
 
-                                    if (aiScore.vibeScore < 0) {
-                                        // PENALTY: Direct subtraction (e.g. -50 vibe = -25 score impact)
-                                        // We map -100 to -50 impact to be decisive but not overkill
-                                        const penalty = Math.abs(aiScore.vibeScore) * 0.5;
-                                        twitterScore = -penalty;
-                                        logger.warn(`[AI Audit] 🛑 NEGATIVE VIBE: ${token.symbol} (Score: ${aiScore.vibeScore}) -> Penalty: -${penalty.toFixed(1)} pts`);
-                                    } else {
-                                        // BONUS: 0 to 30 pts (Already calculated in aiScore.score)
-                                        twitterScore = aiScore.score;
+                                    if (twitterScore < 0) {
+                                        logger.warn(`[AI Audit] 🛑 NEGATIVE TWITTER VIBE: ${token.symbol} (Score: ${twitterScore})`);
+                                    } else if (twitterScore > 0) {
+                                        logger.info(`[AI Audit] ✨ POSITIVE TWITTER VIBE: ${token.symbol} (Score: +${twitterScore})`);
                                     }
 
                                     aiReasoning = aiScore.reasoning;
