@@ -67,13 +67,13 @@ export class MaturationService {
                 return { status: "FAILED", viralBonus: false, viralMultiplier: 1.0, growth: holderGrowth };
             }
 
-            // %15+ Viral Bonus
-            if (holderGrowth >= 15) {
+            // %30+ Growth Bonus (Master Logic: +5 Points)
+            if (holderGrowth >= 30) {
                 viralBonus = true;
             }
 
-            // %40+ Viral Multiplier
-            if (holderGrowth >= 40) {
+            // %50+ Viral Multiplier
+            if (holderGrowth >= 50) {
                 viralBonus = true;
                 viralMultiplier = 1.2;
             }

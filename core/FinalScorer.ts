@@ -36,8 +36,8 @@ export function calculateFinalScore(
     const ageMins = token.createdAt ? (Date.now() - new Date(token.createdAt).getTime()) / (60 * 1000) : 0;
 
     // 1. BONUSES
-    if (maturationData.viralBonus) final.bonuses += 10;
-    if (maturationData.viralMultiplier > 1.2) final.bonuses += 10;
+    if (maturationData.viralBonus) final.bonuses += 5; // Master Logic: +5 for 30%+ growth
+    if (maturationData.viralMultiplier >= 1.2) final.bonuses += 10;
 
     // 2. PENALTIES
     // Twitter absence penalty
@@ -68,7 +68,7 @@ export function calculateFinalScore(
             final.verdict = "❌ FADE (AI Required)";
             final.category = 'FADE';
             final.finalScore = 0; // Force rejection
-        } else if (final.finalScore >= 70) {
+        } else if (final.finalScore >= 60) {
             final.verdict = "🔥 EARLY APE ⚠️ High Risk";
         } else {
             final.verdict = "❌ FADE";
@@ -78,10 +78,11 @@ export function calculateFinalScore(
         final.category = 'VERIFIED GEM';
         if (final.finalScore >= 85) {
             final.verdict = "💎 VERIFIED GEM";
-        } else if (final.finalScore >= 70) {
+        } else if (final.finalScore >= 65) {
             final.verdict = "✅ APE CANDIDATE";
+        } else if (final.finalScore >= 50) {
+            final.verdict = "⚠️ WATCH";
         } else {
-            // Scores below 70 are now FADE (Per User Request)
             final.verdict = "❌ FADE";
             final.category = 'FADE';
         }
