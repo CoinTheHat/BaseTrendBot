@@ -50,7 +50,7 @@ export class TokenScanJob {
             return waitMins * 60 * 1000;
         }
 
-        if (reason.includes('Weak Score')) return 3 * 60 * 1000; // 3 mins (Market fast)
+        if (reason.includes('Weak Score') || reason.includes('Weak Tech')) return 3 * 60 * 1000; // 3 mins (Market fast)
         if (reason.includes('Low Liquidity')) return 5 * 60 * 1000; // 5 mins
         if (reason.includes('Risk Engine') || reason.includes('Fake Pump')) return 15 * 60 * 1000; // 15 mins
 
@@ -450,9 +450,10 @@ export class TokenScanJob {
                         }
 
                         if (totalScore < 40) {
+                            const techNorm = (totalScore / 140) * 100;
                             weakCount++;
-                            handleRejection(token, 'Weak Score');
-                            logger.info(`[REJECT] ${token.symbol} -> Weak Score (${totalScore}/100)`);
+                            handleRejection(token, `Weak Tech (${techNorm.toFixed(1)}/100)`);
+                            logger.info(`[REJECT] ${token.symbol} -> Weak Tech (${techNorm.toFixed(1)}/100)`);
                             return;
                         }
 
@@ -648,7 +649,7 @@ export class TokenScanJob {
                         // User Request: "Don't share anything below 7"
                         if (combinedScore < 70) {
                             logger.info(`[Gate] 📉 Low Score: ${token.symbol} (${combinedScore.toFixed(1)}/100) < 70. Rejecting.`);
-                            handleRejection(token, `Weak Score (${combinedScore})`);
+                            handleRejection(token, `Weak Score (${combinedScore.toFixed(1)})`);
                             return;
                         }
 
