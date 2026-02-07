@@ -1,28 +1,17 @@
 import { config } from './config/env';
 import { TokenScanJob } from './jobs/TokenScanJob';
-
 import { GoPlusService } from './services/GoPlusService';
-import { PerformanceMonitorJob } from './jobs/PerformanceMonitorJob';
-
 import { DexScreenerService } from './services/DexScreenerService';
-// import { KeywordMonitorJob } from './jobs/KeywordMonitorJob'; // Removed
 import { DashboardServer } from './web/DashboardServer';
-import { Matcher } from './core/Matcher';
-import { ScoringEngine } from './core/ScoringEngine';
-import { PhaseDetector } from './core/PhaseDetector';
 import { CooldownManager } from './core/CooldownManager';
 import { NarrativeEngine } from './narrative/NarrativeEngine';
 import { ScandexBot } from './telegram/TelegramBot';
 import { TwitterPublisher } from './twitter/TwitterPublisher';
-import { PostgresStorage } from './storage/PostgresStorage'; // Updated
-import { MemeWatchlist } from './core/MemeWatchlist';
-import { TwitterTrendsService } from './trends/TwitterTrendsService';
-import { TrendCollector } from './trends/TrendCollector';
-import { TrendTokenMatcher } from './core/TrendTokenMatcher';
+import { PostgresStorage } from './storage/PostgresStorage';
 import { AlphaSearchService } from './twitter/AlphaSearchService';
 import { LLMService } from './services/LLMService';
 import { logger } from './utils/Logger';
-import { PortfolioTrackerJob } from './jobs/PortfolioTrackerJob';
+import { twitterAccountManager } from './twitter/TwitterAccountManager';
 
 // Error handling
 process.on('uncaughtException', (err) => {
@@ -32,83 +21,56 @@ process.on('unhandledRejection', (reason) => {
     logger.error(`Unhandled Rejection: ${reason}`);
 });
 
-import { twitterAccountManager } from './twitter/TwitterAccountManager';
-
 async function main() {
-    logger.info('🛸 SCANDEX V1 Initializing...');
+    logger.info('🛰️ SCANDEX: GEM HUNTER V3.0 Initializing...');
 
     // Unlock accounts on boot
     twitterAccountManager.resetAllLocks();
 
     // 1. Storage & State
     const storage = new PostgresStorage();
-    await storage.connect(); // Connect DB
-
-    // MemeWatchlist now loads from storage internally
-    const watchlist = new MemeWatchlist(storage);
-    await watchlist.init(); // Load cache
+    await storage.connect();
 
     // 2. Services
     const dexScreener = new DexScreenerService();
-    const twitterService = new TwitterTrendsService();
-    const alphaSearchService = new AlphaSearchService(); // Instantiated
+    const alphaSearchService = new AlphaSearchService();
     const goPlusService = new GoPlusService();
-
-    // 3. Core & Trends
-    const trendCollector = new TrendCollector(twitterService, storage); // Injected
-    await trendCollector.init(); // Load trends
-
-    const trendMatcher = new TrendTokenMatcher(new ScoringEngine());
-    const matcher = new Matcher(watchlist);
-    const scorer = new ScoringEngine();
-    const phaseDetector = new PhaseDetector();
-    const cooldown = new CooldownManager(storage);
-
-    // 4. Alerting
     const llmService = new LLMService();
     const narrative = new NarrativeEngine(llmService);
-    const bot = new ScandexBot(watchlist, trendCollector, trendMatcher);
+    const cooldown = new CooldownManager(storage);
+
+    // 3. Alerting & Bot
+    const bot = new ScandexBot(dexScreener);
     const twitter = new TwitterPublisher();
 
-
-
-    // 6. Job
+    // 4. Main Job (Gem Hunter V3)
     const job = new TokenScanJob(
-        dexScreener, // INJECTED: DexScreener for M5 trending
-        matcher,
-        scorer,
-        phaseDetector,
+        dexScreener,
         cooldown,
         narrative,
         bot,
         twitter,
         storage,
-        trendCollector,
-        trendMatcher,
-        alphaSearchService, // Injected
-        llmService, // Injected
-        goPlusService // Injected (Base/GoPlus)
+        alphaSearchService,
+        llmService,
+        goPlusService
     );
 
-    // 7. Performance & Dashboard
-    const performanceJob = new PerformanceMonitorJob(storage, dexScreener, bot);
-    const portfolioTracker = new PortfolioTrackerJob(storage, dexScreener);
-    // REMOVED: KeywordMonitorJob (Jeweler Mode) killed by user request.
-    const dashboard = new DashboardServer(storage); // Railway auto-sets PORT env var
-
-    // performanceJob.start(); // Disabled by User Request (Autopsy Off)
-    // portfolioTracker.start(); // Disabled (Birdeye Deprecated)
+    // 5. Dashboard
+    const dashboard = new DashboardServer(storage);
     dashboard.start();
 
-    // Start
+    // 6. Start
     job.start();
-    await bot.notifyAdmin("🚀 **TRENDBOT V3 (BASE ONLY)**\nSistem Başlatıldı:\n- Trending V3 Scanner: 🟢\n- Autopsy (Gap Filling): 🟢\n- Portfolio Tracker (30m): 🟢");
-    logger.info('✅ TrendBot Systems Operational. Scanning V3 Trending...');
+
+    await bot.notifyAdmin("🚀 **GEM HUNTER V3.0 (BASE)**\nSistem Başlatıldı:\n- Phase 1: Hard Filters & Maturation 🟢\n- Phase 2: Technical Scoring 🟢\n- Phase 3: AI Social Scoring 🟢\n- Phase 4: Final Scorer & Notifications 🟢");
+
+    logger.info('✅ Gem Hunter V3.0 Operational.');
 
     // Graceful Shutdown
     const shutdown = async () => {
         logger.info('🛑 Shutting down...');
-        await bot.stop(); // Stop Telegram Polling
+        await bot.stop();
         process.exit(0);
     };
 

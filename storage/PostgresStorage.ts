@@ -77,6 +77,15 @@ export class PostgresStorage {
                 keyword TEXT,
                 content TEXT,
                 created_at TIMESTAMP DEFAULT NOW()
+            );`,
+            `CREATE TABLE IF NOT EXISTS maturation_records (
+                address TEXT PRIMARY KEY,
+                initial_holders INTEGER,
+                initial_mc NUMERIC,
+                timestamp TIMESTAMP DEFAULT NOW(),
+                status TEXT DEFAULT 'WAITING',
+                viral_bonus BOOLEAN DEFAULT FALSE,
+                viral_multiplier NUMERIC DEFAULT 1.0
             );`
         ];
 
@@ -581,6 +590,54 @@ export class PostgresStorage {
             );
         } catch (err) {
             logger.error('[Postgres] saveKeywordTweet failed', err);
+        }
+    }
+
+    // --- Maturation Records ---
+
+    async getMaturationRecord(address: string) {
+        try {
+            const res = await this.pool.query('SELECT * FROM maturation_records WHERE address = $1', [address]);
+            if (res.rows.length === 0) return null;
+            const row = res.rows[0];
+            return {
+                address: row.address,
+                initialHolders: row.initial_holders,
+                initialMC: Number(row.initial_mc),
+                timestamp: row.timestamp,
+                status: row.status,
+                viralBonus: row.viral_bonus,
+                viralMultiplier: Number(row.viral_multiplier)
+            };
+        } catch (err) {
+            logger.error(`[Postgres] getMaturationRecord failed for ${address}`, err);
+            return null;
+        }
+    }
+
+    async saveMaturationRecord(record: { address: string, initialHolders: number, initialMC: number }) {
+        try {
+            await this.pool.query(
+                `INSERT INTO maturation_records (address, initial_holders, initial_mc, timestamp, status)
+                 VALUES ($1, $2, $3, NOW(), 'WAITING')
+                 ON CONFLICT (address) DO NOTHING`,
+                [record.address, record.initialHolders, record.initialMC]
+            );
+        } catch (err) {
+            logger.error(`[Postgres] saveMaturationRecord failed for ${record.address}`, err);
+        }
+    }
+
+    async updateMaturationStatus(address: string, status: string, viralBonus: boolean = false, viralMultiplier: number = 1.0) {
+        try {
+            await this.pool.query(
+                `UPDATE maturation_records 
+                 SET status = $2, viral_bonus = $3, viral_multiplier = $4
+                 WHERE address = $1`,
+                [address, status, viralBonus, viralMultiplier]
+            );
+        } catch (err) {
+            logger.error(`[Postgres] updateMaturationStatus failed for ${address}`, err);
         }
     }
 

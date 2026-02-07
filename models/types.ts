@@ -35,6 +35,7 @@ export interface TokenSnapshot {
     links: {
         dexScreener?: string;
         birdeye?: string;
+        twitter?: string;
     };
 }
 
@@ -154,4 +155,5 @@ export interface SeenTokenData {
     lastPrice?: number;
     dipTargetMc?: number;
     storedAnalysis?: string;
+    rawSnapshot?: any;
 }

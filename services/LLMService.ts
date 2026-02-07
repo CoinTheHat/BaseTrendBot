@@ -458,4 +458,77 @@ ${tweetSection}
         }
         return null;
     }
+
+    async analyzeSocialV3(token: TokenSnapshot, tweets: string[]): Promise<{
+        tags: string[];
+        sentiment: number;
+        narrativeStrength: 'strong' | 'medium' | 'weak';
+        influencerCount: number;
+        riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+        summary: string;
+    } | null> {
+        const prompt = `
+Sen şüpheci bir kripto analistsin. $${token.symbol} hakkındaki bu tweet'leri analiz et ve SADECE JSON formatında yanıt ver:
+
+**Tweet'ler:**
+${tweets.map((t, i) => `${i + 1}. ${t}`).join('\n')}
+
+**Analiz Et:**
+
+1. **tags** (array): Tespit edilen pattern'lar:
+   - [TECH_ART]: Proje kalitesi hakkında yorumlar
+   - [ORIGINAL_MEME]: Yaratıcı, özgün içerik
+   - [SMART_MONEY]: Teknik analiz içeren yorumlar
+   - [ALPHA_GROUP]: Grup spam linki/davet
+   - [PUMP_KEYWORD]: Sadece "moon", "lfg", "pump" vs
+   - [HYPE_SPAM]: Bot benzeri tekrarlı mesajlar
+
+2. **sentiment** (number 0-100): Pozitif/bullish tweet oranı
+
+3. **narrativeStrength** (string):
+   - "strong": Net utility/vizyon/roadmap var, sadece fiyat değil
+   - "medium": Bir hikaye var ama çoğunlukla hype
+   - "weak": Sadece pump lafı
+
+4. **influencerCount** (number 0-10): Kaç tane 10k+ takipçili hesap bahsetmiş?
+   (Not: Tweet yazarlarının takipçi sayısını tahmin et, "Alpha", "Diamond Hand", "Solana OG" gibi hesaplar genelde yüksek takipçili)
+
+5. **riskLevel** (string): "LOW" | "MEDIUM" | "HIGH"
+   - Bot activity, whale yoğunluğu, narrative kalitesini düşün
+
+6. **summary** (string): 2 cümlelik Türkçe özet
+
+**SADECE JSON DÖNDÜR (başka hiçbir şey yazma):**
+{
+  "tags": ["[TAG1]", "[TAG2]"],
+  "sentiment": 75,
+  "narrativeStrength": "strong",
+  "influencerCount": 3,
+  "riskLevel": "MEDIUM",
+  "summary": "Kısa Türkçe analiz buraya"
+}
+`;
+
+        try {
+            logger.info(`[xAI V3] Analyzing social for $${token.symbol}...`);
+            const completion = await this.xai.chat.completions.create({
+                model: config.XAI_MODEL || "grok-4-1-fast-non-reasoning",
+                messages: [
+                    { role: "user", content: prompt }
+                ],
+                temperature: 0.1,
+                response_format: { type: "json_object" }
+            });
+
+            const content = completion.choices[0].message.content;
+            if (!content) return null;
+
+            // Robust JSON Parse
+            const cleanJson = content.trim().replace(/```json|```/g, '');
+            return JSON.parse(cleanJson);
+        } catch (err: any) {
+            logger.error(`[LLM V3] Failed for ${token.symbol}: ${err.message}`);
+            return null;
+        }
+    }
 }
