@@ -106,9 +106,8 @@ export class PostgresStorage {
             await this.pool.query(`UPDATE token_performance SET max_mc = ath_mc WHERE max_mc IS NULL;`);
             await this.pool.query(`UPDATE token_performance SET found_at = alert_timestamp WHERE found_at IS NULL;`);
 
-            // CLEANUP: Remove Base/EVM tokens (starting with 0x)
-            await this.pool.query(`DELETE FROM token_performance WHERE mint LIKE '0x%';`);
-            await this.pool.query(`DELETE FROM seen_tokens WHERE mint LIKE '0x%';`);
+            // CLEANUP: Removed Solana legacy cleanup logic for Base
+            // Keep Base tokens in DB!
 
             logger.info('[Postgres] Schema initialized.');
         } catch (err) {
@@ -121,8 +120,7 @@ export class PostgresStorage {
     // --- Performance Monitor ---
 
     async savePerformance(perf: TokenPerformance & { dipTargetMc?: number }) {
-        // Prevent EVM/Base tokens
-        if (perf.mint.startsWith('0x')) return;
+        // No longer preventing EVM/Base tokens
         try {
             await this.pool.query(
                 `INSERT INTO token_performance(
@@ -460,7 +458,7 @@ export class PostgresStorage {
     }
 
     async saveSeenToken(mint: string, data: SeenTokenData) {
-        if (mint.startsWith('0x')) return;
+        // No longer skipping Base tokens
         try {
             await this.pool.query(
                 `INSERT INTO seen_tokens(mint, symbol, first_seen_at, last_alert_at, last_score, last_phase, last_price, dip_target_mc, stored_analysis, raw_snapshot)

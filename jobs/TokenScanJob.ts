@@ -722,6 +722,12 @@ export class TokenScanJob {
 
                             await this.cooldown.recordAlert(token.mint, totalScore, 'TRACKING', token.priceUsd);
 
+                            // VOLATILE CACHE: Prevent re-processing this token entirely for 4 hours
+                            this.processedCache.set(token.mint, {
+                                reason: 'ALREADY_ALERTED',
+                                blockedUntil: Date.now() + (4 * 60 * 60 * 1000)
+                            });
+
                             // AUTOPSY PRESERVATION
                             await this.storage.savePerformance({
                                 mint: token.mint,
