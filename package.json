@@ -21,7 +21,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "ethers": "^6.10.0",
+    "@steipete/bird": "^0.8.0",
     "@types/node": "^25.0.10",
     "@types/pg": "^8.16.0",
     "axios": "^1.13.3",
@@ -29,6 +29,7 @@
     "date-fns": "^4.1.0",
     "dotenv": "^17.2.3",
     "ejs": "^4.0.1",
+    "ethers": "^6.10.0",
     "express": "^5.2.1",
     "express-basic-auth": "^1.2.1",
     "node-telegram-bot-api": "^0.67.0",

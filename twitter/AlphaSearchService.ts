@@ -67,12 +67,12 @@ export class AlphaSearchService {
                 ? query.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
                 : query.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\$/g, '\\$');
 
-            const command = `npx bird search "${safeQuery}" --count 100 --json`;
+            const command = `npx @steipete/bird search "${safeQuery}" --count 100 --json`;
 
             const env = {
                 ...process.env,
-                TWITTER_AUTH_TOKEN: account.authToken,
-                TWITTER_CT0: account.ct0
+                AUTH_TOKEN: account.authToken,
+                CT0: account.ct0
             };
 
             logger.info(`[bird.fast] Searching for: ${query.substring(0, 80)}...`);
