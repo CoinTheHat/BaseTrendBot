@@ -130,6 +130,18 @@ ${narrative.dataSection}
         }
     }
 
+    async sendDipAlert(data: { symbol: string, mint: string, currentMc: number, dipTargetMc: number }) {
+        if (!this.bot || !config.TELEGRAM_CHAT_ID) return;
+        const message = `🎯 **DIP ENTRY TRIGGERED** 🎯\n\n**${data.symbol}**\n📍 CA: \`${data.mint}\`\n\n💰 Current MC: $${Math.floor(data.currentMc).toLocaleString()}\n🎯 Target MC: $${data.dipTargetMc.toLocaleString()}\n\n[DexScreener](https://dexscreener.com/base/${data.mint})`;
+
+        try {
+            await this.bot.sendMessage(config.TELEGRAM_CHAT_ID, message, { parse_mode: 'Markdown', disable_web_page_preview: true });
+            logger.info(`[Telegram] Dip alert sent for ${data.symbol}`);
+        } catch (err: any) {
+            logger.error(`[Telegram] Failed to send dip alert: ${err.message}`);
+        }
+    }
+
     async stop() {
         if (this.bot) {
             logger.info('[Telegram] Stopping bot polling...');
