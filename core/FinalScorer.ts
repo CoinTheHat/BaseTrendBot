@@ -68,7 +68,7 @@ export function calculateFinalScore(
             final.verdict = "❌ FADE (AI Required)";
             final.category = 'FADE';
             final.finalScore = 0; // Force rejection
-        } else if (final.finalScore >= 65) {
+        } else if (final.finalScore >= 70) {
             final.verdict = "🔥 EARLY APE ⚠️ High Risk";
         } else {
             final.verdict = "❌ FADE";
@@ -80,9 +80,8 @@ export function calculateFinalScore(
             final.verdict = "💎 VERIFIED GEM";
         } else if (final.finalScore >= 70) {
             final.verdict = "✅ APE CANDIDATE";
-        } else if (final.finalScore >= 50) {
-            final.verdict = "⚠️ WATCH";
         } else {
+            // Scores below 70 are now FADE (Per User Request)
             final.verdict = "❌ FADE";
             final.category = 'FADE';
         }

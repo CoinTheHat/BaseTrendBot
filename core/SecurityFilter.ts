@@ -34,6 +34,7 @@ export function applyHardFilters(token: TokenSnapshot): HardFilterResult {
     const fallbackPassed = top10Percent < 25 && holders > 600;
 
     if (!lpSafe && !fallbackPassed) {
+        logger.info(`[Security] ❌ REJECTED ${token.symbol}: Low Lock (Safe: ${lpSafe}, Fallback: ${fallbackPassed}) | Liq: $${liq}, Holders: ${holders}`);
         return { passed: false, reason: "RUG_RISK_LOW_LOCK" };
     }
 
