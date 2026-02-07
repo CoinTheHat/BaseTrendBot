@@ -68,7 +68,7 @@ export function calculateFinalScore(
             final.verdict = "❌ FADE (AI Required)";
             final.category = 'FADE';
             final.finalScore = 0; // Force rejection
-        } else if (final.finalScore >= 60) {
+        } else if (final.finalScore >= 65) {
             final.verdict = "🔥 EARLY APE ⚠️ High Risk";
         } else {
             final.verdict = "❌ FADE";
