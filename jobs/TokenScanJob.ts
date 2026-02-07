@@ -630,15 +630,24 @@ export class TokenScanJob {
                             aiReasoning = 'Twitter fetch failed';
                         }
 
-                        // Log final score combination
-                        const combinedScore = totalScore + twitterScore;
-                        logger.info(`[Combined Score] ${token.symbol}: Technical ${totalScore} + Vibe ${twitterScore.toFixed(1)} = ${combinedScore.toFixed(1)}/130`);
+                        // --- STEP 4: WEIGHTED NORMALIZATION (75% Tech / 25% Twitter) ---
+                        // Tech Base Range: 0 to 140 (clamped to 100 normalized)
+                        const techNorm = Math.min((totalScore / 140) * 100, 100);
+
+                        // Social Base Range: -20 to +40 (clamped to 0-100 normalized)
+                        // Social Norm: (score + 20) / 60 * 100
+                        const socialNorm = Math.max(0, Math.min(((twitterScore + 20) / 60) * 100, 100));
+
+                        // Final Normalized Score (0-100)
+                        const combinedScore = (techNorm * 0.75) + (socialNorm * 0.25);
+
+                        logger.info(`[Weighted Score] ${token.symbol}: Tech ${techNorm.toFixed(1)}/100 (w75%) + Social ${socialNorm.toFixed(1)}/100 (w25%) = ${combinedScore.toFixed(1)}/100`);
 
 
                         // --- STEP 3: SCORE GATE & ALERT ---(
                         // User Request: "Don't share anything below 7"
                         if (combinedScore < 70) {
-                            logger.info(`[Gate] 📉 Low Score: ${token.symbol} (${combinedScore}/130) < 70. Rejecting.`);
+                            logger.info(`[Gate] 📉 Low Score: ${token.symbol} (${combinedScore.toFixed(1)}/100) < 70. Rejecting.`);
                             handleRejection(token, `Weak Score (${combinedScore})`);
                             return;
                         }
@@ -658,7 +667,7 @@ export class TokenScanJob {
                             else if (mc < 250000) segmentLog = 'GOLDEN';
                             else segmentLog = 'RUNNER';
 
-                            logger.info(`🔫 [SNIPED] [${segmentLog}] ${token.symbol} Score: ${combinedScore}/130 | Liq: $${Math.floor(liq)} | MC: $${Math.floor(mc)}`);
+                            logger.info(`🔫 [SNIPED] [${segmentLog}] ${token.symbol} Score: ${combinedScore.toFixed(1)}/100 | Liq: $${Math.floor(liq)} | MC: $${Math.floor(mc)}`);
 
                             // --- 🧠 AI SYNTHESIS (User Request: Contextual Analysis) ---
                             // 1. REUSE Tweets (Optimization: Don't fetch again!)
