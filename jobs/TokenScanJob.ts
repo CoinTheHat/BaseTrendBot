@@ -159,6 +159,8 @@ export class TokenScanJob {
                         logger.info(`[Maturation] 💎 VERIFIED GEM candidate: ${token.symbol}${growthInfo}`);
                     }
 
+                    logger.info(`[Job] ✅ ${token.symbol} passed Phase 1. Moving to Phase 2...`);
+
                     // PHASE 2: FAKE PUMP DETECTION
                     const fakePump = detectFakePump(token);
                     if (fakePump.detected) {
@@ -169,7 +171,7 @@ export class TokenScanJob {
 
                     // PHASE 2: TECHNICAL SCORING
                     const techScore = calculateTechnicalScore(token);
-                    logger.info(`[Scoring] ${token.symbol} | Tech Score: ${techScore.total.toFixed(0)}/50 (MC:${techScore.mcScore} Liq:${techScore.liquidityScore} Dist:${techScore.distributionScore} SEC:${techScore.lpScore} Age:${techScore.ageScore})`);
+                    logger.info(`[Phase 2] ✅ Technical Score: ${techScore.total.toFixed(0)}/50 (MC:${techScore.mcScore} Liq:${techScore.liquidityScore} Dist:${techScore.distributionScore} SEC:${techScore.lpScore} Age:${techScore.ageScore})`);
 
                     // EXTRA: GoPlus Security 
                     const goplus = await this.checkRugSecurity(token.mint);
@@ -189,6 +191,7 @@ export class TokenScanJob {
                     }
 
                     const aiScore = await this.aiTwitterScorer.calculateAIScore(token, tweets);
+                    logger.info(`[Phase 3] ✅ Social Score: ${aiScore.total.toFixed(0)}/50 (Vibe:${aiScore.vibeScore} SEC:${aiScore.securityScore} Narr:${aiScore.narrativeScore} Inf:${aiScore.influencerScore}) | Verdict: ${aiScore.verdict}`);
 
                     // PHASE 4: FINAL SCORING
                     const finalScoreResult = calculateFinalScore(token, techScore, aiScore, maturation);
@@ -210,7 +213,7 @@ export class TokenScanJob {
                     }
 
                     // SUCCESS! SEND ALERT
-                    logger.info(`🚀 [GEM FOUND] ${token.symbol} | Score: ${finalScoreResult.finalScore.toFixed(0)} | Category: ${finalScoreResult.category}`);
+                    logger.info(`[Phase 4] 🚀 GEM FOUND: ${token.symbol} | Score: ${finalScoreResult.finalScore.toFixed(0)}/100 | Category: ${finalScoreResult.category}`);
 
                     const message = TelegramNotifier.formatTokenMessage(token, finalScoreResult, aiScore.details, maturation.growth);
                     await this.bot.sendRawAlert(message);
