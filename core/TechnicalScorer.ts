@@ -3,7 +3,8 @@ import { TokenSnapshot } from '../models/types';
 export interface TechnicalScore {
     mcScore: number;          // 20 pts max
     liquidityScore: number;   // 10 pts max
-    distributionScore: number; // 15 pts max
+    distributionScore: number; // 10 pts max
+    lpScore: number;           // 10 pts max
     ageScore: number;          // 5 pts max
     total: number;
 }
@@ -16,6 +17,7 @@ export function calculateTechnicalScore(token: TokenSnapshot): TechnicalScore {
         mcScore: 0,
         liquidityScore: 0,
         distributionScore: 0,
+        lpScore: 0,
         ageScore: 0,
         total: 0
     };
@@ -71,7 +73,7 @@ export function calculateTechnicalScore(token: TokenSnapshot): TechnicalScore {
     const isLocked = (token.lpLockedPercent || 0) >= 80;
     const isBurned = token.lpBurned || false;
     if (isLocked || isBurned) {
-        score.liquidityScore += 10; // Adding to a conceptual "Security" bucket or just adding to total
+        score.lpScore = 10;
     }
 
     // 5. AGE SCORE (5 pts)
@@ -86,17 +88,9 @@ export function calculateTechnicalScore(token: TokenSnapshot): TechnicalScore {
         }
     }
 
-    // TOTAL (Capped at 50 per Master Logic "🟢 1. TEKNİK PUANLAMA (0-50 Puan)")
-    // Note: LP security was added to liquidityScore above for internal keeping, 
-    // but let's sum them all clearly.
-    const lpPoints = (isLocked || isBurned) ? 10 : 0;
-
-    score.total = score.mcScore + score.liquidityScore + score.distributionScore + score.ageScore + lpPoints;
-
-    // We already added lpPoints to liquidityScore in the logic above by mistake, 
-    // let's fix the calculation to be clean.
-    const rawTotal = score.mcScore + (score.liquidityScore > 10 ? 10 : score.liquidityScore) + score.distributionScore + score.ageScore + lpPoints;
-    score.total = Math.max(0, Math.min(50, rawTotal));
+    // TOTAL (Capped at 50 per Master Logic)
+    score.total = score.mcScore + score.liquidityScore + score.distributionScore + score.lpScore + score.ageScore;
+    score.total = Math.max(0, Math.min(50, score.total));
 
     return score;
 }

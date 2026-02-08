@@ -96,7 +96,7 @@ export class TokenScanJob {
                     if (cache && (!cache.blockedUntil || cache.blockedUntil > Date.now())) continue;
 
                     // PHASE 1: BASIC FILTERS (Age, MC, Liq)
-                    const ageMins = token.createdAt ? (Date.now() - new Date(token.createdAt).getTime()) / (60 * 1000) : 0;
+                    const ageMins = token.createdAt ? (Date.now() - new Date(token.createdAt).getTime()) / (60 * 1000) : 9999; // Default to old if missing to prevent 0m/TOO_YOUNG
                     const liqUsd = token.liquidityUsd || 0;
                     const mcUsd = token.marketCapUsd || 0;
 
@@ -169,6 +169,7 @@ export class TokenScanJob {
 
                     // PHASE 2: TECHNICAL SCORING
                     const techScore = calculateTechnicalScore(token);
+                    logger.info(`[Scoring] ${token.symbol} | Tech Score: ${techScore.total.toFixed(0)}/50 (MC:${techScore.mcScore} Liq:${techScore.liquidityScore} Dist:${techScore.distributionScore} SEC:${techScore.lpScore} Age:${techScore.ageScore})`);
 
                     // EXTRA: GoPlus Security 
                     const goplus = await this.checkRugSecurity(token.mint);

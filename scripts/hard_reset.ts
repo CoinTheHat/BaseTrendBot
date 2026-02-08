@@ -33,7 +33,7 @@ async function hardReset() {
         const client = await pool.connect();
 
         console.log('🗑️  Truncating Tables...');
-        await client.query('TRUNCATE TABLE token_performance, seen_tokens, cool_downs CASCADE;');
+        await client.query('TRUNCATE TABLE token_performance, seen_tokens, trends, keyword_alerts, maturation_records, watchlist CASCADE;');
 
         console.log('✅ System Wiped for Sniper Mode Test.');
         client.release();

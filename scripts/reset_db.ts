@@ -1,42 +1,41 @@
-
 import { Pool } from 'pg';
-import * as dotenv from 'dotenv';
-import path from 'path';
+import { config } from '../config/env';
 
-// Load .env from root
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
+async function reset() {
+    console.log('🗑️  Starting Clean Database Reset...');
 
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
-});
+    if (!config.DATABASE_URL) {
+        console.error('❌ Error: DATABASE_URL not found.');
+        process.exit(1);
+    }
 
-async function resetDb() {
-    console.log('🗑️  Starting Database Reset...');
+    const pool = new Pool({
+        connectionString: config.DATABASE_URL,
+        ssl: config.DATABASE_URL.includes('localhost') ? false : { rejectUnauthorized: false }
+    });
 
     try {
         const client = await pool.connect();
-        try {
-            // Truncate Tables
-            const tables = ['seen_tokens', 'token_performance', 'trends', 'keyword_alerts']; // Add others if needed
+        const tables = [
+            'token_performance',
+            'seen_tokens',
+            'trends',
+            'keyword_alerts',
+            'maturation_records',
+            'watchlist'
+        ];
 
-            for (const table of tables) {
-                console.log(`   - Truncating ${table}...`);
-                // Use TRUNCATE for fast clean. 
-                // IF EXISTS checks avoid error if table doesn't exist yet (though it should)
-                await client.query(`TRUNCATE TABLE ${table} CASCADE;`);
-            }
+        console.log(`🧹 Truncating tables: ${tables.join(', ')}`);
+        await client.query(`TRUNCATE TABLE ${tables.join(', ')} CASCADE;`);
 
-            console.log('✅ Database Cleared Successfully!');
-        } finally {
-            client.release();
-        }
-    } catch (err: any) {
-        console.error('❌ Reset Failed:', err.message);
+        console.log('✅ Database Wiped Successfully.');
+        client.release();
+    } catch (err) {
+        console.error('❌ Reset Failed:', err);
     } finally {
         await pool.end();
         process.exit(0);
     }
 }
 
-resetDb();
+reset();
