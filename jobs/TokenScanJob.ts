@@ -132,6 +132,23 @@ export class TokenScanJob {
                         }
                     }
 
+                    // -------------------------------------------------------------
+                    // GOPLUS INTEGRATION (Early Check for Base Holders)
+                    // -------------------------------------------------------------
+                    const goplus = await this.checkRugSecurity(token.mint);
+                    if (!goplus.safe) {
+                        logger.info(`[Phase 1] ❌ REJECTED: ${token.symbol} | Reason: GOPLUS_${goplus.reason}`);
+                        this.processedCache.set(token.mint, { reason: `GOPLUS_${goplus.reason}`, blockedUntil: null });
+                        continue;
+                    }
+
+                    // FALLBACK: If DexScreener provided 0/undefined holders (common on Base), use GoPlus
+                    if ((!token.holderCount || token.holderCount === 0) && goplus.holderCount) {
+                        logger.info(`[Data] 🔄 Using GoPlus Holder Count for ${token.symbol}: ${goplus.holderCount}`);
+                        token.holderCount = goplus.holderCount;
+                    }
+                    // -------------------------------------------------------------
+
                     // PHASE 1: DETAILED HARD FILTERS (Rug Risk, Whale)
                     const hardResult = applyHardFilters(token);
                     if (!hardResult.passed) {
@@ -172,13 +189,6 @@ export class TokenScanJob {
                     // PHASE 2: TECHNICAL SCORING
                     const techScore = calculateTechnicalScore(token);
                     logger.info(`[Phase 2] ✅ Technical Score: ${techScore.total.toFixed(0)}/40 (MC:${techScore.mcScore} Liq:${techScore.liquidityScore} Dist:${techScore.distributionScore} SEC:${techScore.securityScore} Age:${techScore.ageScore})`);
-
-                    // EXTRA: GoPlus Security 
-                    const goplus = await this.checkRugSecurity(token.mint);
-                    if (!goplus.safe) {
-                        this.processedCache.set(token.mint, { reason: `GOPLUS_${goplus.reason}`, blockedUntil: null });
-                        continue;
-                    }
 
                     // PHASE 3: AI TWITTER SCORING
                     let tweets: string[] = [];
@@ -255,13 +265,13 @@ export class TokenScanJob {
         }
     }
 
-    private async checkRugSecurity(mint: string): Promise<{ safe: boolean; reason?: string }> {
+    private async checkRugSecurity(mint: string): Promise<{ safe: boolean; reason?: string; holderCount?: number }> {
         try {
             const security = await this.goPlus.checkSecurity(mint);
             if (!security.isSafe) {
-                return { safe: false, reason: security.dangerReason || 'UNSAFE' };
+                return { safe: false, reason: security.dangerReason || 'UNSAFE', holderCount: security.holderCount };
             }
-            return { safe: true };
+            return { safe: true, holderCount: security.holderCount };
         } catch (err) {
             return { safe: false, reason: 'GOPLUS_ERROR' };
         }

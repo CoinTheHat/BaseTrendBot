@@ -4,6 +4,7 @@ import { logger } from '../utils/Logger';
 export interface GoPlusResult {
     isSafe: boolean;
     dangerReason?: string;
+    holderCount?: number;
 }
 
 export class GoPlusService {
@@ -11,32 +12,39 @@ export class GoPlusService {
 
     async checkSecurity(address: string): Promise<GoPlusResult> {
         try {
+            const lowerAddr = address.toLowerCase();
             // Base chainId is 8453
-            const url = `${this.baseUrl}/token_security/8453?contract_addresses=${address}`;
+            const url = `${this.baseUrl}/token_security/8453?contract_addresses=${lowerAddr}`;
             const response = await axios.get(url, { timeout: 10000 });
-            const data = response.data?.result?.[address];
+            const data = response.data?.result?.[lowerAddr];
 
             if (!data) {
                 logger.warn(`[GoPlus] No data for ${address}. Proceeding with caution.`);
                 return { isSafe: true };
             }
 
+            const result: GoPlusResult = { isSafe: true };
+
+            // Map Holder Count
+            if (data.holder_count) {
+                result.holderCount = parseInt(data.holder_count);
+            }
+
             // CHECK FLAGS
             if (data.is_open_source === '0') {
-                return { isSafe: false, dangerReason: 'NOT_OPEN_SOURCE' };
+                return { isSafe: false, dangerReason: 'NOT_OPEN_SOURCE', holderCount: result.holderCount };
             }
 
             if (data.is_honeypot === '1') {
-                return { isSafe: false, dangerReason: 'HONEYPOT' };
+                return { isSafe: false, dangerReason: 'HONEYPOT', holderCount: result.holderCount };
             }
 
-            // checkToken was also checking is_mintable. 
-            // In V3, TechnicalScorer handles it as penalty, but if it's a HARD REJECT in GoPlus, we keep it.
             if (data.is_mintable === '1') {
-                return { isSafe: false, dangerReason: 'MINTABLE' };
+                // Warning only, handled by TechnicalScorer
+                // return { isSafe: false, dangerReason: 'MINTABLE' };
             }
 
-            return { isSafe: true };
+            return result;
 
         } catch (error: any) {
             logger.error(`[GoPlus] API Error checking ${address}: ${error.message}`);
