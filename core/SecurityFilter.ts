@@ -34,11 +34,8 @@ export function applyHardFilters(token: TokenSnapshot): HardFilterResult {
     const priceChange5m = token.priceChange5m || 0;
     const txs5m = token.txs5m || { buys: 0, sells: 0 };
 
-    // 1. Age check (20m - 24h / 1440m)
-    // v6: Yaş > 24h → RED
-    if (ageMins < 20) {
-        return { passed: false, reason: "TOO_YOUNG" };
-    }
+    // NOT: Yaş kontrolü kaldırıldı - token ne kadar genç olursa olsun taranacak
+    // (Kullanıcı isteği: TOO_YOUNG kontrolü kaldırıldı)
     if (ageMins > 1440) {
         return { passed: false, reason: "TOO_OLD" };
     }

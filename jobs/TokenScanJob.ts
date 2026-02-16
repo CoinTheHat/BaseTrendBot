@@ -100,11 +100,8 @@ export class TokenScanJob {
                     const liqUsd = token.liquidityUsd || 0;
                     const mcUsd = token.marketCapUsd || 0;
 
-                    if (ageMins < 20) {
-                        logger.info(`[Phase 1] ❌ REJECTED: ${token.symbol} | Reason: TOO_YOUNG (${ageMins.toFixed(0)}m) | MC: $${(mcUsd / 1000).toFixed(1)}k | Liq: $${(liqUsd / 1000).toFixed(1)}k`);
-                        this.processedCache.set(token.mint, { reason: 'TOO_YOUNG', blockedUntil: Date.now() + 5 * 60 * 1000 });
-                        continue;
-                    }
+                    // NOT: Yaş kontrolü kaldırıldı - token ne kadar genç olursa olsun taranacak
+                    // (Kullanıcı isteği: TOO_YOUNG uyarısı kaldırıldı)
                     if (ageMins > 1440) {
                         logger.info(`[Phase 1] ❌ REJECTED: ${token.symbol} | Reason: TOO_OLD (${(ageMins / 60).toFixed(1)}h) | MC: $${(mcUsd / 1000).toFixed(1)}k | Liq: $${(liqUsd / 1000).toFixed(1)}k`);
                         this.processedCache.set(token.mint, { reason: 'TOO_OLD', blockedUntil: null });
