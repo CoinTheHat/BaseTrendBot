@@ -24,7 +24,9 @@ export interface HardFilterResult {
  * 11. Holder < 50 (yaşa göre değişken) → RED
  */
 export function applyHardFilters(token: TokenSnapshot): HardFilterResult {
-    const ageMins = token.createdAt ? (Date.now() - new Date(token.createdAt).getTime()) / (60 * 1000) : 0;
+    // Use tokenAge from V3 (token creation time), fallback to createdAt (pair creation time)
+    const ageDate = token.tokenAge || token.createdAt;
+    const ageMins = ageDate ? (Date.now() - new Date(ageDate).getTime()) / (60 * 1000) : 0;
     const liq = token.liquidityUsd || 0;
     const mc = token.marketCapUsd || 0;
     const holders = token.holderCount || 0;
@@ -92,6 +94,13 @@ export function applyHardFilters(token: TokenSnapshot): HardFilterResult {
     if (token.isMintable || token.isFreezable) {
         logger.info(`[Security v6] ❌ REJECTED ${token.symbol}: Mintable=${token.isMintable}, Freezable=${token.isFreezable}`);
         return { passed: false, reason: "MINTABLE_OR_PAUSABLE" };
+    }
+
+    // 7b. Honeypot Check (V3)
+    // V3 API provides isHoneypot flag directly
+    if (token.isHoneypot) {
+        logger.info(`[Security v6] ❌ REJECTED ${token.symbol}: Honeypot detected`);
+        return { passed: false, reason: "HONEYPOT" };
     }
 
     // 8. Whale Dominance v6

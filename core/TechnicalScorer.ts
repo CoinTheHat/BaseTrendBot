@@ -12,6 +12,7 @@ export interface TechnicalScore {
 /**
  * PHASE 2: TECHNICAL SCORING v6 (40 Pts Max)
  * Base Chain adapted from Solana v6 system
+ * Updated to use V3 API fields
  */
 export function calculateTechnicalScore(token: TokenSnapshot): TechnicalScore {
     let score: TechnicalScore = {
@@ -27,8 +28,14 @@ export function calculateTechnicalScore(token: TokenSnapshot): TechnicalScore {
     const liq = token.liquidityUsd || 0;
     const holders = token.holderCount || 0;
     const top10Pct = token.top10HoldersSupply || 0;
-    const top1Pct = token.top10HoldersSupply ? token.top10HoldersSupply / 4 : 20; // Estimate top1 as ~25% of top10
-    const ageMins = token.createdAt ? (Date.now() - new Date(token.createdAt).getTime()) / (60 * 1000) : 0;
+
+    // Use actual top1 from V3, fallback to estimate
+    const top1Pct = token.top1HolderSupply || (token.top10HoldersSupply ? token.top10HoldersSupply / 4 : 20);
+
+    // Use tokenAge from V3 (token creation), fallback to createdAt (pair creation)
+    const ageDate = token.tokenAge || token.createdAt;
+    const ageMins = ageDate ? (Date.now() - new Date(ageDate).getTime()) / (60 * 1000) : 0;
+
     const lpLocked = token.lpLockedPercent || 0;
     const lpBurned = token.lpBurned || false;
 
@@ -84,15 +91,14 @@ export function calculateTechnicalScore(token: TokenSnapshot): TechnicalScore {
         securityPoints += 3;
     }
 
-    // Listing status (mock - would need CoinGecko/CoinMarketCap API)
-    // For Base, we can check if has dexScreener link as a basic check
-    if (token.links?.dexScreener) {
-        securityPoints += 2; // Has dexScreener listing
-    }
+    // CG + CMC Listing from V3 API
+    const isCG = token.isCGListed || false;
+    const isCMC = token.isCMCListed || false;
 
-    // If only one of the above, add 1 more point for partial security
-    if (securityPoints > 0 && securityPoints < 3) {
-        securityPoints += 1;
+    if (isCG && isCMC) {
+        securityPoints += 3;
+    } else if (isCG || isCMC) {
+        securityPoints += 2;
     }
 
     score.securityScore = Math.min(6, securityPoints);

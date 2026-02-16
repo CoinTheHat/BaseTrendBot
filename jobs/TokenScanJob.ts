@@ -123,9 +123,14 @@ export class TokenScanJob {
                             token.lpLockedPercent = details.liquidity.totalLockedPercent;
                             token.lpBurned = details.liquidity.burnedPercent >= 90;
                             token.top10HoldersSupply = details.top10Percent;
+                            token.top1HolderSupply = details.top1Percent;  // V3: actual top1
                             token.isMintable = details.security.isMintable;
                             token.isFreezable = details.security.isFreezable;
+                            token.isHoneypot = details.security.isHoneypot;  // V3: honeypot check
                             token.isCTO = details.isCTO;
+                            token.isCGListed = details.isCGListed;  // V3: CG listing
+                            token.isCMCListed = details.isCMCListed;  // V3: CMC listing
+                            token.tokenAge = details.tokenAge;  // V3: token creation time
                         }
                     }
 

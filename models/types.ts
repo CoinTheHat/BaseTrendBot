@@ -25,13 +25,18 @@ export interface TokenSnapshot {
     devWalletConcentration?: number; // %
     holderCount?: number; // NEW: Total holders
     top10HoldersSupply?: number; // %
+    top1HolderSupply?: number; // % - Top holder concentration
     mintAuthority?: boolean; // Deprecated but mapping to isMintable
     isMintable?: boolean;
     isFreezable?: boolean;
+    isHoneypot?: boolean; // NEW from V3
     lpLocked?: boolean;
     lpBurned?: boolean;
     lpLockedPercent?: number;
     isCTO?: boolean;
+    isCGListed?: boolean; // NEW from V3
+    isCMCListed?: boolean; // NEW from V3
+    tokenAge?: Date | null; // NEW from V3 - token creation time
     links: {
         dexScreener?: string;
         birdeye?: string;

@@ -155,15 +155,20 @@ export class DexScreenerService {
     }
 
     /**
-     * Access DexScreener Internal API v4 using Reused Page
+     * Access DexScreener Internal API v3 using Reused Page
      * Optimized for speed: uses verify-fast approach
+     * V3 includes: ti.createdAt (token age), cg (CoinGecko), full holder data
      */
     async getPairDetails(pairAddress: string): Promise<{
         holderCount: number;
         top10Percent: number;
-        security: { isMintable: boolean; isFreezable: boolean };
+        top1Percent: number;
+        security: { isMintable: boolean; isFreezable: boolean; isHoneypot: boolean };
         liquidity: { burnedPercent: number; totalLockedPercent: number; locks: any[] };
         isCTO: boolean;
+        isCGListed: boolean;
+        isCMCListed: boolean;
+        tokenAge: Date | null;
     } | null> {
         let page: any = null;
         try {
@@ -171,7 +176,7 @@ export class DexScreenerService {
             page = await context.newPage();
 
             // Aggressive Timeout for Speed
-            await page.goto(`https://io.dexscreener.com/dex/pair-details/v4/${config.NETWORK}/${pairAddress}`, {
+            await page.goto(`https://io.dexscreener.com/dex/pair-details/v3/${config.NETWORK}/${pairAddress}`, {
                 waitUntil: 'domcontentloaded',
                 timeout: 15000
             });
@@ -180,38 +185,63 @@ export class DexScreenerService {
 
             try {
                 const json = JSON.parse(content);
-                const baseToken = json.baseToken || {};
-                // Note: ta (token authority) for Base/EVM is often under 'ethereum' or 'evm' key in their internal API
-                // but baseToken usually has the direct flags.
-                const tokenAuth = json.ta?.ethereum || json.ta?.solana || {};
 
-                // Calculate Top 10 Percent manually
-                const holdersList = json.holders?.holders || [];
-                const top10PercentResult = holdersList
-                    .sort((a: any, b: any) => (parseFloat(b.percentage) || 0) - (parseFloat(a.percentage) || 0))
+                // V3 Structure: holders are in gp.holders[], not gp.holders.holders
+                // Note: percent values in V3 are decimals (e.g., 0.12 = 12%), need to multiply by 100
+                const holdersList = json.gp?.holders || [];
+
+                // Calculate Top 10 Percent manually (convert decimal to percentage)
+                const sortedHolders = [...holdersList].sort((a: any, b: any) =>
+                    (parseFloat(b.percent) || 0) - (parseFloat(a.percent) || 0)
+                );
+                const top10PercentResult = sortedHolders
                     .slice(0, 10)
-                    .reduce((acc: number, curr: any) => acc + (parseFloat(curr.percentage) || 0), 0);
+                    .reduce((acc: number, curr: any) => acc + (parseFloat(curr.percent) || 0), 0) * 100;
+                const top1Percent = sortedHolders[0] ? (parseFloat(sortedHolders[0].percent) || 0) * 100 : 0;
 
-                const locks = json.ll?.locks || [];
-                const burnedPercent = json.ll?.burned || 0;
-                const totalLockedPercent = (json.ll?.totalPercentage || 0);
+                // V3 has ti.createdAt for token age - this is different from pair creation!
+                const tokenAgeStr = json.ti?.createdAt || null;
+                const tokenAge = tokenAgeStr ? new Date(tokenAgeStr) : null;
+
+                // Liquidity locks from pools
+                const pools = json.ts?.pools || [];
+                const locks = pools.flatMap((p: any) => p.locks || []);
+
+                // Calculate LP locked percent from lpHolders
+                const lpHolders = json.gp?.lpHolders || [];
+                const totalLockedPercent = lpHolders.reduce((acc: number, h: any) =>
+                    acc + (parseFloat(h.percent) || 0), 0);
+
+                // Check CG and CMC listing
+                const isCGListed = !!json.cg?.id;
+                const isCMCListed = !!json.cmc;
+
+                // CTO detection - check cms.claims or cms.socials length
+                const cms = json.cms || {};
+                const isCTO = (cms.claims?.length || 0) > 1 || (cms.socials?.length || 0) > 2;
 
                 return {
-                    holderCount: json.holders?.count !== undefined ? json.holders.count : 0,
+                    holderCount: json.gp?.holderCount || 0,
                     top10Percent: top10PercentResult,
+                    top1Percent: top1Percent,
                     security: {
-                        isMintable: !!tokenAuth.isMintable || !!baseToken.mintAuthority,
-                        isFreezable: !!tokenAuth.isFreezable || !!baseToken.freezeAuthority
+                        isMintable: json.gp?.isMintable || false,
+                        isFreezable: json.qi?.quickiAudit?.canBlacklist || false,
+                        isHoneypot: json.gp?.isHoneypot || false
                     },
                     liquidity: {
-                        burnedPercent: burnedPercent,
+                        burnedPercent: 0, // V3 doesn't have direct burn percent, calculate from lpHolders
                         totalLockedPercent: totalLockedPercent,
                         locks: locks
                     },
-                    isCTO: (json.cms?.claims?.length || 0) > 1
+                    isCTO: isCTO,
+                    isCGListed: isCGListed,
+                    isCMCListed: isCMCListed,
+                    tokenAge: tokenAge
                 };
 
             } catch (parseErr) {
+                logger.debug(`[DexInternalV3] Parse error: ${parseErr}`);
                 return null;
             }
 
