@@ -101,17 +101,17 @@ export class TokenScanJob {
                     const mcUsd = token.marketCapUsd || 0;
 
                     if (ageMins < 20) {
-                        logger.info(`[Phase 1] ❌ REJECTED: ${token.symbol} | Reason: TOO_YOUNG (${ageMins.toFixed(0)}m)`);
+                        logger.info(`[Phase 1] ❌ REJECTED: ${token.symbol} | Reason: TOO_YOUNG (${ageMins.toFixed(0)}m) | MC: $${(mcUsd / 1000).toFixed(1)}k | Liq: $${(liqUsd / 1000).toFixed(1)}k`);
                         this.processedCache.set(token.mint, { reason: 'TOO_YOUNG', blockedUntil: Date.now() + 5 * 60 * 1000 });
                         continue;
                     }
                     if (ageMins > 1440) {
-                        logger.info(`[Phase 1] ❌ REJECTED: ${token.symbol} | Reason: TOO_OLD (${(ageMins / 60).toFixed(0)}h)`);
+                        logger.info(`[Phase 1] ❌ REJECTED: ${token.symbol} | Reason: TOO_OLD (${(ageMins / 60).toFixed(1)}h) | MC: $${(mcUsd / 1000).toFixed(1)}k | Liq: $${(liqUsd / 1000).toFixed(1)}k`);
                         this.processedCache.set(token.mint, { reason: 'TOO_OLD', blockedUntil: null });
                         continue;
                     }
                     if (liqUsd < 5000 || mcUsd < 10000) {
-                        logger.info(`[Phase 1] ❌ REJECTED: ${token.symbol} | Reason: LOW_LIQ_OR_MC ($${liqUsd.toFixed(0)} / $${mcUsd.toFixed(0)})`);
+                        logger.info(`[Phase 1] ❌ REJECTED: ${token.symbol} | Reason: LOW_LIQ_OR_MC | MC: $${(mcUsd / 1000).toFixed(1)}k | Liq: $${(liqUsd / 1000).toFixed(1)}k`);
                         this.processedCache.set(token.mint, { reason: 'LOW_LIQ_MC', blockedUntil: Date.now() + 10 * 60 * 1000 });
                         continue;
                     }
