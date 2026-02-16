@@ -171,7 +171,7 @@ export class TokenScanJob {
 
                     // PHASE 2: TECHNICAL SCORING
                     const techScore = calculateTechnicalScore(token);
-                    logger.info(`[Phase 2] ✅ Technical Score: ${techScore.total.toFixed(0)}/50 (MC:${techScore.mcScore} Liq:${techScore.liquidityScore} Dist:${techScore.distributionScore} SEC:${techScore.lpScore} Age:${techScore.ageScore})`);
+                    logger.info(`[Phase 2] ✅ Technical Score: ${techScore.total.toFixed(0)}/40 (MC:${techScore.mcScore} Liq:${techScore.liquidityScore} Dist:${techScore.distributionScore} SEC:${techScore.securityScore} Age:${techScore.ageScore})`);
 
                     // EXTRA: GoPlus Security 
                     const goplus = await this.checkRugSecurity(token.mint);
@@ -185,13 +185,24 @@ export class TokenScanJob {
                     const twitterUrl = token.links.twitter;
 
                     if (twitterUrl || maturation.status === 'PASSED_VERIFIED') {
-                        logger.info(`[Phase 3] 🐦 searching Twitter for $${token.symbol}...`);
+                        logger.info(`[Phase 3] 🐦 searching Twitter for ${token.symbol}...`);
                         const alphaResult = await this.alphaSearch.checkAlpha(token.symbol, token.mint);
                         tweets = alphaResult.tweets || [];
                     }
 
                     const aiScore = await this.aiTwitterScorer.calculateAIScore(token, tweets);
-                    logger.info(`[Phase 3] ✅ Social Score: ${aiScore.total.toFixed(0)}/50 (Vibe:${aiScore.vibeScore} SEC:${aiScore.securityScore} Narr:${aiScore.narrativeScore} Inf:${aiScore.influencerScore}) | Verdict: ${aiScore.verdict}`);
+                    logger.info(`[Phase 3] ✅ Social Score: ${aiScore.total.toFixed(0)}/60 (Organic:${aiScore.organicRateScore} Diversity:${aiScore.authorDiversityScore} Narr:${aiScore.narrativeScore} Comm:${aiScore.communityScore} RugPenalty:${aiScore.rugRiskPenalty}) | Verdict: ${aiScore.verdict}`);
+
+                    // AI Gate Check (v6)
+                    if (aiScore.verdict === 'AI_GATE_FAILED') {
+                        logger.info(`[AI Gate] ⏳ ${token.symbol} failed gate, retry in 30m`);
+                        this.cooldown.recordAIGateFailure(token.mint);
+                        this.processedCache.set(token.mint, {
+                            reason: 'AI_GATE_FAILED',
+                            blockedUntil: Date.now() + 30 * 60 * 1000
+                        });
+                        continue;
+                    }
 
                     // PHASE 4: FINAL SCORING
                     const finalScoreResult = calculateFinalScore(token, techScore, aiScore, maturation);

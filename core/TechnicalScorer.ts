@@ -1,23 +1,24 @@
 import { TokenSnapshot } from '../models/types';
 
 export interface TechnicalScore {
-    mcScore: number;          // 20 pts max
-    liquidityScore: number;   // 10 pts max
-    distributionScore: number; // 10 pts max
-    lpScore: number;           // 10 pts max
-    ageScore: number;          // 5 pts max
+    mcScore: number;           // 10 pts max
+    liquidityScore: number;    // 8 pts max
+    distributionScore: number;  // 10 pts max
+    securityScore: number;     // 6 pts max
+    ageScore: number;         // 6 pts max
     total: number;
 }
 
 /**
- * PHASE 2: TECHNICAL SCORING (50 Pts Max Base)
+ * PHASE 2: TECHNICAL SCORING v6 (40 Pts Max)
+ * Base Chain adapted from Solana v6 system
  */
 export function calculateTechnicalScore(token: TokenSnapshot): TechnicalScore {
     let score: TechnicalScore = {
         mcScore: 0,
         liquidityScore: 0,
         distributionScore: 0,
-        lpScore: 0,
+        securityScore: 0,
         ageScore: 0,
         total: 0
     };
@@ -26,71 +27,91 @@ export function calculateTechnicalScore(token: TokenSnapshot): TechnicalScore {
     const liq = token.liquidityUsd || 0;
     const holders = token.holderCount || 0;
     const top10Pct = token.top10HoldersSupply || 0;
+    const top1Pct = token.top10HoldersSupply ? token.top10HoldersSupply / 4 : 20; // Estimate top1 as ~25% of top10
     const ageMins = token.createdAt ? (Date.now() - new Date(token.createdAt).getTime()) / (60 * 1000) : 0;
+    const lpLocked = token.lpLockedPercent || 0;
+    const lpBurned = token.lpBurned || false;
 
-    // 1. MARKET CAP SCORE (20 pts)
-    // Favoring the $100k - $500k zone for established trust
-    if (mc >= 10000 && mc < 50000) {
-        score.mcScore = 5;
-    } else if (mc >= 50000 && mc < 100000) {
-        score.mcScore = 12;
-    } else if (mc >= 100000 && mc < 300000) {
-        score.mcScore = 20; // GOLDEN ZONE
-    } else if (mc >= 300000 && mc <= 1000000) {
-        score.mcScore = 15;
+    // 1. MARKET CAP SCORE (10 pts max)
+    // v6: ≤$15k=10, ≤$40k=10, ≤$70k=8, ≤$100k=6, ≤$150k=3, ≤$300k=1
+    if (mc <= 15000) {
+        score.mcScore = 10;
+    } else if (mc <= 40000) {
+        score.mcScore = 10;
+    } else if (mc <= 70000) {
+        score.mcScore = 8;
+    } else if (mc <= 100000) {
+        score.mcScore = 6;
+    } else if (mc <= 150000) {
+        score.mcScore = 3;
+    } else if (mc <= 300000) {
+        score.mcScore = 1;
     } else {
         score.mcScore = 0;
     }
 
-    // 2. LIQUIDITY/MC RATIO SCORE (10 pts)
-    // Master Logic: Ratio >= 15% is full points
+    // 2. LIQUIDITY SCORE (8 pts max)
+    // v6: Oran %15-50 + $15k+=8, Oran %10-50 + $10k+=6, Oran %5-70 + $5k+=3
     const liqRatio = mc > 0 ? (liq / mc) : 0;
-    if (liqRatio >= 0.15) {
-        score.liquidityScore = 10;
-    } else if (liqRatio >= 0.10) {
-        score.liquidityScore = 7;
-    } else if (liqRatio >= 0.05) {
+    const liqRatioPct = liqRatio * 100;
+
+    if (liqRatioPct >= 15 && liqRatioPct <= 50 && liq >= 15000) {
+        score.liquidityScore = 8;
+    } else if (liqRatioPct >= 10 && liqRatioPct <= 50 && liq >= 10000) {
+        score.liquidityScore = 6;
+    } else if (liqRatioPct >= 5 && liqRatioPct <= 70 && liq >= 5000) {
         score.liquidityScore = 3;
-    } else {
-        score.liquidityScore = 0;
     }
 
-    // 3. HOLDER DISTRIBUTION SCORE (10 pts)
-    // Master Logic: Top 10 < 30% is safe
-    if (top10Pct < 20) {
+    // 3. HOLDER DISTRIBUTION SCORE (10 pts max)
+    // v6: Top1<%8+Top10<%25=10, Top1<%12+Top10<%35=7, Top1<%15+Top10<%45=4, Top1<%20+Top10<%50=2
+    if (top1Pct < 8 && top10Pct < 25) {
         score.distributionScore = 10;
-    } else if (top10Pct >= 20 && top10Pct < 30) {
+    } else if (top1Pct < 12 && top10Pct < 35) {
         score.distributionScore = 7;
-    } else if (top10Pct >= 30 && top10Pct < 35) {
+    } else if (top1Pct < 15 && top10Pct < 45) {
+        score.distributionScore = 4;
+    } else if (top1Pct < 20 && top10Pct < 50) {
         score.distributionScore = 2;
-    } else if (top10Pct >= 35) {
-        // Whale Penalty: Top 10 >= 35% => -20 points penalty
-        score.distributionScore = -20;
     }
 
-    // 4. LP SECURITY SCORE (10 pts)
-    // Master Logic: LP Burned or %80+ Locked
-    const isLocked = (token.lpLockedPercent || 0) >= 80;
-    const isBurned = token.lpBurned || false;
-    if (isLocked || isBurned) {
-        score.lpScore = 10;
+    // 4. SECURITY SCORE (6 pts max)
+    // v6: LP Burned/Locked %90+=3, CG+CMC Listed=3, tek=2
+    let securityPoints = 0;
+
+    // LP Security: Burned or Locked >= 90%
+    if (lpBurned || lpLocked >= 90) {
+        securityPoints += 3;
     }
 
-    // 5. AGE SCORE (5 pts)
-    // Reward fresh tokens < 4h (240 mins)
-    if (holders < 2500) {
-        if (ageMins >= 20 && ageMins < 45) {
-            score.ageScore = 5;
-        } else if (ageMins >= 45 && ageMins < 120) {
-            score.ageScore = 3;
-        } else if (ageMins >= 120 && ageMins < 240) {
-            score.ageScore = 1;
-        }
+    // Listing status (mock - would need CoinGecko/CoinMarketCap API)
+    // For Base, we can check if has dexScreener link as a basic check
+    if (token.links?.dexScreener) {
+        securityPoints += 2; // Has dexScreener listing
     }
 
-    // TOTAL (Capped at 50 per Master Logic)
-    score.total = score.mcScore + score.liquidityScore + score.distributionScore + score.lpScore + score.ageScore;
-    score.total = Math.max(0, Math.min(50, score.total));
+    // If only one of the above, add 1 more point for partial security
+    if (securityPoints > 0 && securityPoints < 3) {
+        securityPoints += 1;
+    }
+
+    score.securityScore = Math.min(6, securityPoints);
+
+    // 5. AGE SCORE (6 pts max)
+    // v6: 21-45dk=6, 45-120dk=4, 120-360dk=3, 360-1440dk=1
+    if (ageMins >= 21 && ageMins <= 45) {
+        score.ageScore = 6;
+    } else if (ageMins > 45 && ageMins <= 120) {
+        score.ageScore = 4;
+    } else if (ageMins > 120 && ageMins <= 360) {
+        score.ageScore = 3;
+    } else if (ageMins > 360 && ageMins <= 1440) {
+        score.ageScore = 1;
+    }
+
+    // TOTAL (Capped at 40 per v6)
+    score.total = score.mcScore + score.liquidityScore + score.distributionScore + score.securityScore + score.ageScore;
+    score.total = Math.max(0, Math.min(40, score.total));
 
     return score;
 }

@@ -90,7 +90,7 @@ export class LLMService {
     private buildPrompt(token: TokenSnapshot, tweets: string[], hasTweets: boolean): { systemPrompt: string; userContent: string } {
         // ... (Prompt logic remains mostly same, just optimized for Grok)
         const systemPrompt = `
-Sen Kıdemli bir Kripto Degen Analistisin (xAI Grok tabanlı). Görevin, piyasa verilerine ve son tweetlere dayanarak Solana meme tokenlarını analiz etmek.
+Sen Kıdemli bir Kripto Degen Analistisin (xAI Grok tabanlı). Görevin, piyasa verilerine ve son tweetlere dayanarak Base meme tokenlarını analiz etmek.
 AMACIMIZ: Yeni çıkan, hikayesi olan ve hızlıca 2x yapabilecek "Fresh" tokenları yakalamak.
 
 ⚠️ OTOMATIK 0/10 PUAN VER (BLACK LIST):
@@ -377,7 +377,7 @@ After checking the list above, you can give an additional "Context Score" betwee
     async analyzePostSnipe(token: TokenSnapshot, tweets: string[] = [], retries = 1): Promise<{
         momentumPhase: string;
         priceContext: string;
-        riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+        riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'DANGEROUS';
         explanation: string[];
         socialSummary: string;
     } | null> {
@@ -387,7 +387,7 @@ After checking the list above, you can give an additional "Context Score" betwee
             : `SOCIAL SENTIMENT: VERI YOK. (Bu durumda TEKNIK VERILERE -Age, MC, Liq- odaklanarak bir yorum yapınız).`;
 
         const systemPrompt = `
-You are a fundamental researcher and narrative analyst reviewing a Solana token.
+You are a fundamental researcher and narrative analyst reviewing a Base token.
 
 **USER REQUEST:** 
 - "Don't just tell me it's hyped. Tell me WHAT IT IS."
@@ -464,7 +464,7 @@ ${tweetSection}
         sentiment: number;
         narrativeStrength: 'strong' | 'medium' | 'weak';
         influencerCount: number;
-        riskLevel: 'LOW' | 'MEDIUM' | 'HIGH';
+        riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'DANGEROUS';
         summary: string;
     } | null> {
         const prompt = `
@@ -479,6 +479,7 @@ ${tweets.map((t, i) => `${i + 1}. ${t}`).join('\n')}
    - [TECH_ART]: Proje kalitesi hakkında yorumlar
    - [ORIGINAL_MEME]: Yaratıcı, özgün içerik
    - [SMART_MONEY]: Teknik analiz içeren yorumlar
+   - [REAL_QUESTIONS]: Gerçek sorular (dev kim? roadmap?)
    - [ALPHA_GROUP]: Grup spam linki/davet
    - [PUMP_KEYWORD]: Sadece "moon", "lfg", "pump" vs
    - [HYPE_SPAM]: Bot benzeri tekrarlı mesajlar
@@ -491,9 +492,9 @@ ${tweets.map((t, i) => `${i + 1}. ${t}`).join('\n')}
    - "weak": Sadece pump lafı
 
 4. **influencerCount** (number 0-10): Kaç tane 10k+ takipçili hesap bahsetmiş?
-   (Not: Tweet yazarlarının takipçi sayısını tahmin et, "Alpha", "Diamond Hand", "Solana OG" gibi hesaplar genelde yüksek takipçili)
+   (Not: Tweet yazarlarının takipçi sayısını tahmin et, "Alpha", "Diamond Hand", "Base OG" gibi hesaplar genelde yüksek takipçili)
 
-5. **riskLevel** (string): "LOW" | "MEDIUM" | "HIGH"
+5. **riskLevel** (string): "LOW" | "MEDIUM" | "HIGH" | "DANGEROUS"
    - Bot activity, whale yoğunluğu, narrative kalitesini düşün
 
 6. **summary** (string): 2 cümlelik Türkçe özet
