@@ -60,12 +60,13 @@ async function main() {
     const dashboard = new DashboardServer(storage);
     dashboard.start();
 
-    // 6. Start
-    job.start();
+    // 6. Start (PAUSED BY USER REQUEST)
+    // job.start();
+    logger.warn('⚠️ BOT PAUSED BY USER REQUEST (MAINTENANCE MODE) ⚠️');
 
-    await bot.notifyAdmin("🚀 **GEM HUNTER V3.0 (BASE)**\nSistem Başlatıldı:\n- Phase 1: Hard Filters & Maturation 🟢\n- Phase 2: Technical Scoring 🟢\n- Phase 3: AI Social Scoring 🟢\n- Phase 4: Final Scorer & Notifications 🟢");
+    await bot.notifyAdmin("🛑 **SISTEM DURAKLATILDI (BAKIM)**\nKullanıcı isteği ile bot taraması durduruldu. Dashboard hala aktif.");
 
-    logger.info('✅ Gem Hunter V3.0 Operational.');
+    // logger.info('✅ Gem Hunter V3.0 Operational.');
 
     // Graceful Shutdown
     const shutdown = async () => {
